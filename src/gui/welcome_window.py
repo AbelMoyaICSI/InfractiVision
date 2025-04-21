@@ -3,72 +3,33 @@ import os
 from PIL import Image, ImageTk
 
 class WelcomeFrame(tk.Frame):
+    """Pantalla de inicio con acceso a otras ventanas."""
+
     def __init__(self, master, app_manager):
         super().__init__(master, bg="#273D86")
         self.app_manager = app_manager
-        self.create_widgets()
+        self._build()
 
-    def create_widgets(self):
-        # Título principal con letras grandes
-        title_label = tk.Label(
-            self,
-            text="Bienvenido a InfractiVision",
-            font=("Arial", 40, "bold"),
-            bg="#273D86",
-            fg="white"
-        )
-        title_label.pack(pady=(50, 20))
+    def _build(self):
+        tk.Label(self, text="Bienvenido a InfractiVision", font=("Arial", 40, "bold"),
+                 bg="#273D86", fg="white").pack(pady=(50, 20))
 
-        # Cargar y redimensionar la imagen del logo de forma responsive
-        image_path = os.path.join("img", "InfractiVision-logo.png")
+        # logo --------------------------------------
+        img_path = os.path.join("img", "InfractiVision-logo.png")
         try:
-            logo_image = Image.open(image_path)
-            # Define el tamaño máximo permitido (ancho y alto)
-            max_width = 300
-            max_height = 300
-            logo_image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
-            self.logo_tk = ImageTk.PhotoImage(logo_image)
-        except Exception as e:
-            print(f"Error al cargar la imagen: {e}")
-            self.logo_tk = None
+            logo_img = Image.open(img_path)
+            logo_img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+            self.logo_tk = ImageTk.PhotoImage(logo_img)
+            tk.Label(self, image=self.logo_tk, bg="#273D86").pack(pady=(0, 20))
+        except Exception:
+            tk.Label(self, text="[Logo no encontrado]", bg="#273D86", fg="white").pack(pady=(0, 20))
 
-        if self.logo_tk:
-            logo_label = tk.Label(self, image=self.logo_tk, bg="#273D86")
-            logo_label.pack(pady=(0, 20))
-        else:
-            logo_label = tk.Label(self, text="[No se pudo cargar la imagen]", bg="#273D86", fg="white")
-            logo_label.pack(pady=(0, 20))
+        tk.Label(self, text="Selecciona la opción para continuar",
+                 font=("Arial", 24), bg="#273D86", fg="white").pack(pady=(0, 40))
 
-        # Subtítulo
-        subtitle_label = tk.Label(
-            self,
-            text="Selecciona la opción para continuar",
-            font=("Arial", 24),
-            bg="#273D86",
-            fg="white"
-        )
-        subtitle_label.pack(pady=(0, 40))
-
-        # Contenedor para los botones
         btn_frame = tk.Frame(self, bg="#273D86")
         btn_frame.pack()
-
-        # Botón para "Foto Rojo"
-        btn_foto = tk.Button(
-            btn_frame,
-            text="Foto Rojo",
-            font=("Arial", 18),
-            width=15,
-            command=self.app_manager.open_foto_rojo_window
-        )
-        btn_foto.pack(side="left", padx=10)
-
-        # Botón para "Gestión de Infracciones"
-        btn_gestion = tk.Button(
-            btn_frame,
-            text="Gestión de Infracciones",
-            font=("Arial", 18),
-            width=20,
-            command=self.app_manager.open_gestion_infracciones_window
-        )
-        btn_gestion.pack(side="left", padx=10)
+        tk.Button(btn_frame, text="Detección de Placas", font=("Arial", 18), width=18,
+                  command=self.app_manager.open_violation_window).pack(side="left", padx=10)
+        tk.Button(btn_frame, text="Gestión de Infracciones", font=("Arial", 18), width=22,
+                  command=self.app_manager.open_infractions_window).pack(side="left", padx=10)

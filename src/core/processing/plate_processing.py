@@ -1,13 +1,13 @@
-from foto_rojo.plate_detector_new import PlateDetectorNew
-from foto_rojo.plate_superresolution_edsr import enhance_plate
-from foto_rojo.plate_recognizer import recognize_plate
+from src.core.detection.plate_detector import PlateDetector
+from src.core.processing.superresolution import enhance_plate
+from src.core.ocr.recognizer import recognize_plate
 
 _detector = None
 
 def get_plate_detector():
     global _detector
     if _detector is None:
-        _detector = PlateDetectorNew("models/plate_detector.pt")
+        _detector = PlateDetector("models/plate_detector.pt")
     return _detector
 
 def process_plate(vehicle_bgr):

@@ -1,7 +1,7 @@
 import cv2
 from ultralytics import YOLO
 
-class PlateDetectorNew:
+class PlateDetector:
     def __init__(self, model_path="models/plate_detector.pt"):
         self.model = YOLO(model_path)
 

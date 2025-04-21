@@ -1,0 +1,12 @@
+{
+  "C:/Users/HOUSE/Videos/Traffic IP Camera video.mp4": {
+    "green": 25,
+    "yellow": 3,
+    "red": 30
+  },
+  "data/raw/videos\\Traffic IP Camera video.mp4": {
+    "green": 25,
+    "yellow": 3,
+    "red": 30
+  }
+}

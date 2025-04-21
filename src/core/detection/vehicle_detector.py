@@ -16,5 +16,5 @@ class VehicleDetector:
                 detections.append((x1, y1, x2, y2, cls_id))
         if draw:
             for (x1, y1, x2, y2, cls_id) in detections:
-                cv2.rectangle(image_bgr, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(image_bgr, (x1, y1), (x2, y2), (0,255,0), 2)
         return detections
