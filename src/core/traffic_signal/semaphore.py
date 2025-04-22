@@ -33,7 +33,8 @@ class Semaforo:
         # Botón para abrir configuración de tiempos
         self.btn_tiempos = tk.Button(
             self.frame, text="Configurar Tiempos",
-            command=self.gestionar_tiempos, width=20
+            command=self.gestionar_tiempos, width=20,
+            bg="#3366FF", fg="white", bd=0, activebackground="#3366FF", activeforeground="white", pady=8,
         )
         self.btn_tiempos.pack(pady=5)
 

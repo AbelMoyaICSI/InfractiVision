@@ -1,49 +1,49 @@
+# src/app_manager.py
+
 import tkinter as tk
 from src.gui.welcome_window import WelcomeFrame
 from src.gui.red_light_violation_window import create_violation_window
 from src.gui.infractions_management_window import create_infractions_window
 
-
 class AppManager:
-    """Centraliza la navegación entre pantallas GUI"""
+    """Centraliza la navegación entre pantallas GUI en una única ventana,
+       preservando el estado (maximizado/minimizado) del root."""
 
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.current_window = None
+        self.root.title("InfractiVision")
+        # Arrancamos maximizado
         self.root.state("zoomed")
+        # Mostramos bienvenida
+        self.show_welcome()
 
-    # ---------- helpers ----------
     def _clear_root(self):
+        """Destruye todos los widgets en root."""
         for w in self.root.winfo_children():
             w.destroy()
 
-    # ---------- public api ----------
     def show_welcome(self):
-        if self.current_window is not None:
-            self.current_window.destroy()
-            self.current_window = None
-        self.root.deiconify()
-        self.root.state("zoomed")
+        """Pantalla de bienvenida. No forza cambio de minimize/maximize."""
+        prev_state = self.root.state()
         self._clear_root()
-        welcome = WelcomeFrame(self.root, self)
-        welcome.pack(fill="both", expand=True)
+        self.root.title("InfractiVision – Principal")
+        frm = WelcomeFrame(self.root, self)
+        frm.pack(fill="both", expand=True)
+        # Restauramos exactly el mismo estado (normal, iconic, zoomed)
+        self.root.state(prev_state)
 
     def open_violation_window(self):
-        self.root.withdraw()
-        win = tk.Toplevel(self.root)
-        win.title("InfractiVision – Detección de Placas")
-        win.geometry("1280x720")
-        win.state("zoomed")
-        win.protocol("WM_DELETE_WINDOW", self.show_welcome)
-        create_violation_window(win, self.show_welcome)
-        self.current_window = win
+        """Pantalla de Foto Rojo."""
+        prev_state = self.root.state()
+        self._clear_root()
+        self.root.title("InfractiVision – Detección de Placas")
+        create_violation_window(self.root, self.show_welcome)
+        self.root.state(prev_state)
 
     def open_infractions_window(self):
-        self.root.withdraw()
-        win = tk.Toplevel(self.root)
-        win.title("InfractiVision – Gestión de Infracciones")
-        win.geometry("1280x720")
-        win.state("zoomed")
-        win.protocol("WM_DELETE_WINDOW", self.show_welcome)
-        create_infractions_window(win, self.show_welcome)
-        self.current_window = win
+        """Pantalla de Gestión de Infracciones."""
+        prev_state = self.root.state()
+        self._clear_root()
+        self.root.title("InfractiVision – Gestión de Infracciones")
+        create_infractions_window(self.root, self.show_welcome)
+        self.root.state(prev_state)

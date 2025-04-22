@@ -1,35 +1,57 @@
+# src/gui/welcome_window.py
+
 import tkinter as tk
 import os
 from PIL import Image, ImageTk
 
 class WelcomeFrame(tk.Frame):
-    """Pantalla de inicio con acceso a otras ventanas."""
-
     def __init__(self, master, app_manager):
         super().__init__(master, bg="#273D86")
         self.app_manager = app_manager
-        self._build()
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+        self.create_widgets()
 
-    def _build(self):
-        tk.Label(self, text="Bienvenido a InfractiVision", font=("Arial", 40, "bold"),
-                 bg="#273D86", fg="white").pack(pady=(50, 20))
-
-        # logo --------------------------------------
-        img_path = os.path.join("img", "InfractiVision-logo.png")
+    def create_widgets(self):
+        # Panel izquierdo: imagen
+        left = tk.Frame(self, bg="#273D86")
+        left.grid(row=0, column=0, sticky="nsew")
+        bg_path = os.path.join("img", "welcome_bg.png")
         try:
-            logo_img = Image.open(img_path)
-            logo_img.thumbnail((300, 300), Image.Resampling.LANCZOS)
-            self.logo_tk = ImageTk.PhotoImage(logo_img)
-            tk.Label(self, image=self.logo_tk, bg="#273D86").pack(pady=(0, 20))
-        except Exception:
-            tk.Label(self, text="[Logo no encontrado]", bg="#273D86", fg="white").pack(pady=(0, 20))
+            img_orig = Image.open(bg_path)
+            lbl = tk.Label(left)
+            lbl.place(relwidth=1, relheight=1)
+            def resize(e):
+                img = img_orig.resize((e.width, e.height), Image.Resampling.LANCZOS)
+                self._tk = ImageTk.PhotoImage(img)
+                lbl.config(image=self._tk)
+            left.bind("<Configure>", resize)
+        except:
+            tk.Label(left, text="[Imagen no disponible]", bg="#273D86", fg="white").pack(expand=True)
 
-        tk.Label(self, text="Selecciona la opción para continuar",
-                 font=("Arial", 24), bg="#273D86", fg="white").pack(pady=(0, 40))
+        # Panel derecho: títulos + botones
+        right = tk.Frame(self, bg="white")
+        right.grid(row=0, column=1, sticky="nsew")
+        content = tk.Frame(right, bg="white")
+        content.place(relx=0.5, rely=0.5, anchor="center")
 
-        btn_frame = tk.Frame(self, bg="#273D86")
-        btn_frame.pack()
-        tk.Button(btn_frame, text="Detección de Placas", font=("Arial", 18), width=18,
-                  command=self.app_manager.open_violation_window).pack(side="left", padx=10)
-        tk.Button(btn_frame, text="Gestión de Infracciones", font=("Arial", 18), width=22,
-                  command=self.app_manager.open_infractions_window).pack(side="left", padx=10)
+        tk.Label(content, text="Bienvenido a\nInfractiVision",
+                 font=("Arial", 40, "bold"), bg="white", fg="#3366FF",
+                 justify="center").pack(pady=(0,10))
+
+        tk.Label(content, text="Selecciona la opción para continuar",
+                 font=("Arial", 18), bg="white", fg="gray20",
+                 justify="center").pack(pady=(0,30))
+
+        btns = tk.Frame(content, bg="white")
+        btns.pack()
+        def mk(txt, cmd):
+            return tk.Button(btns, text=txt, font=("Arial",16),
+                             bg="#3366FF", fg="white",
+                             activebackground="#2554CC", bd=0,
+                             padx=20, pady=10, cursor="hand2",
+                             command=cmd)
+        # FOTO ROJO primero a la izquierda
+        mk("Foto Rojo", self.app_manager.open_violation_window).pack(side="left", padx=10)
+        mk("Gestión de Infracciones", self.app_manager.open_infractions_window).pack(side="left", padx=10)
