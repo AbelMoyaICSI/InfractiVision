@@ -5,7 +5,6 @@ def main():
     root = tk.Tk()
     root.title("InfractiVision")
     root.geometry("1280x720")
-    # Inicia maximizada
     root.state("zoomed")
     AppManager(root)
     root.mainloop()

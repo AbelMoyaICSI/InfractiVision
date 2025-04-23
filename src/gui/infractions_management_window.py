@@ -10,7 +10,7 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
     window.configure(bg="#ffffff")
     window.state("zoomed")
 
-    # — Header con botón volver, título y acciones —
+
     header = tk.Frame(window, bg="#ffffff")
     header.pack(fill="x", padx=30, pady=20)
 
@@ -35,7 +35,7 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
         cursor="hand2"
     ).pack(side="left", padx=10)
 
-    # Date range pickers
+
     tk.Label(actions, text="Desde:", font=("Arial", 12), bg="#ffffff").pack(side="left")
     start_picker = DateEntry(
         actions, font=("Arial", 12), width=10,
@@ -91,7 +91,7 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
 
-    # Load all data once
+
     if os.path.exists(INF_FILE):
         try:
             with open(INF_FILE, "r", encoding="utf-8") as f:
@@ -155,5 +155,5 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                 font=("Arial", 12), bg="#F2F2F2", fg="#333333"
             ).pack(anchor="w")
 
-    # initially show all
+    
     populate_cards(all_data)

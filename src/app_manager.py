@@ -12,9 +12,7 @@ class AppManager:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("InfractiVision")
-        # Arrancamos maximizado
         self.root.state("zoomed")
-        # Mostramos bienvenida
         self.show_welcome()
 
     def _clear_root(self):
@@ -29,7 +27,6 @@ class AppManager:
         self.root.title("InfractiVision – Principal")
         frm = WelcomeFrame(self.root, self)
         frm.pack(fill="both", expand=True)
-        # Restauramos exactly el mismo estado (normal, iconic, zoomed)
         self.root.state(prev_state)
 
     def open_violation_window(self):
