@@ -415,21 +415,45 @@ class VideoPlayerOpenCV:
 
 
     def select_video(self):
-        from tkinter import filedialog
+        from tkinter import filedialog, messagebox
         file = filedialog.askopenfilename(
             title="Seleccionar vídeo",
             filetypes=[("Vídeos","*.mp4 *.avi *.mov *.mkv"),("Todos","*.*")]
         )
         if not file:
             return
+
         fname = os.path.basename(file)
         dest  = os.path.join(self.video_dir, fname)
+
+        # Si el usuario selecciona el mismo vídeo que ya está cargado:
+        if self.current_video_path == dest:
+            messagebox.showinfo(
+                "Información",
+                "Este vídeo ya está cargado.",
+                parent=self.parent
+            )
+            return
+
+        # Copiar al directorio local si no existe
         if not os.path.exists(dest):
             import shutil
             shutil.copy2(file, dest)
+
+        # Pre-carga ligera para validar
         cap_tmp = cv2.VideoCapture(dest)
-        cap_tmp.set(cv2.CAP_PROP_BUFFERSIZE,1)
+        cap_tmp.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        ret, _ = cap_tmp.read()
         cap_tmp.release()
+        if not ret:
+            messagebox.showerror(
+                "Error",
+                "No se pudo leer el vídeo seleccionado.",
+                parent=self.parent
+            )
+            return
+
+        # Detener cualquier reproducción activa y cargar
         self.stop_video()
         self.load_video(dest)
 
@@ -594,8 +618,17 @@ class VideoPlayerOpenCV:
             if not sel:
                 messagebox.showwarning("Advertencia", "Seleccione un vídeo.")
                 return
+
             fn   = lb.get(sel[0])
             path = os.path.join(self.video_dir, fn)
+
+            # Nuevo: aviso si es la misma cámara/vídeo ya cargado
+            if path == self.current_video_path:
+                messagebox.showinfo("Información", "Este vídeo ya está cargado.", parent=w)
+                return
+
+            # Ya no devolvemos w.destroy inmediatamente,
+            # lo hacemos tras confirmar que es uno distinto:
             w.destroy()
 
             # 1) Detener y limpiar todo el estado actual
@@ -604,10 +637,10 @@ class VideoPlayerOpenCV:
             self.semaforo.current_state = "green"
             self.semaforo.show_state()
 
-            # 2) Maximizar la ventana principal nuevamente
+            # 2) Asegurarnos de que la ventana principal esté visible
             main_win = self.parent.winfo_toplevel()
             main_win.deiconify()
-            # main_win.state("zoomed")
+            # main_win.state("zoomed")  # si quieres volver a maximizar
 
             # 3) Cargar el nuevo vídeo
             self.load_video(path)
