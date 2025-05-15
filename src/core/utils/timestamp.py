@@ -1,3 +1,5 @@
+# src/core/utils/timestamp.py
+
 import time
 from datetime import datetime
 
@@ -16,6 +18,6 @@ class TimestampUpdater:
 
     def update(self):
         if self.running:
-            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
             self.label.config(text=now_str)
             self.root.after(100, self.update)

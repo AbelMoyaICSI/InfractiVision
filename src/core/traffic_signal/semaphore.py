@@ -1,4 +1,4 @@
-# File: src/core/traffic_signal/semaphore.py
+# src/core/traffic_signal/semaphore.py
 
 import time
 import tkinter as tk
@@ -7,7 +7,6 @@ from tkinter import messagebox
 import json
 import os
 
-# Ajustado a config folder
 PRESETS_FILE = "config/time_presets.json"
 
 class Semaforo:
@@ -19,6 +18,7 @@ class Semaforo:
 
     def __init__(self, parent):
         self.parent = parent
+        self.current_video = None            # <-- Nuevo: track del video actual
         self.frame = tk.Frame(parent, bg='white')
         self.frame.pack(side="top", fill="both", expand=True)
 
@@ -34,7 +34,8 @@ class Semaforo:
         self.btn_tiempos = tk.Button(
             self.frame, text="Configurar Tiempos",
             command=self.gestionar_tiempos, width=20,
-            bg="#3366FF", fg="white", bd=0, activebackground="#3366FF", activeforeground="white", pady=8,
+            bg="#3366FF", fg="white", bd=0, activebackground="#3366FF",
+            activeforeground="white", pady=8,
         )
         self.btn_tiempos.pack(pady=5)
 
@@ -80,12 +81,10 @@ class Semaforo:
         win = tk.Toplevel(self.parent)
         win.title("Configurar Tiempos - Vídeos")
 
-        # Lista de presets
         tk.Label(win, text="Vídeos guardados:").grid(row=0, column=0, columnspan=3, pady=(5,0))
         lb = tk.Listbox(win, width=50)
         lb.grid(row=1, column=0, columnspan=3, padx=5, pady=5)
 
-        # Scroll
         sb = tk.Scrollbar(win, orient="vertical", command=lb.yview)
         sb.grid(row=1, column=3, sticky="ns", pady=5)
         lb.config(yscrollcommand=sb.set)
@@ -98,7 +97,6 @@ class Semaforo:
 
         refresh()
 
-        # Entradas para nuevo/editar
         tk.Label(win, text="Nombre de vídeo:").grid(row=2, column=0, sticky="e", padx=5)
         entry_vid = tk.Entry(win, width=30)
         entry_vid.grid(row=2, column=1, columnspan=2, padx=5, pady=2)
@@ -115,7 +113,6 @@ class Semaforo:
         entry_r = tk.Entry(win, width=6)
         entry_r.grid(row=5, column=1, sticky="w")
 
-        # Guardar preset (nuevo o editado)
         def on_save():
             vid = entry_vid.get().strip()
             try:
@@ -138,21 +135,19 @@ class Semaforo:
                 self.target_time = time.time() + self.cycle_durations[self.current_state]
             messagebox.showinfo("Éxito", f"Tiempos guardados para '{vid}'.", parent=win)
 
-        # Cargar selección en entries para editar
         def on_edit():
             sel = lb.curselection()
             if not sel:
                 messagebox.showwarning("Advertencia", "Seleccione un ítem para editar.", parent=win)
                 return
             line = lb.get(sel[0])
-            vid, rest = line.split(" → ",1)
+            vid, _ = line.split(" → ",1)
             times = self.load_presets().get(vid, {})
             entry_vid.delete(0, tk.END); entry_vid.insert(0, vid)
             entry_g.delete(0, tk.END); entry_g.insert(0, times.get("green",30))
             entry_y.delete(0, tk.END); entry_y.insert(0, times.get("yellow",3))
             entry_r.delete(0, tk.END); entry_r.insert(0, times.get("red",30))
 
-        # Eliminar preset
         def on_delete():
             sel = lb.curselection()
             if not sel:
@@ -178,14 +173,14 @@ class Semaforo:
     # Ciclo de semáforo
     # --------------------
     def show_state(self):
-        colors = {"green":self.green_light, "yellow":self.yellow_light, "red":self.red_light}
-        for state, light in [("green",colors["green"]),
-                             ("yellow",colors["yellow"]),
-                             ("red",colors["red"])]:
-            self.canvas.itemconfig(light, fill=state if state==self.current_state else "grey")
+        colors = {"green": self.green_light,
+                  "yellow": self.yellow_light,
+                  "red": self.red_light}
+        for state, light in colors.items():
+            fill = state if state == self.current_state else "grey"
+            self.canvas.itemconfig(light, fill=fill)
 
     def update_lights(self):
-        # Rotar estado
         nxt = {"green":"yellow", "yellow":"red", "red":"green"}
         self.current_state = nxt[self.current_state]
         self.target_time = time.time() + self.cycle_durations[self.current_state]
@@ -198,7 +193,7 @@ class Semaforo:
             self.update_lights()
             diff = self.target_time - time.time()
         secs = int(diff)
-        ms = int((diff-secs)*1000)
+        ms = int((diff - secs) * 1000)
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         self.info_label.config(
             text=f"{ts}\nEstado: {self.current_state.upper()} – Quedan {secs}s {ms}ms"
@@ -211,13 +206,13 @@ class Semaforo:
     def resize_canvas(self, event):
         cw, ch = event.width, event.height
         margin = 0.1 * min(cw, ch)
-        max_w, max_h = int(cw-2*margin), int(ch-2*margin)
+        max_w, max_h = int(cw - 2*margin), int(ch - 2*margin)
         hw = min(max_w, int(max_h*0.4))
         hh = int(hw/0.4)
         x0, y0 = (cw-hw)//2, (ch-hh)//2
         self.canvas.coords(self.housing_rect, x0, y0, x0+hw, y0+hh)
-        sec = hh//3
-        cx = x0+hw//2
+        sec = hh // 3
+        cx = x0 + hw//2
         diam = min(int(0.8*hw), int(0.8*sec))
         for i, light in enumerate([self.red_light, self.yellow_light, self.green_light]):
             cy = y0 + sec//2 + i*sec

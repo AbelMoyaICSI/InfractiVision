@@ -1,3 +1,5 @@
+# src/core/detection/vehicle_detector.py
+
 import cv2
 from ultralytics import YOLO
 
@@ -15,6 +17,6 @@ class VehicleDetector:
                 cls_id = int(box.cls[0])
                 detections.append((x1, y1, x2, y2, cls_id))
         if draw:
-            for (x1, y1, x2, y2, cls_id) in detections:
+            for (x1, y1, x2, y2, _) in detections:
                 cv2.rectangle(image_bgr, (x1, y1), (x2, y2), (0,255,0), 2)
         return detections
