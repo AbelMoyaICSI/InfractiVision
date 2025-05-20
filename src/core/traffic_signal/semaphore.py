@@ -18,7 +18,7 @@ class Semaforo:
 
     def __init__(self, parent):
         self.parent = parent
-        self.current_video = None            # <-- Nuevo: track del video actual
+        self.current_video = None
         self.frame = tk.Frame(parent, bg='white')
         self.frame.pack(side="top", fill="both", expand=True)
 
@@ -27,7 +27,7 @@ class Semaforo:
         self.canvas.pack(fill="both", expand=True, padx=10, pady=10)
 
         # Label de estado y tiempos
-        self.info_label = tk.Label(self.frame, text="", font=("Arial", 14), bg='white')
+        self.info_label = tk.Label(self.frame, text="Semáforo inactivo", font=("Arial", 14), bg='white')
         self.info_label.pack(pady=(0, 10))
 
         # Botón para abrir configuración de tiempos
@@ -41,7 +41,7 @@ class Semaforo:
 
         # Dibujar carcasa y luces
         self.housing_rect = self.canvas.create_rectangle(0, 0, 0, 0,
-                                                         fill="black", outline="gray", width=4)
+                                                        fill="black", outline="gray", width=4)
         self.red_light    = self.canvas.create_oval(0, 0, 0, 0, fill="grey", outline="white", width=2)
         self.yellow_light = self.canvas.create_oval(0, 0, 0, 0, fill="grey", outline="white", width=2)
         self.green_light  = self.canvas.create_oval(0, 0, 0, 0, fill="grey", outline="white", width=2)
@@ -50,11 +50,60 @@ class Semaforo:
 
         # Estado inicial y duraciones por defecto
         self.current_state = "green"
-        self.cycle_durations = {"green": 30, "yellow": 3, "red": 30}
+        self.cycle_durations = {"green": 12, "yellow": 2, "red": 10}
         self.target_time = time.time() + self.cycle_durations[self.current_state]
+        
+        # Por defecto el semáforo está inactivo
+        self.active = False
+        self.show_inactive_state()
 
+    def activate_semaphore(self):
+        """Activa el semáforo cuando se carga un video"""
+        self.active = True
         self.show_state()
         self.update_countdown()
+
+    def deactivate_semaphore(self):
+        """Desactiva el semáforo cuando no hay video"""
+        self.active = False
+        self.show_inactive_state()
+        self.info_label.config(text="Semáforo inactivo")
+
+    def show_inactive_state(self):
+        """Muestra el semáforo en estado inactivo (todas las luces grises)"""
+        for light in [self.red_light, self.yellow_light, self.green_light]:
+            self.canvas.itemconfig(light, fill="grey")
+
+    def show_state(self):
+        """Actualiza las luces según el estado actual"""
+        if not self.active:
+            self.show_inactive_state()
+            return
+            
+        colors = {"green": self.green_light,
+                "yellow": self.yellow_light,
+                "red": self.red_light}
+        for state, light in colors.items():
+            fill = state if state == self.current_state else "grey"
+            self.canvas.itemconfig(light, fill=fill)
+
+    def update_countdown(self):
+        """Actualiza el contador de tiempo y cambia el estado cuando es necesario"""
+        if not self.active:
+            return
+            
+        now = time.time()
+        diff = self.target_time - now
+        if diff <= 0:
+            self.update_lights()
+            diff = self.target_time - time.time()
+        secs = int(diff)
+        ms = int((diff - secs) * 1000)
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        self.info_label.config(
+            text=f"{ts}\nEstado: {self.current_state.upper()} – Quedan {secs}s {ms}ms"
+        )
+        self.frame.after(50, self.update_countdown)
 
     # --------------------
     # Gestión de presets
