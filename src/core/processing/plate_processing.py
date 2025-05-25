@@ -1,6 +1,7 @@
 import os
 import time
 import cv2
+from src.core.processing.resolution_process import enhance_plate_image
 from src.core.detection.plate_detector import PlateDetector
 from src.core.processing.superresolution import enhance_plate
 from src.core.ocr.recognizer import recognize_plate
@@ -149,71 +150,170 @@ def enhance_plate_night(plate_bgr):
         print(f"Error en enhance_plate_night: {e}")
         return plate_bgr
 
-def process_plate(vehicle_bgr, is_night=False):
+import cv2
+import numpy as np
+import os
+
+def process_plate(vehicle_roi, is_night=False):
     """
-    Procesa un ROI para extraer la placa vehicular
-    
-    Args:
-        vehicle_bgr: Imagen (ROI) del vehículo
-        is_night: Flag que indica si es escena nocturna
-    
-    Returns:
-        (bbox, plate_sr, plate_text)
+    Detect a license plate in the vehicle ROI and process it for better OCR.
+    Returns (bbox, plate_img, plate_text) where bbox is relative to the vehicle_roi
     """
+    from src.core.detection.plate_detector import PlateDetector
+    from src.core.ocr.recognizer import recognize_plate
+    
     try:
-        if is_night:
-            vehicle_bgr = enhance_night_image(vehicle_bgr)
+        # Initialize plate detector if not already done
+        if not hasattr(process_plate, "plate_detector"):
+            process_plate.plate_detector = PlateDetector()
         
-        # Obtener detector de placas
-        plate_detector = get_plate_detector()
+        # Detect plate in the vehicle_roi using the correct method
+        # Lower confidence threshold at night
+        plate_confidence = 0.3 if is_night else 0.5
         
-        # Ajustar umbral de confianza según condiciones de luz
-        conf_threshold = 0.15 if is_night else 0.25  # Umbral más bajo para noche
-        
-        # Detectar placa en la imagen del vehículo
-        plate_dets = plate_detector(vehicle_bgr, conf=conf_threshold)
-        
-        if not plate_dets:
-            # Si YOLO no detecta placas, intentar con métodos tradicionales
-            plate_region = find_plate_region(vehicle_bgr, is_night)
-            if plate_region:
-                x1, y1, x2, y2 = plate_region
-                bbox = [x1, y1, x2, y2]
-                plate_img = vehicle_bgr[y1:y2, x1:x2].copy()
-            else:
-                # Si no se encuentra la placa, devolver el ROI completo
-                h, w = vehicle_bgr.shape[:2]
-                bbox = [0, 0, w, h]
-                plate_img = vehicle_bgr.copy()
+        # Check if detect_plates exists, otherwise use detect method
+        if hasattr(process_plate.plate_detector, "detect_plates"):
+            plates = process_plate.plate_detector.detect_plates(
+                vehicle_roi, 
+                confidence=plate_confidence
+            )
         else:
-            # Usar la primera detección (más confiable)
-            x1, y1, x2, y2 = plate_dets[0]
+            # Use the regular detect method and extract just the coordinates
+            detections = process_plate.plate_detector.detect(
+                vehicle_roi, 
+                conf=plate_confidence,
+                classes=[0],  # Assuming 0 is license plate class
+                draw=False
+            )
             
-            # Expandir un poco para asegurar que toda la placa esté incluida
-            expansion = 10 if is_night else 5  # Mayor expansión para escenas nocturnas
-            x1 = max(0, int(x1 - expansion))
-            y1 = max(0, int(y1 - expansion))
-            x2 = min(vehicle_bgr.shape[1], int(x2 + expansion))
-            y2 = min(vehicle_bgr.shape[0], int(y2 + expansion))
+            # Convert detections to the format needed
+            plates = []
+            for det in detections:
+                if len(det) >= 4:
+                    x1, y1, x2, y2 = map(float, det[:4])  # Extract only coordinates
+                    plates.append((x1, y1, x2, y2))
+        
+        # If no plate found, try enhancing the image
+        if not plates:
+            # Apply CLAHE to improve contrast, especially useful at night
+            if is_night:
+                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+                if len(vehicle_roi.shape) > 2:
+                    lab = cv2.cvtColor(vehicle_roi, cv2.COLOR_BGR2LAB)
+                    l, a, b = cv2.split(lab)
+                    cl = clahe.apply(l)
+                    enhanced_lab = cv2.merge((cl, a, b))
+                    enhanced_roi = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
+                else:
+                    enhanced_roi = clahe.apply(vehicle_roi)
+                
+                # Try detection again with enhanced image
+                if hasattr(process_plate.plate_detector, "detect_plates"):
+                    plates = process_plate.plate_detector.detect_plates(
+                        enhanced_roi, 
+                        confidence=0.25  # Even lower threshold for difficult cases
+                    )
+                else:
+                    detections = process_plate.plate_detector.detect(
+                        enhanced_roi, 
+                        conf=0.25,
+                        classes=[0], 
+                        draw=False
+                    )
+                    
+                    plates = []
+                    for det in detections:
+                        if len(det) >= 4:
+                            x1, y1, x2, y2 = map(float, det[:4])
+                            plates.append((x1, y1, x2, y2))
             
-            bbox = [x1, y1, x2, y2]
-            plate_img = vehicle_bgr[y1:y2, x1:x2].copy()
+            # If still no plates, try alternative approach with edge detection
+            if not plates:
+                h, w = vehicle_roi.shape[:2]
+                # Assume plate is in the lower half of the vehicle
+                search_area = vehicle_roi[h//3:, :]
+                
+                # Convert to grayscale
+                if len(search_area.shape) > 2:
+                    gray = cv2.cvtColor(search_area, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = search_area
+                
+                # Apply bilateral filter to reduce noise while preserving edges
+                blurred = cv2.bilateralFilter(gray, 11, 17, 17)
+                
+                # Find edges
+                edges = cv2.Canny(blurred, 30, 200)
+                
+                # Find contours
+                contours, _ = cv2.findContours(edges.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                
+                # Sort contours by area, largest first
+                contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
+                
+                plate_contour = None
+                for contour in contours:
+                    # Approximate contour
+                    perimeter = cv2.arcLength(contour, True)
+                    approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
+                    
+                    # If our approximated contour has four points, it's likely a license plate
+                    if len(approx) == 4:
+                        plate_contour = approx
+                        break
+                
+                # If we found a plate contour
+                if plate_contour is not None:
+                    x, y, w, h = cv2.boundingRect(plate_contour)
+                    y += h//3  # Adjust for the cropping we did earlier
+                    plates = [(x, y, x+w, y+h)]
         
-        # Aplicar superresolución con parámetros específicos para día/noche
-        if is_night:
-            plate_sr = enhance_plate_night(plate_img)
-        else:
-            plate_sr = enhance_plate(plate_img)
+        if not plates:
+            # Return placeholder values if no plate was found
+            return ((0, 0, 0, 0), vehicle_roi, "")
         
-        # Reconocer texto de la placa
-        from src.core.ocr.recognizer import recognize_plate
-        ocr_text = recognize_plate(plate_sr, is_night)
+        # Take the largest plate or the one with the highest confidence
+        # In this case we're taking the first one
+        x1, y1, x2, y2 = plates[0]
         
-        return bbox, plate_sr, ocr_text
+        # Ensure valid coordinates
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(vehicle_roi.shape[1], x2), min(vehicle_roi.shape[0], y2)
+        
+        # Make a slightly larger crop to ensure we get the whole plate
+        padding = 5
+        crop_y1 = max(0, int(y1) - padding)
+        crop_y2 = min(vehicle_roi.shape[0], int(y2) + padding)
+        crop_x1 = max(0, int(x1) - padding)
+        crop_x2 = min(vehicle_roi.shape[1], int(x2) + padding)
+        
+        # Extract the plate region
+        plate_img = vehicle_roi[crop_y1:crop_y2, crop_x1:crop_x2].copy()
+        
+        if plate_img.size == 0:
+            return ((x1, y1, x2, y2), vehicle_roi, "")
+        
+        # Apply super-resolution to enhance the plate image
+        try:
+            from src.core.processing.superresolution import enhance_plate_image
+            enhanced_plate = enhance_plate_image(plate_img, is_night)
+            # OCR to recognize the plate text
+            plate_text = recognize_plate(enhanced_plate)
+        except ImportError:
+            # If super-resolution is not available, use original image
+            plate_text = recognize_plate(plate_img)
+            enhanced_plate = plate_img
+        
+        # If that fails, try with original
+        if not plate_text:
+            plate_text = recognize_plate(plate_img)
+            
+        # Return the bbox, enhanced plate image, and recognized text
+        return ((x1, y1, x2, y2), enhanced_plate, plate_text)
+        
     except Exception as e:
-        print(f"Error en process_plate: {e}")
+        print(f"Error processing plate: {e}")
         import traceback
         traceback.print_exc()
-        # En caso de error, devolver valores por defecto
-        h, w = vehicle_bgr.shape[:2]
-        return [0, 0, w, h], vehicle_bgr, ""
+        # Return default values
+        return ((0, 0, 0, 0), vehicle_roi, "")

@@ -1,25 +1,109 @@
 import cv2
+import numpy as np
 from ultralytics import YOLO
 
 class PlateDetector:
-    def __init__(self, model_path="models/yolov8n.pt"):
-        self.model = YOLO(model_path)
-        print("Modelo de detección de placas inicializado correctamente")
+    """
+    Clase para detectar placas de vehículos usando YOLO.
+    """
+    
+    def __init__(self, model_path="models/license_plate_detector.pt"):
+        """
+        Inicializa el detector de placas.
+        
+        Args:
+            model_path: Ruta al modelo YOLO para detección de placas
+        """
+        try:
+            self.model = YOLO(model_path)
+            print("PlateDetector: Modelo cargado correctamente")
+        except Exception as e:
+            print(f"Error al cargar modelo de detección de placas: {e}")
+            # Crear un modelo alternativo fallback
+            try:
+                self.model = YOLO("yolov8n.pt")
+                print("PlateDetector: Usando modelo genérico como fallback")
+            except Exception as e:
+                print(f"Error crítico, no se pudo cargar ningún modelo: {e}")
+                self.model = None
+    
+    def detect(self, image, conf=0.5, classes=[0], draw=False):
+        """
+        Detecta placas en la imagen.
+        
+        Args:
+            image: Imagen donde buscar placas
+            conf: Umbral de confianza para detecciones (0-1)
+            classes: Lista de IDs de clases a detectar (0=placa por defecto)
+            draw: Si es True, dibuja las detecciones en la imagen
+            
+        Returns:
+            Lista de detecciones en formato (x1, y1, x2, y2, score, class_id)
+        """
+        if self.model is None:
+            print("PlateDetector: No hay modelo cargado")
+            return []
+        
+        try:
+            # Ejecutar inferencia con YOLO
+            results = self.model(image, conf=conf, classes=classes)
+            
+            # Extraer detecciones
+            detections = []
+            
+            for result in results:
+                boxes = result.boxes
+                
+                # Extraer coordenadas, puntuaciones y clases
+                for i in range(len(boxes)):
+                    # Obtener cuadro delimitador
+                    box = boxes[i].xyxy[0].cpu().numpy()  # formato xyxy
+                    x1, y1, x2, y2 = box
+                    
+                    # Obtener puntuación y clase
+                    score = float(boxes[i].conf)
+                    class_id = int(boxes[i].cls)
+                    
+                    # Añadir a la lista
+                    detections.append((x1, y1, x2, y2, score, class_id))
+                    
+                    # Dibujar si se solicita
+                    if draw:
+                        color = (0, 255, 0)  # Verde para placas
+                        cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
+                        cv2.putText(image, f"Placa: {score:.2f}", (int(x1), int(y1) - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            
+            return detections
+            
+        except Exception as e:
+            print(f"Error en detección de placas: {e}")
+            return []
 
-    def __call__(self, image_bgr, conf=0.4):
-        # Procesar solo una región específica donde es probable encontrar placas
-        # (parte inferior de los vehículos)
-        h, w = image_bgr.shape[:2]
-        roi = image_bgr[h//2:, :]  # Solo la mitad inferior de la imagen
+    def detect_plates(self, image, confidence=0.5):
+        """
+        Método de compatibilidad para detectar placas y devolver las coordenadas.
+        Este método se añade para resolver el error AttributeError: 'PlateDetector' object has no attribute 'detect_plates'
         
-        results = self.model.predict(roi, conf=conf, verbose=False)
-        boxes = []
-        for r in results:
-            for box in r.boxes:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                # Ajustar coordenadas Y a la imagen original
-                y1 += h//2
-                y2 += h//2
-                boxes.append((x1, y1, x2, y2))
-        
-        return boxes
+        Args:
+            image: Imagen donde buscar placas
+            confidence: Umbral de confianza
+            
+        Returns:
+            Lista de coordenadas de placas en formato [(x1, y1, x2, y2), ...]
+        """
+        try:
+            # Usar el método detect y extraer solo las coordenadas
+            detections = self.detect(image, conf=confidence, classes=[0], draw=False)
+            
+            # Convertir a formato requerido
+            plates = []
+            for detection in detections:
+                if len(detection) >= 4:  # Asegurarse de que hay al menos coordenadas
+                    x1, y1, x2, y2 = detection[:4]
+                    plates.append((x1, y1, x2, y2))
+            
+            return plates
+        except Exception as e:
+            print(f"Error en detect_plates: {e}")
+            return []

@@ -89,24 +89,6 @@
       591
     ]
   ],
-  "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\Night Time Traffic Camera video.mp4": [
-    [
-      1113,
-      157
-    ],
-    [
-      1021,
-      257
-    ],
-    [
-      1870,
-      241
-    ],
-    [
-      1904,
-      142
-    ]
-  ],
   "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\1080P 2.0Megapixel IP camera video on road.mp4": [
     [
       549,
@@ -125,22 +107,40 @@
       487
     ]
   ],
-  "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\Traffic IP Camera video.mp4": [
+  "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\Night Time Traffic Camera video.mp4": [
     [
-      1128,
-      226
+      1109,
+      157
     ],
     [
-      1048,
-      337
+      1021,
+      257
     ],
     [
-      1896,
-      326
+      1904,
+      249
     ],
     [
       1908,
-      226
+      157
+    ]
+  ],
+  "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\Traffic IP Camera video.mp4": [
+    [
+      1132,
+      234
+    ],
+    [
+      1040,
+      326
+    ],
+    [
+      1896,
+      322
+    ],
+    [
+      1912,
+      215
     ]
   ]
 }

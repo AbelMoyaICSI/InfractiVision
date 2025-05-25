@@ -900,10 +900,27 @@ class VideoPlayerOpenCV:
                         self.registration_times = []
                     self.registration_times.append(process_time)
                     
-                    stamp = int(time.time())
-                    fname = f"plate_{ocr_text}_{stamp}.jpg"
-                    os.makedirs("data/output", exist_ok=True)
-                    cv2.imwrite(os.path.join("data/output", fname), plate_sr)
+                    # Crear directorios para placas y autos
+                    plates_dir = os.path.join("data", "output", "placas")
+                    vehicles_dir = os.path.join("data", "output", "autos")
+                    os.makedirs(plates_dir, exist_ok=True)
+                    os.makedirs(vehicles_dir, exist_ok=True)
+                    
+                    # Guardar la imagen del vehículo
+                    vehicle_filename = f"vehicle_{ocr_text}_{int(time.time())}.jpg"
+                    vehicle_path = os.path.join(vehicles_dir, vehicle_filename)
+                    cv2.imwrite(vehicle_path, roi)
+                    
+                    # Si no tenemos historial de detección, lo creamos
+                    if not hasattr(self, "plate_detection_history"):
+                        self.plate_detection_history = {}
+                    
+                    # Guardar referencia a la imagen del vehículo
+                    if ocr_text not in self.plate_detection_history:
+                        self.plate_detection_history[ocr_text] = {}
+                    
+                    # Guardar imagen del vehículo en el historial
+                    self.plate_detection_history[ocr_text]["vehicle_img"] = roi.copy()
                     
                     # Pasar el timestamp al método de añadir placa
                     self._safe_add_plate_to_panel(plate_sr, ocr_text, timestamp)
@@ -1286,20 +1303,77 @@ class VideoPlayerOpenCV:
     def _safe_add_plate_to_panel(self, plate_img, plate_text, timestamp=None):
         """
         Añade una placa detectada al panel lateral con diseño de card.
-        IMPLEMENTACIÓN OPTIMIZADA Y DEPURADA.
+        Guarda las imágenes en carpetas separadas de placas y autos.
         """
         # Verificaciones básicas
         if plate_img is None or not isinstance(plate_text, str):
             print(f"Error: Datos de placa inválidos - img: {plate_img is not None}, text: {plate_text}")
             return
         
+        # Crear las carpetas necesarias
+        plates_dir = os.path.join("data", "output", "placas")
+        vehicles_dir = os.path.join("data", "output", "autos")
+        os.makedirs(plates_dir, exist_ok=True)
+        os.makedirs(vehicles_dir, exist_ok=True)
+        
+        # Verificar si ya existe esta placa (para evitar duplicados)
+        plate_filename = f"plate_{plate_text}.jpg"
+        vehicle_filename = f"vehicle_{plate_text}.jpg"
+        plate_path = os.path.join(plates_dir, plate_filename)
+        vehicle_path = os.path.join(vehicles_dir, vehicle_filename)
+        
+        # Determinar si es escena nocturna para aplicar tratamientos específicos
+        is_night = False
+        if hasattr(self, '_is_night_scene'):
+            try:
+                # Si no tenemos el frame completo, usamos la imagen de la placa
+                is_night = self._is_night_scene(plate_img) 
+            except:
+                # Si falla, asumimos valor por defecto
+                pass
+        
+        # Importar la función para mejorar las imágenes de placas
+        try:
+            from src.core.processing.resolution_process import enhance_plate_image
+            
+            # Aplicar super-resolución y guardar la placa si no existe
+            if not os.path.exists(plate_path):
+                # Mejorar la placa con super-resolución
+                enhanced_plate = enhance_plate_image(plate_img, is_night, plate_path)
+        except Exception as e:
+            print(f"Error al mejorar la placa con super-resolución: {e}")
+            # En caso de error, intentar guardar la placa original
+            if not os.path.exists(plate_path):
+                cv2.imwrite(plate_path, plate_img)
+        
+        # Intentar obtener imagen del vehículo completo
+        vehicle_img = None
+        
+        # Si tenemos información de detección del vehículo en el historial
+        if hasattr(self, "plate_detection_history") and plate_text in self.plate_detection_history:
+            if "vehicle_img" in self.plate_detection_history[plate_text]:
+                vehicle_img = self.plate_detection_history[plate_text]["vehicle_img"]
+                # Solo guardar si no existe
+                if not os.path.exists(vehicle_path):
+                    cv2.imwrite(vehicle_path, vehicle_img)
+        
+        # Registrar tiempo actual como tiempo de registro
+        current_registration_time = time.time()
+        
+        # Estimar tiempo de detección basado en timestamp del video
+        detection_time = None
+        if timestamp is not None:
+            # Si tenemos la marca de tiempo del video, calcular aproximadamente
+            detection_time = self.detection_start_time + timestamp
+        
         # Función para ejecutar en el hilo principal de Tkinter
         def _add():
             try:
-                # Verificar duplicados
+                # IMPORTANTE: Verificar duplicados en el panel
+                # Si la placa ya está en el panel, no añadir de nuevo
                 for widget in self.detected_plates_widgets:
                     if isinstance(widget, dict) and widget.get("plate_text") == plate_text:
-                        print(f"Placa {plate_text} ya existe en el panel")
+                        print(f"Placa {plate_text} ya existe en el panel - no duplicando")
                         return
                 
                 print(f"Creando card para placa: {plate_text}")
@@ -1362,10 +1436,13 @@ class VideoPlayerOpenCV:
                     )
                     time_label.pack(fill="x", anchor="w")
                 
-                # COLUMNA DERECHA: Imagen de la placa
+                # COLUMNA DERECHA: Imagen del vehículo en lugar de la placa
                 try:
+                    # Priorizar imagen del vehículo si existe
+                    display_img = vehicle_img if vehicle_img is not None else plate_img
+                    
                     # Redimensionar imagen para mantener proporción y tamaño adecuado
-                    h, w = plate_img.shape[:2]
+                    h, w = display_img.shape[:2]
                     max_width, max_height = 110, 80
                     
                     # Escalar preservando proporción
@@ -1373,7 +1450,7 @@ class VideoPlayerOpenCV:
                     new_w, new_h = int(w * scale), int(h * scale)
                     
                     # Redimensionar y convertir para tkinter
-                    resized = cv2.resize(plate_img, (new_w, new_h))
+                    resized = cv2.resize(display_img, (new_w, new_h))
                     rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
                     img_pil = Image.fromarray(rgb)
                     img_tk = ImageTk.PhotoImage(image=img_pil)
@@ -1393,27 +1470,73 @@ class VideoPlayerOpenCV:
                 plate_data = {
                     "container": card_frame,
                     "plate_text": plate_text,
-                    "timestamp": timestamp
+                    "timestamp": timestamp,
+                    "plate_path": plate_path,
+                    "vehicle_path": vehicle_path
                 }
                 self.detected_plates_widgets.append(plate_data)
                 
-                # Actualizar métricas
-                if hasattr(self, "_update_metrics_panel"):
-                    self._update_metrics_panel()
-                
-                # CRÍTICO: Actualizar el historial de detección
+                # CRÍTICO: Actualizar el historial de detección con tiempos
                 if not hasattr(self, "plate_detection_history"):
                     self.plate_detection_history = {}
                     
                 if plate_text in self.plate_detection_history:
-                    self.plate_detection_history[plate_text]["count"] += 1
+                    # Actualizar registro existente
                     self.plate_detection_history[plate_text]["last_detection"] = timestamp
+                    self.plate_detection_history[plate_text]["registration_time"] = current_registration_time
+                    
+                    # Actualizar tiempos para métricas
+                    if detection_time is not None and "detection_time" not in self.plate_detection_history[plate_text]:
+                        self.plate_detection_history[plate_text]["detection_time"] = detection_time
+                    
+                    # Calcular tiempo de procesamiento si no existe
+                    if detection_time is not None:
+                        proc_time = current_registration_time - detection_time
+                        self.plate_detection_history[plate_text]["processing_time"] = proc_time
+                        
+                        # Añadir a los tiempos de registro para estadísticas
+                        if not hasattr(self, "registration_times"):
+                            self.registration_times = []
+                        self.registration_times.append(proc_time)
+                    
+                    # Almacenar las rutas de los archivos
+                    self.plate_detection_history[plate_text]["plate_path"] = plate_path
+                    if vehicle_path:
+                        self.plate_detection_history[plate_text]["vehicle_path"] = vehicle_path
                 else:
-                    self.plate_detection_history[plate_text] = {
+                    # Crear nuevo registro
+                    new_record = {
                         "count": 1,
                         "first_detection": timestamp,
-                        "last_detection": timestamp
+                        "last_detection": timestamp,
+                        "plate_path": plate_path,
+                        "vehicle_path": vehicle_path,
+                        "registration_time": current_registration_time
                     }
+                    
+                    # Añadir tiempo de detección si está disponible
+                    if detection_time is not None:
+                        new_record["detection_time"] = detection_time
+                        
+                        # Calcular y guardar tiempo de procesamiento
+                        proc_time = current_registration_time - detection_time
+                        new_record["processing_time"] = proc_time
+                        
+                        # Añadir a los tiempos de registro para estadísticas
+                        if not hasattr(self, "registration_times"):
+                            self.registration_times = []
+                        self.registration_times.append(proc_time)
+                    
+                    self.plate_detection_history[plate_text] = new_record
+                    
+                # Registrar como ya procesada globalmente
+                if not hasattr(self, "processed_plates"):
+                    self.processed_plates = set()
+                self.processed_plates.add(plate_text)
+                
+                # Actualizar indicadores de rendimiento
+                if hasattr(self, "_update_metrics_panel"):
+                    self._update_metrics_panel()
                 
                 # CRÍTICO: Actualizar región de desplazamiento y vista
                 self.plates_inner_frame.update_idletasks()
@@ -1721,7 +1844,8 @@ class VideoPlayerOpenCV:
 
     def start_processed_video(self, path):
         """
-        Inicia la reproducción normal del video después de que ha sido procesado
+        Inicia la reproducción optimizada del video después de que ha sido procesado.
+        Solo muestra detección de vehículos sin procesar placas para optimizar recursos.
         """
         self.running = False
         if self.cap:
@@ -1772,37 +1896,244 @@ class VideoPlayerOpenCV:
         if not self.timestamp_updater.running:
             self.timestamp_updater.start_timestamp()
         
+        # Activar modo de reproducción optimizada (solo detección de vehículos)
+        self.optimization_mode = "post_processing"
+        
+        # Mostrar mensaje de inicio de reproducción optimizada
+        print("Iniciando reproducción optimizada (solo detección de vehículos)")
+        
         # Iniciar reproducción inmediatamente
-        self.update_frames()
+        self.update_frames_optimized()
+
+    def update_frames_optimized(self):
+        """
+        Versión optimizada de update_frames que sólo detecta vehículos sin procesar placas.
+        Se usa después del preprocesamiento para mostrar el video de forma más eficiente.
+        """
+        if not self.running or not self.cap:
+            return
+        
+        ret, frame = self.cap.read()
+        if not ret:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            self._after_id = self.parent.after(int(1000/30), self.update_frames_optimized)
+            return
+
+        # Detectar si es escena nocturna para optimizaciones
+        is_night = self._is_night_scene(frame)
+        
+        # Procesamiento optimizado: sólo detectamos vehículos, sin procesar placas
+        try:
+            # Reducir resolución para procesamiento más rápido
+            proc_scale = 0.5
+            h, w = frame.shape[:2]
+            proc_w, proc_h = int(w * proc_scale), int(h * proc_scale)
+            
+            # Redimensionar frame para procesamiento
+            small_frame = cv2.resize(frame, (proc_w, proc_h), interpolation=cv2.INTER_LINEAR)
+            
+            # Pre-procesamiento específico para escenas nocturnas (más ligero)
+            if is_night:
+                # Usar conversión rápida en lugar de CLAHE completo
+                small_frame = cv2.convertScaleAbs(small_frame, alpha=1.3, beta=30)
+            
+            # Ajustar umbral de confianza
+            confidence_threshold = 0.25 if is_night else 0.4
+            
+            # Detectar vehículos (optimizado)
+            if hasattr(self, 'vehicle_detector'):
+                detections = self.vehicle_detector.detect(
+                    small_frame, 
+                    conf=confidence_threshold,
+                    draw=False
+                )
+                
+                # Escalar detecciones al tamaño original
+                frame_with_cars = frame.copy()
+                scale_factor = 1.0 / proc_scale
+                
+                # Dibujar polígono de área si existe
+                if self.polygon_points:
+                    pts = np.array(self.polygon_points, np.int32).reshape(-1, 1, 2)
+                    poly_color = (0, 220, 255) if is_night else (0, 0, 255)
+                    cv2.polylines(frame_with_cars, [pts], True, poly_color, 2)
+                
+                # Dibujar vehículos detectados
+                for detection in detections:
+                    # Extraer coordenadas y clase
+                    x1, y1, x2, y2, cls_id = detection[:5]
+                    
+                    # Solo procesar vehículos (coches, buses, camiones)
+                    if cls_id in [2, 5, 7]:
+                        # Escalar coordenadas a tamaño original
+                        x1s, y1s = int(x1 * scale_factor), int(y1 * scale_factor)
+                        x2s, y2s = int(x2 * scale_factor), int(y2 * scale_factor)
+                        
+                        # Color según si está en zona restringida
+                        in_polygon = False
+                        if self.polygon_points and len(self.polygon_points) >= 3:
+                            if is_night:
+                                in_polygon = self.is_vehicle_in_polygon_night((x1s, y1s, x2s, y2s), self.polygon_points)
+                            else:
+                                in_polygon = self.is_vehicle_in_polygon((x1s, y1s, x2s, y2s), self.polygon_points)
+                        
+                        # Color según estado (en área + semáforo rojo = rojo, en área = amarillo, fuera de área = verde)
+                        if in_polygon and self.semaforo.get_current_state() == "red":
+                            box_color = (0, 0, 255)  # Rojo para infracciones
+                        elif in_polygon:
+                            box_color = (0, 255, 255)  # Amarillo para vehículos en área permitida
+                        else:
+                            box_color = (0, 255, 0)  # Verde para vehículos fuera del área
+                        
+                        # Dibujar rectángulo
+                        cv2.rectangle(frame_with_cars, (x1s, y1s), (x2s, y2s), box_color, 2)
+                        
+                        # Etiquetas según la clase
+                        label = "CAR" if cls_id == 2 else "BUS" if cls_id == 5 else "TRUCK"
+                        
+                        # Dibujar texto con fondo para mejor visibilidad
+                        text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+                        cv2.rectangle(frame_with_cars, 
+                                    (x1s, y1s - text_size[1] - 10), 
+                                    (x1s + text_size[0], y1s), 
+                                    box_color, -1)
+                        cv2.putText(frame_with_cars, label,
+                                    (x1s, y1s - 5),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                                    (0, 0, 0), 2)
+            else:
+                frame_with_cars = frame
+                    
+        except Exception as e:
+            print(f"Error al detectar vehículos: {str(e)}")
+            frame_with_cars = frame
+        
+        # Mostrar información del estado del semáforo
+        current_state = self.semaforo.get_current_state()
+        semaforo_text = f"Semaforo: {current_state.upper()}"
+        
+        # Color según estado
+        if current_state == "red":
+            text_color = (0, 0, 255)  # Rojo
+            bg_color = (255, 255, 255)  # Fondo blanco
+        elif current_state == "yellow":
+            text_color = (0, 255, 255)  # Amarillo
+            bg_color = (0, 0, 0)  # Fondo negro
+        else:  # green
+            text_color = (0, 255, 0)  # Verde
+            bg_color = (0, 0, 0)  # Fondo negro
+        
+        # Mostrar estado del semáforo
+        text_size = cv2.getTextSize(semaforo_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 3)[0]
+        cv2.rectangle(frame_with_cars, 
+                    (5, 5), 
+                    (text_size[0] + 20, 40), 
+                    bg_color, -1)
+        cv2.putText(frame_with_cars, semaforo_text, 
+                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, 
+                    text_color, 3)
+        
+        # Indicador de modo optimizado
+        cv2.putText(frame_with_cars, "MODO OPTIMIZADO", 
+                    (frame_with_cars.shape[1] - 250, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, 
+                    (0, 165, 255), 2)
+        
+        # Indicador de modo nocturno si es el caso
+        if is_night:
+            cv2.putText(frame_with_cars, "MODO NOCTURNO", 
+                        (frame_with_cars.shape[1] - 250, 60), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, 
+                        (0, 255, 255), 2)
+        
+        # Mostrar el frame anotado
+        bgr_img = self.resize_and_letterbox(frame_with_cars)
+        rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+        imgtk = ImageTk.PhotoImage(Image.fromarray(rgb_img))
+        self.video_label.config(image=imgtk)
+        self.video_label.image = imgtk
+        
+        # Métricas y siguiente frame
+        dt = time.time() - self.last_time
+        self.last_time = time.time()
+        if dt > 0:
+            alpha = 0.9
+            inst_fps = 1.0 / dt
+            self.fps_calc = alpha * self.fps_calc + (1 - alpha) * inst_fps
+
+        # Actualizar métricas
+        process = psutil.Process(os.getpid())
+        mem_mb = process.memory_info().rss / (1024 * 1024)
+        dev = "GPU" if self.using_gpu else "CPU"
+        mode = "NOCHE" if is_night else "DÍA"
+        info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | {mode} | OPTIMIZADO"
+        self.info_label.config(text=info_text)
+        
+        # Asegurarse que las etiquetas estén visibles
+        self.timestamp_label.lift()
+        self.avenue_label.lift()
+        self.info_label.lift()
+        
+        self._after_id = self.parent.after(10, self.update_frames_optimized)
 
     def _calculate_infraction_rate(self):
         """Calcula la Tasa de Infracciones: infracciones detectadas"""
-        if not hasattr(self, "detection_start_time"):
-            self.detection_start_time = time.time()
-            
-        # Obtener el total de infracciones detectadas
-        total_infractions = len(self.detected_plates_widgets)
+        # CORRECCIÓN: Devolver directamente el número exacto de infracciones, no una tasa
         
-        # Calcular tiempo transcurrido en minutos
-        elapsed_time = (time.time() - self.detection_start_time) / 60
+        if hasattr(self, "plate_detection_history"):
+            # Usar el número exacto de elementos en el historial de detecciones
+            return len(self.plate_detection_history)
         
-        # Calcular tasa (infracciones por minuto)
-        if elapsed_time > 0:
-            return total_infractions / elapsed_time
+        # Si no hay historial, contar los widgets en el panel
+        if hasattr(self, "detected_plates_widgets"):
+            return len(self.detected_plates_widgets)
+        
+        # Si no hay datos disponibles
         return 0
 
     def _calculate_registration_time(self):
-        """Calcula el Tiempo de Registro: tiempo promedio entre detección y registro"""
-        if not hasattr(self, "registration_times"):
-            self.registration_times = []
-            
-        # Si no hay registros suficientes, devolver 0
-        if len(self.registration_times) < 1:
-            return 0
-            
-        # Calcular el promedio
-        avg_time = sum(self.registration_times) / len(self.registration_times)
-        return avg_time
+        """
+        Calcula el Tiempo de Registro: tiempo promedio entre detección y registro en el sistema.
+        El tiempo se mide desde que se detecta una infracción hasta que se completa su procesamiento.
+        """
+        if not hasattr(self, "plate_detection_history") or not self.plate_detection_history:
+            return 0.0
+        
+        # Obtener tiempos de registro de todas las placas detectadas
+        registration_times = []
+        
+        for plate_id, data in self.plate_detection_history.items():
+            # Verificar que tengamos los datos necesarios
+            if "processing_time" in data and data["processing_time"] > 0:
+                # Si ya tenemos el tiempo calculado previamente y es positivo
+                registration_times.append(data["processing_time"])
+                
+            elif "detection_time" in data and "registration_time" in data:
+                # Calcular la diferencia entre detección y registro
+                proc_time = data["registration_time"] - data["detection_time"]
+                
+                # Asegurar que el tiempo sea positivo (corregir posibles errores de sincronización)
+                if proc_time > 0:
+                    registration_times.append(proc_time)
+                    # Guardar para futuras consultas
+                    data["processing_time"] = proc_time
+        
+        # Si no hay datos de procesamiento válidos, intentar usar los tiempos guardados
+        if not registration_times and hasattr(self, "registration_times") and self.registration_times:
+            # Filtrar solo valores positivos
+            valid_times = [t for t in self.registration_times if t > 0]
+            if valid_times:
+                registration_times = valid_times
+        
+        # Si aún no hay datos válidos, devolver un valor predeterminado positivo
+        if not registration_times:
+            return 0.0
+        
+        # Calcular el promedio (evitar dividir por cero)
+        avg_time = sum(registration_times) / len(registration_times)
+        
+        # Asegurar que el resultado sea positivo (mínimo 0.01 segundos)
+        return max(0.01, avg_time)
 
     def _calculate_reincidence_index(self):
         """Calcula el Índice de Reincidencia: % de placas con más de una detección"""
@@ -1811,7 +2142,7 @@ class VideoPlayerOpenCV:
             
         # Contar placas con más de una detección
         reincident_plates = sum(1 for plate_data in self.plate_detection_history.values() 
-                            if plate_data["count"] > 1)
+                            if plate_data.get("count", 1) > 1)  # Usar .get() con valor predeterminado
         
         # Calcular índice como porcentaje
         total_plates = len(self.plate_detection_history)

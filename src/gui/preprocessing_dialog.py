@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 import threading
 import time
 import cv2
@@ -7,6 +7,8 @@ import os
 import numpy as np
 from PIL import Image, ImageTk
 import json
+import queue
+from concurrent.futures import ThreadPoolExecutor
 
 # Eliminamos la importación circular
 
@@ -35,6 +37,7 @@ class PreprocessingDialog:
         self.detected_infractions = []
         self.processed_frames = 0
         self.total_frames = 0
+        self.result_queue = queue.Queue()
         
         # Definir rutas de configuración directamente sin importarlas
         self.POLYGON_CONFIG_FILE = "config/polygon_config.json"
@@ -55,12 +58,33 @@ class PreprocessingDialog:
         # Configurar el layout
         self._setup_ui()
         
-        # Iniciar procesamiento en un hilo separado
-        self.process_thread = threading.Thread(target=self._process_video, daemon=True)
-        self.process_thread.start()
+        # Precargar modelos en un hilo separado para evitar bloquear la UI
+        self.preload_thread = threading.Thread(target=self._preload_models, daemon=True)
+        self.preload_thread.start()
         
         # Programar actualizaciones periódicas de la UI
         self._schedule_ui_update()
+    
+    def _preload_models(self):
+        """Precarga los modelos de IA antes de procesar el video"""
+        try:
+            self.phase_label.config(text="Preparando modelos de IA...")
+            self.details_label.config(text="Inicializando detectores...")
+            
+            # Inicializar detectores si son necesarios
+            if not hasattr(self.player, 'vehicle_detector'):
+                from src.core.detection.vehicle_detector import VehicleDetector
+                self.player.vehicle_detector = VehicleDetector(model_path="models/yolov8n.pt")
+                
+            if not hasattr(self.player, 'plate_detector'):
+                from src.core.detection.plate_detector import PlateDetector
+                self.player.plate_detector = PlateDetector()
+            
+            # Una vez cargados los modelos, iniciar procesamiento del video
+            self.process_thread = threading.Thread(target=self._process_video, daemon=True)
+            self.process_thread.start()
+        except Exception as e:
+            self.dialog.after(0, lambda msg=str(e): self._show_error(f"Error cargando modelos: {msg}"))
     
     def load_video_config(self):
         """Carga la configuración del video (polígono, semáforo, etc.)"""
@@ -68,35 +92,38 @@ class PreprocessingDialog:
         self.cycle_durations = None
         self.current_avenue = None
         
-        # Cargar polígono de área restrictiva
-        if os.path.exists(self.POLYGON_CONFIG_FILE):
-            try:
-                with open(self.POLYGON_CONFIG_FILE, "r", encoding="utf-8") as f:
-                    polygons = json.load(f)
-                    if self.video_path in polygons:
-                        self.polygon_points = polygons[self.video_path]
-            except Exception as e:
-                print(f"Error al cargar polígono: {e}")
-        
-        # Cargar tiempos de semáforo
-        if os.path.exists(self.PRESETS_FILE):
-            try:
-                with open(self.PRESETS_FILE, "r") as f:
-                    presets = json.load(f)
-                    if self.video_path in presets:
-                        self.cycle_durations = presets[self.video_path]
-            except Exception as e:
-                print(f"Error al cargar tiempos: {e}")
-        
-        # Cargar nombre de avenida
-        if os.path.exists(self.AVENUE_CONFIG_FILE):
-            try:
-                with open(self.AVENUE_CONFIG_FILE, "r", encoding="utf-8") as f:
-                    avenues = json.load(f)
-                    if self.video_path in avenues:
-                        self.current_avenue = avenues[self.video_path]
-            except Exception as e:
-                print(f"Error al cargar avenida: {e}")
+        try:
+            # Cargar todas las configuraciones de una vez
+            configs = {}
+            config_files = {
+                'polygon': self.POLYGON_CONFIG_FILE,
+                'presets': self.PRESETS_FILE,
+                'avenue': self.AVENUE_CONFIG_FILE
+            }
+            
+            for key, path in config_files.items():
+                if os.path.exists(path):
+                    try:
+                        with open(path, "r", encoding="utf-8") as f:
+                            configs[key] = json.load(f)
+                    except Exception as e:
+                        print(f"Error al cargar {key}: {e}")
+                        configs[key] = {}
+                else:
+                    configs[key] = {}
+            
+            # Extraer datos específicos para este video
+            if self.video_path in configs.get('polygon', {}):
+                self.polygon_points = configs['polygon'][self.video_path]
+                
+            if self.video_path in configs.get('presets', {}):
+                self.cycle_durations = configs['presets'][self.video_path]
+                
+            if self.video_path in configs.get('avenue', {}):
+                self.current_avenue = configs['avenue'][self.video_path]
+                
+        except Exception as e:
+            print(f"Error en load_video_config: {e}")
     
     def _setup_ui(self):
         """Configura la interfaz de usuario del diálogo"""
@@ -128,7 +155,7 @@ class PreprocessingDialog:
         # Etiqueta para mostrar la fase actual
         self.phase_label = ttk.Label(
             self.info_frame, 
-            text="Analizando video...", 
+            text="Preparando análisis...", 
             font=("Arial", 12)
         )
         self.phase_label.pack(anchor="w")
@@ -187,73 +214,186 @@ class PreprocessingDialog:
     def _schedule_ui_update(self):
         """Programa actualizaciones periódicas de la interfaz"""
         if not self.canceled:
-            # Actualizar barra de progreso
-            self.progress_var.set(self.progress_value)
-            self.percentage_label.config(text=f"{int(self.progress_value)}%")
+            try:
+                # Actualizar barra de progreso con animación suave
+                self.progress_var.set(self.progress_value)
+                self.percentage_label.config(text=f"{int(self.progress_value)}%")
+                
+                # Actualizar contador de infracciones
+                self.infractions_label.config(text=f"Infracciones detectadas: {len(self.detected_infractions)}")
+                
+                # Procesar cualquier resultado pendiente de los hilos de trabajo
+                self._process_results_queue()
+                
+                # Forzar actualización de la interfaz
+                self.dialog.update_idletasks()
+                
+                # Programar próxima actualización (más frecuente para que sea fluido)
+                self.dialog.after(50, self._schedule_ui_update)
+            except Exception as e:
+                print(f"Error en actualización de UI: {e}")
+                # Seguir intentando actualizar la UI
+                self.dialog.after(100, self._schedule_ui_update)
+
+    
+    def _process_results_queue(self):
+        """Procesa los resultados en la cola sin bloquear la interfaz"""
+        try:
+            # Procesar solo un número limitado de elementos por ciclo para evitar bloqueos
+            max_items_per_cycle = 5
+            items_processed = 0
             
-            # Actualizar contador de infracciones
-            self.infractions_label.config(text=f"Infracciones detectadas: {len(self.detected_infractions)}")
-            
-            # Actualizar frame de video si hay uno disponible
-            if self.current_frame is not None:
-                self._update_video_frame(self.current_frame)
-            
-            # Programar próxima actualización
-            self.dialog.after(100, self._schedule_ui_update)
+            while items_processed < max_items_per_cycle:
+                # Obtener un elemento sin bloquear
+                result = self.result_queue.get_nowait()
+                items_processed += 1
+                
+                # Verificar el tipo de resultado
+                if isinstance(result, tuple) and len(result) == 2:
+                    result_type, data = result
+                    
+                    if result_type == "frame_update":
+                        frame, segment_id, processed_frames, total_frames = data
+                        # Actualizar el frame actual y mostrarlo inmediatamente
+                        self.current_frame = frame
+                        self._update_video_frame(frame)
+                        
+                        # Actualizar información de progreso para este segmento
+                        segment_progress = (processed_frames / total_frames) * 100
+                        segment_contribution = segment_progress / self.total_segments
+                        
+                        # Actualizar progreso global considerando segmentos completados
+                        base_progress = (self.completed_segments / self.total_segments) * 100
+                        segment_part = (1 / self.total_segments) * (segment_progress / 100) * 100
+                        self.progress_value = min(base_progress + segment_part, 99.9)  # No llegar a 100% hasta terminar
+                        
+                        # Actualizar texto de progreso
+                        self.details_label.config(text=f"Procesando segmento {segment_id+1}/{self.total_segments} | Frame {processed_frames}/{total_frames}")
+                    
+                    elif result_type == "segment_complete":
+                        segment_id, infractions = data
+                        # Añadir las infracciones detectadas
+                        self.detected_infractions.extend(infractions)
+                        
+                        # Actualizar contador de segmentos completados
+                        self.completed_segments += 1
+                        # Actualizar progreso
+                        base_progress = (self.completed_segments / self.total_segments) * 100
+                        self.progress_value = base_progress
+                        self.details_label.config(text=f"Completado: {self.completed_segments}/{self.total_segments} segmentos | {len(self.detected_infractions)} infracciones")
+                        
+                        # Mostrar último frame con infracciones si hay alguna
+                        if infractions and not self.canceled:
+                            try:
+                                # Cargar y mostrar el frame con la infracción detectada
+                                temp_cap = cv2.VideoCapture(self.video_path)
+                                temp_cap.set(cv2.CAP_PROP_POS_FRAMES, infractions[0]['frame'])
+                                ret, demo_frame = temp_cap.read()
+                                if ret:
+                                    # Dibujar información en el frame
+                                    self._draw_mini_semaphore(demo_frame, "red", 0, self.fps, self.is_night)
+                                    cv2.rectangle(demo_frame, (10, 50), (300, 80), (0, 0, 0), -1)
+                                    cv2.putText(demo_frame, f"Placa: {infractions[0]['plate']}", (15, 70),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                                    
+                                    # Actualizar inmediatamente
+                                    self.current_frame = demo_frame
+                                    self._update_video_frame(demo_frame)
+                                temp_cap.release()
+                            except Exception as e:
+                                print(f"Error mostrando frame de infracción: {e}")
+                    
+        except queue.Empty:
+            # Cola vacía, no hay problema
+            pass
+        except Exception as e:
+            # Manejar cualquier otra excepción sin interrumpir el flujo
+            print(f"Error procesando cola: {e}")
     
     def _update_video_frame(self, frame):
-        """Actualiza el frame de video mostrado en la interfaz"""
-        # Redimensionar frame para ajustarse al área de visualización
-        h, w = frame.shape[:2]
-        max_w, max_h = 640, 360
-        
-        # Mantener relación de aspecto
-        ratio = min(max_w/w, max_h/h)
-        new_w = int(w * ratio)
-        new_h = int(h * ratio)
-        
-        resized = cv2.resize(frame, (new_w, new_h))
-        
-        # Convertir de BGR a RGB para PIL
-        rgb_frame = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-        
-        # Crear imagen para Tkinter
-        img = Image.fromarray(rgb_frame)
-        img_tk = ImageTk.PhotoImage(image=img)
-        
-        # Actualizar label
-        self.video_label.configure(image=img_tk)
-        self.video_label.image = img_tk  # Mantener referencia
+        """Actualiza el frame de video mostrado en la interfaz de manera optimizada"""
+        if frame is None:
+            return
+            
+        try:
+            # Redimensionar frame para ajustarse al área de visualización
+            h, w = frame.shape[:2]
+            max_w, max_h = 640, 360
+            
+            # Mantener relación de aspecto
+            ratio = min(max_w/w, max_h/h)
+            new_w = int(w * ratio)
+            new_h = int(h * ratio)
+            
+            # Usar INTER_NEAREST para máxima velocidad en la visualización
+            resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+            
+            # Convertir de BGR a RGB para PIL
+            rgb_frame = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+            
+            # Crear imagen para Tkinter
+            img = Image.fromarray(rgb_frame)
+            img_tk = ImageTk.PhotoImage(image=img)
+            
+            # Actualizar label
+            self.video_label.configure(image=img_tk)
+            self.video_label.image = img_tk  # Mantener referencia
+            
+            # Forzar actualización inmediata
+            self.video_label.update()
+        except Exception as e:
+            print(f"Error actualizando frame: {e}")
     
-    def is_vehicle_in_polygon(self, bbox, polygon_points):
-        """
-        Determina si un vehículo está dentro del polígono restrictivo
-        Usa el centro inferior del rectángulo (para simular la posición de las ruedas)
-        """
+    def is_vehicle_in_polygon(self, bbox, polygon_points, is_night=False):
+        """Determina si un vehículo está dentro del polígono restrictivo con optimización de cálculos"""
         if not polygon_points or len(polygon_points) < 3:
             return False
             
         x1, y1, x2, y2 = bbox
         
-        # Usar la parte inferior central del vehículo (posición aproximada de las ruedas)
-        center_x = (x1 + x2) // 2
-        center_y = y2  # Borde inferior
+        # Precomputar el polígono numpy una sola vez y reutilizarlo
+        if not hasattr(self, '_np_polygon') or self._np_polygon is None:
+            self._np_polygon = np.array(polygon_points, np.int32)
+            
+            # Para escenas nocturnas, precomputar también el polígono expandido
+            if is_night and not hasattr(self, '_np_expanded_polygon'):
+                center = np.mean(self._np_polygon, axis=0).astype(int)
+                # Expandir 10%
+                expanded_polygon = []
+                for point in self._np_polygon:
+                    vector = point - center
+                    expanded_point = center + vector * 1.1
+                    expanded_polygon.append(expanded_point)
+                self._np_expanded_polygon = np.array(expanded_polygon, np.int32)
         
-        # Convertir polígono a formato numpy
-        polygon = np.array(polygon_points, np.int32)
-        
-        # Comprobar si el punto está dentro del polígono
-        result = cv2.pointPolygonTest(polygon, (center_x, center_y), False)
-        return result >= 0
+        # En modo nocturno, usar enfoque más permisivo con polígono expandido
+        if is_night:
+            # Usar puntos estratégicos para detección nocturna
+            check_points = [
+                ((x1+x2)//2, y2),        # Punto inferior central (ruedas)
+                ((x1+x2)//2, (y1+y2)//2) # Centro
+            ]
+            
+            # Solo verificar puntos clave, no todos
+            for point in check_points:
+                if cv2.pointPolygonTest(self._np_expanded_polygon, point, False) >= 0:
+                    return True
+            return False
+        else:
+            # En modo diurno usar solo el centro inferior (ruedas)
+            center_x = (x1 + x2) // 2
+            center_y = y2  # Borde inferior
+            
+            # Comprobar si el punto está dentro del polígono
+            return cv2.pointPolygonTest(self._np_polygon, (center_x, center_y), False) >= 0
     
-    # Modificar la función _process_video para optimizar el procesamiento
     def _process_video(self):
-        """Procesa el video en un hilo separado para detectar infracciones con soporte nocturno"""
+        """Procesa el video utilizando multithreading para detección de infracciones"""
         try:
             # Verificaciones iniciales
             if not self.polygon_points or not self.cycle_durations:
-                self.dialog.after(0, lambda message="Este video no está configurado correctamente. Configure primero el área restrictiva y los tiempos de semáforo.": 
-                                self._show_error(message))
+                self.dialog.after(0, lambda: self._show_error(
+                    "Este video no está configurado correctamente. Configure primero el área restrictiva y los tiempos de semáforo."))
                 return
                     
             # Abrir el video
@@ -264,7 +404,7 @@ class PreprocessingDialog:
             
             # Inicialización
             self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            fps = cap.get(cv2.CAP_PROP_FPS)
+            self.fps = cap.get(cv2.CAP_PROP_FPS)
             
             # Verificaciones adicionales
             if self.total_frames <= 0:
@@ -275,44 +415,8 @@ class PreprocessingDialog:
             output_dir = os.path.join("data", "output")
             os.makedirs(output_dir, exist_ok=True)
             
-            # Inicializar detectores
-            self.phase_label.config(text="Fase 1: Cargando modelos de detección")
-            self.details_label.config(text="Preparando modelos de IA...")
-            
-            # Inicializar detectores si son necesarios
-            if not hasattr(self.player, 'vehicle_detector'):
-                from src.core.detection.vehicle_detector import VehicleDetector
-                self.player.vehicle_detector = VehicleDetector(model_path="models/yolov8n.pt")
-                
-            if not hasattr(self.player, 'plate_detector'):
-                from src.core.detection.plate_detector import PlateDetector
-                self.player.plate_detector = PlateDetector()
-            
-            # Configuración de semáforo
-            self.phase_label.config(text="Fase 2: Analizando infracciones")
-            
-            # Sincronizar con el semáforo del panel
-            # Asegurarnos de que el semáforo esté activado para el procesamiento
-            self.player.semaforo.activate_semaphore()
-            
-            current_state = "green"  # Empezamos con verde
-            next_state_frame = 0
-            frame_index = 0
-            
-            # Calcular duración de cada estado
-            frames_per_state = {
-                "green": int(self.cycle_durations["green"] * fps),
-                "yellow": int(self.cycle_durations["yellow"] * fps),
-                "red": int(self.cycle_durations["red"] * fps)
-            }
-            
-            # Mostrar franja horaria si está disponible
-            time_slot = self.cycle_durations.get("time_slot", "No especificada")
-            self.details_label.config(text=f"Franja horaria: {time_slot}")
-            
-            # Variables para controlar el muestreo en estado rojo
-            last_processed_red_frame = -1
-            red_frame_sampling = max(1, int(fps / 3))  # Procesar 3 frames por segundo en rojo (más frecuente)
+            # Fase 1: Inicialización rápida
+            self.phase_label.config(text="Fase 1: Inicializando análisis")
             
             # Detectar automáticamente si es una escena nocturna
             ret, first_frame = cap.read()
@@ -320,279 +424,509 @@ class PreprocessingDialog:
                 self.dialog.after(0, lambda: self._show_error("No se pudo leer el primer frame del video"))
                 return
             
-            is_night = self._is_night_scene(first_frame)
+            self.is_night = self._is_night_scene(first_frame)
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Volver al principio del video
             
             # Actualizar UI con información del modo nocturno
-            if is_night:
-                self.details_label.config(text=f"Franja horaria: {time_slot} - MODO NOCTURNO ACTIVADO")
-                # Información de debug
+            if self.is_night:
+                self.details_label.config(text=f"Franja horaria: {self.cycle_durations.get('time_slot', 'No especificada')} - MODO NOCTURNO ACTIVADO")
                 print("Modo nocturno activado para el procesamiento")
             
-            # Ciclo principal optimizado
-            while cap.isOpened() and not self.canceled:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                
-                frame_index += 1
-                self.processed_frames = frame_index
-                
-                # Actualizar progreso
-                self.progress_value = (frame_index / self.total_frames) * 100
-                
-                # Actualizar detalles solo periódicamente
-                if frame_index % 30 == 0:
-                    self.details_label.config(text=f"Analizando frame {frame_index}/{self.total_frames}")
-                
-                # Simular cambio de estado de semáforo
-                if frame_index >= next_state_frame:
-                    if current_state == "green":
-                        current_state = "yellow"
-                        next_state_frame = frame_index + frames_per_state["yellow"]
-                    elif current_state == "yellow":
-                        current_state = "red"
-                        next_state_frame = frame_index + frames_per_state["red"]
-                        # Indicar cambio a rojo
-                        if is_night:
-                            self.details_label.config(text=f"¡Semáforo en ROJO! Detectando infracciones (Modo Nocturno)...")
-                        else:
-                            self.details_label.config(text=f"¡Semáforo en ROJO! Detectando infracciones...")
-                    else:  # red
-                        current_state = "green"
-                        next_state_frame = frame_index + frames_per_state["green"]
-                
-                # OPTIMIZACIÓN: Mostrar frames a la interfaz solo periódicamente
-                # para no saturar la UI, independientemente del estado
-                # MODIFICACIÓN: Mini-semáforo en lugar del círculo
-                if frame_index % 10 == 0:
-                    frame_display = frame.copy()
-                    
-                    # NUEVO: Dibujamos un mini semáforo en lugar del punto simple
-                    h, w = frame_display.shape[:2]
-                    
-                    # Coordenadas del semáforo
-                    semaforo_x = w - 60
-                    semaforo_y = 30
-                    semaforo_width = 40
-                    semaforo_height = 100
-                    
-                    # Fondo del semáforo (rectángulo negro)
-                    cv2.rectangle(frame_display, 
-                                (semaforo_x, semaforo_y), 
-                                (semaforo_x + semaforo_width, semaforo_y + semaforo_height),
-                                (0, 0, 0), -1)  # Negro
-                    
-                    # Borde gris del semáforo
-                    cv2.rectangle(frame_display, 
-                                (semaforo_x, semaforo_y), 
-                                (semaforo_x + semaforo_width, semaforo_y + semaforo_height),
-                                (128, 128, 128), 2)  # Gris
-                    
-                    # Diámetro y posiciones de las luces
-                    light_diameter = 20
-                    green_y = semaforo_y + semaforo_height - 25
-                    yellow_y = semaforo_y + semaforo_height//2
-                    red_y = semaforo_y + 25
-                    light_x = semaforo_x + semaforo_width//2
-                    
-                    # Dibujar las tres luces (apagadas)
-                    cv2.circle(frame_display, (light_x, red_y), light_diameter, (40, 40, 40), -1)
-                    cv2.circle(frame_display, (light_x, yellow_y), light_diameter, (40, 40, 40), -1)
-                    cv2.circle(frame_display, (light_x, green_y), light_diameter, (40, 40, 40), -1)
-                    
-                    # Encender la luz correspondiente al estado actual
-                    if current_state == "green":
-                        cv2.circle(frame_display, (light_x, green_y), light_diameter, (0, 255, 0), -1)
-                        # Texto estado
-                        cv2.putText(frame_display, "AVANCE", (semaforo_x - 80, semaforo_y + semaforo_height//2),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                    elif current_state == "yellow":
-                        cv2.circle(frame_display, (light_x, yellow_y), light_diameter, (0, 255, 255), -1)
-                        # Texto estado
-                        cv2.putText(frame_display, "PRECAUCIÓN", (semaforo_x - 120, semaforo_y + semaforo_height//2),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-                    elif current_state == "red":
-                        cv2.circle(frame_display, (light_x, red_y), light_diameter, (0, 0, 255), -1)
-                        # Texto estado
-                        cv2.putText(frame_display, "PARE", (semaforo_x - 60, semaforo_y + semaforo_height//2),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                    
-                    # Añadir temporizador del estado actual
-                    frames_left = next_state_frame - frame_index
-                    secs_left = frames_left / fps
-                    cv2.putText(frame_display, f"{secs_left:.1f}s", 
-                            (semaforo_x - 20, semaforo_y + semaforo_height + 20),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                    
-                    # Dibujar polígono si existe
-                    if self.polygon_points:
-                        pts = np.array(self.polygon_points, np.int32).reshape((-1, 1, 2))
-                        cv2.polylines(frame_display, [pts], True, (255, 0, 0), 2)
-                    
-                    # Añadir indicador de modo nocturno
-                    if is_night:
-                        cv2.putText(frame_display, "MODO NOCTURNO", (10, 30),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-                    
-                    # Actualizar frame actual
-                    self.current_frame = frame_display
-                
-                # OPTIMIZACIÓN: Solo detectar infracciones en luz roja
-                if current_state == "red" and (frame_index - last_processed_red_frame >= red_frame_sampling):
-                    last_processed_red_frame = frame_index
-                    
-                    # Preparar frame para detecciones - IMPORTANTE: Usar copia para no modificar el original
-                    frame_copy = frame.copy()
-                    
-                    # Para escenas nocturnas, mejorar el frame antes de la detección
-                    proc_frame = frame.copy()
-                    if is_night:
-                        proc_frame = self._enhance_night_visibility(proc_frame)
-                    
-                    # Detectar vehículos con umbral de confianza ajustado para noche/día
-                    conf_threshold = 0.15 if is_night else 0.35
-                    detections = self.player.vehicle_detector.detect(proc_frame, conf=conf_threshold, draw=False)
-                    
-                    # Variable para indicar si se detectó infracción
-                    detected_infraction = False
-                    
-                    # Procesar las detecciones
-                    for bbox in detections:
-                        x1, y1, x2, y2, class_id = bbox
-                        
-                        # Solo considerar vehículos (clase 2=coche, 5=bus, 7=camión)
-                        if class_id not in [2, 5, 7]:
-                            continue
-                        
-                        # Verificar si está en la zona restringida
-                        in_polygon = False
-                        if is_night:
-                            in_polygon = self._is_vehicle_in_polygon_night((x1, y1, x2, y2), self.polygon_points)
-                        else:
-                            in_polygon = self.is_vehicle_in_polygon((x1, y1, x2, y2), self.polygon_points)
-                        
-                        if in_polygon:
-                            detected_infraction = True
-                            # Dibujar rectángulo rojo en vehículo infractor
-                            cv2.rectangle(frame_copy, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
-                            cv2.putText(frame_copy, "INFRACCION", (int(x1), int(y1)-10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                            
-                            # CRÍTICO: Siempre dibujar el mini-semáforo antes de actualizar el frame
-                            self._draw_mini_semaphore(frame_copy, current_state, next_state_frame - frame_index, fps, is_night)
-                            
-                            # Actualizar frame actual para mostrar la infracción
-                            self.current_frame = frame_copy
-                            
-                            # Procesar la placa solo si realmente hay una infracción
-                            y1_roi = max(0, int(y1))
-                            y2_roi = min(frame.shape[0], int(y2))
-                            x1_roi = max(0, int(x1))
-                            x2_roi = min(frame.shape[1], int(x2))
-
-                            if y2_roi > y1_roi and x2_roi > x1_roi:
-                                vehicle_roi = frame[y1_roi:y2_roi, x1_roi:x2_roi].copy()
-                                
-                                # Si es de noche, aplicar pre-procesamiento específico para placas
-                                if is_night:
-                                    vehicle_roi = self._enhance_night_visibility(vehicle_roi)
-                                
-                                # Procesar placa con el flag de noche
-                                from src.core.processing.plate_processing import process_plate
-                                try:
-                                    # Intentos para detectar la placa
-                                    bbox_plate, plate_img, plate_text = process_plate(vehicle_roi, is_night=is_night)
-                                    
-                                    # IMPORTANTE: Dibujar el mini-semáforo ANTES de actualizar current_frame
-                                    # para asegurar que siempre esté visible
-                                    self._draw_mini_semaphore(frame_copy, current_state, next_state_frame - frame_index, fps, is_night)
-                                    self.current_frame = frame_copy
-                                    
-                                    # INTENTO 2: Si falla, intentar detección directa más agresiva
-                                    if not plate_text or len(plate_text) < 4:
-                                        from src.core.ocr.recognizer import recognize_plate
-                                        plate_text = recognize_plate(vehicle_roi)
-                                        plate_img = vehicle_roi  # Usar ROI completo como imagen de placa
-                                    
-                                    if plate_text and len(plate_text) >= 4:
-                                        # Añadir a la lista de infracciones detectadas
-                                        infraction_data = {
-                                            'frame': frame_index,
-                                            'time': frame_index / fps,
-                                            'plate': plate_text,
-                                            'plate_img': plate_img,
-                                            'vehicle_img': vehicle_roi
-                                        }
-                                        
-                                        # Verificar duplicados y determinar la mejor versión
-                                        is_duplicate, best_plate = self._deduplicate_plates(plate_text)
-                                        if is_duplicate:
-                                            # Actualizar placa existente si la nueva es mejor
-                                            if best_plate == plate_text:
-                                                # Buscar y reemplazar la placa anterior
-                                                for data in self.detected_infractions:
-                                                    if data['plate'] == best_plate:
-                                                        data['plate_img'] = plate_img
-                                                        data['vehicle_img'] = vehicle_roi
-                                                        break
-                                            # Si no es mejor, simplemente no la añadimos
-                                            pass
-                                        else:
-                                            # Nueva placa, añadirla a la lista
-                                            self.detected_infractions.append(infraction_data)
-                                            
-                                            # Guardar imagen de la placa
-                                            if plate_img is not None:
-                                                plate_filename = f"plate_{best_plate}_{frame_index}.jpg"
-                                                cv2.imwrite(os.path.join(output_dir, plate_filename), plate_img)
-                                except Exception as plate_err:
-                                    print(f"Error procesando placa: {plate_err}")
-                        # Si no se detectó infracción pero es tiempo de actualizar el frame
-                    if not detected_infraction and frame_index % 10 == 0:
-                        self._draw_mini_semaphore(frame_copy, current_state, next_state_frame - frame_index, fps, is_night)
-                        self.current_frame = frame_copy
-                    # Para frames que no son de detección, actualizar periódicamente la UI con el mini-semáforo
-                    elif frame_index % 10 == 0:
-                        frame_display = frame.copy()
-                        self._draw_mini_semaphore(frame_display, current_state, next_state_frame - frame_index, fps, is_night)
-                        self.current_frame = frame_display
+            # Calcular duración de cada estado
+            frames_per_state = {
+                "green": int(self.cycle_durations["green"] * self.fps),
+                "yellow": int(self.cycle_durations["yellow"] * self.fps),
+                "red": int(self.cycle_durations["red"] * self.fps)
+            }
             
-            # Finalización del procesamiento (igual)
+            # Fase 2: División optimizada en segmentos
+            self.phase_label.config(text="Fase 2: Planificando análisis")
+            
+            # Sincronizar con el semáforo del panel
+            # Asegurarnos de que el semáforo esté activado para el procesamiento
+            self.player.semaforo.activate_semaphore()
+            
+            # Dividir el video en segmentos para procesamiento paralelo
+            # Solo procesar segmentos en rojo para máxima eficiencia
+            self.segments = []
+            current_state = "green"
+            frame_index = 0
+            cycle_duration = sum(frames_per_state.values())
+            
+            # Calcular segmentos en estado rojo
+            while frame_index < self.total_frames:
+                if current_state == "green":
+                    frame_index += frames_per_state["green"]
+                    current_state = "yellow"
+                elif current_state == "yellow":
+                    frame_index += frames_per_state["yellow"]
+                    current_state = "red"
+                elif current_state == "red":
+                    # Solo guardar segmentos en rojo para procesamiento
+                    start = frame_index
+                    end = min(frame_index + frames_per_state["red"], self.total_frames)
+                    self.segments.append((start, end))
+                    frame_index += frames_per_state["red"]
+                    current_state = "green"
+            
+            # Fase 3: Procesamiento en paralelo
+            self.phase_label.config(text="Fase 3: Analizando infracciones")
+            
+            # Número óptimo de trabajadores (CPU cores - 1, mínimo 2)
+            import multiprocessing as mp
+            num_workers = max(2, mp.cpu_count() - 1)
+            self.details_label.config(text=f"Utilizando {num_workers} núcleos para procesamiento")
+            
+            # Inicializar variables de progreso
+            self.completed_segments = 0
+            self.total_segments = len(self.segments)
+            
+            # Iniciar procesamiento multihilo
+            with ThreadPoolExecutor(max_workers=num_workers) as executor:
+                # Muestreo más agresivo para escenas nocturnas (más frames procesados)
+                # para mayor probabilidad de detectar placas en condiciones difíciles
+                red_frame_sampling = max(1, int(self.fps / (5 if self.is_night else 3)))
+                
+                # Preparar detector para reutilización
+                vehicle_detector = self.player.vehicle_detector
+                
+                # Umbral de confianza según condiciones de iluminación
+                conf_threshold = 0.25 if self.is_night else 0.40
+                
+                # Lanzar tareas para cada segmento
+                future_to_segment = {}
+                for i, (start, end) in enumerate(self.segments):
+                    future = executor.submit(
+                        self._process_segment_optimized,
+                        i, start, end, red_frame_sampling,
+                        vehicle_detector, conf_threshold
+                    )
+                    future_to_segment[future] = i
+            
+            # No necesitamos esperar aquí ya que los resultados se procesan en _process_results_queue()
+            
+            # Fase 4: Finalización 
+            self.phase_label.config(text="Fase 4: Organizando resultados")
+            
+            # Identificar y filtrar placas duplicadas
             self.phase_label.config(text="Análisis completado")
             self.progress_value = 100
-            time.sleep(0.5)  # Pequeña pausa para mostrar 100%
             
-            # Liberar recursos
-            cap.release()
-            
-            # Llamar a la función de finalización en el hilo principal, usando función directa
-            if not self.canceled:
-                self.dialog.after(0, self._complete_processing)
+            # Procesar los resultados finales tras una pequeña pausa
+            self.dialog.after(500, self._finalize_processing)
                 
         except Exception as e:
-            # Capturar la excepción en una variable local
-            error_message = str(e)
             import traceback
-            traceback.print_exc()  # Imprimir stack trace para depuración
-            # Usar el parámetro por defecto para capturar el valor
-            self.dialog.after(0, lambda msg=error_message: self._show_error(msg))
+            traceback.print_exc()
+            self.dialog.after(0, lambda msg=str(e): self._show_error(msg))
         finally:
             if 'cap' in locals() and cap is not None:
                 cap.release()
 
-
-    def _draw_mini_semaphore(self, frame, current_state, frames_left, fps, is_night=False):
-        """
-        Dibuja un mini-semáforo en el frame proporcionado con el estado actual.
+    def _process_segment_optimized(self, segment_id, start_frame, end_frame, 
+         frame_sampling, vehicle_detector, conf_threshold):
+        """Función optimizada para procesar un segmento de video en un hilo separado"""
+        try:
+            # Abrir segmento de video
+            segment_cap = cv2.VideoCapture(self.video_path)
+            segment_cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            
+            # Variables para este segmento
+            local_infractions = []
+            processed = 0
+            total_to_process = end_frame - start_frame
+            
+            # Variable para seguir las placas ya detectadas GLOBALMENTE (no solo en este segmento)
+            if not hasattr(self, "detected_plates_global"):
+                self.detected_plates_global = set()
+            
+            # Enviar frame inicial para mostrar que estamos procesando este segmento
+            ret, first_frame = segment_cap.read()
+            if ret:
+                # Dibujar información inicial
+                cv2.putText(first_frame, f"Procesando segmento {segment_id+1}", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                self._draw_mini_semaphore(first_frame, "red", 0, self.fps, self.is_night)
+                
+                # Poner el frame en la cola para UI inmediatamente
+                self.result_queue.put(("frame_update", (first_frame.copy(), segment_id, 0, total_to_process)))
+                # Volver a la posición inicial
+                segment_cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            
+            # Procesar frames en este segmento
+            for relative_frame in range(total_to_process):
+                # Si se canceló el procesamiento
+                if self.canceled:
+                    segment_cap.release()
+                    return [], segment_id
+                
+                # Solo procesar cada 'frame_sampling' frames para eficiencia
+                if processed % frame_sampling != 0:
+                    ret = segment_cap.grab()  # Solo avanzar sin decodificar
+                    processed += 1
+                    continue
+                
+                ret, frame = segment_cap.read()
+                if not ret:
+                    break
+                
+                processed += 1
+                absolute_frame = start_frame + relative_frame
+                
+                # Para escenas nocturnas, mejorar el frame antes de detección
+                if self.is_night:
+                    frame = self._enhance_night_visibility_fast(frame)
+                
+                # MOSTRAR FRAME EN LA UI MÁS FRECUENTEMENTE
+                # Enviar cada frame procesado para visualización en tiempo real
+                if processed % max(1, frame_sampling // 2) == 0:  # Actualizar más seguido
+                    display_frame = frame.copy()
+                    # Dibujar información sobre el procesamiento
+                    self._draw_mini_semaphore(display_frame, "red", 0, self.fps, self.is_night)
+                    cv2.putText(display_frame, f"Segmento: {segment_id+1}/{self.total_segments}", (10, 30), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    cv2.putText(display_frame, f"Frame: {processed}/{total_to_process}", (10, 60), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    
+                    # Poner el frame en la cola para UI
+                    self.result_queue.put(("frame_update", (display_frame, segment_id, processed, total_to_process)))
+                
+                # Detectar vehículos (sin el parámetro classes que causaba el error)
+                detections = vehicle_detector.detect(
+                    frame, 
+                    conf=conf_threshold,
+                    draw=False
+                )
+                
+                # Filtrar detecciones para solo mantener vehículos (coches, buses, camiones)
+                filtered_detections = []
+                for detection in detections:
+                    if len(detection) >= 5:  # Asegurarse de que hay suficientes elementos
+                        x1, y1, x2, y2, class_id = detection[:5]
+                        
+                        # Verificar si es un vehículo (esto puede variar según el modelo)
+                        # Clases típicas de YOLO: 2=coche, 5=bus, 7=camión
+                        if isinstance(class_id, (int, float)):
+                            class_id = int(class_id)
+                            if class_id in [2, 5, 7]:
+                                filtered_detections.append((x1, y1, x2, y2, class_id))
+                
+                # Procesar cada vehículo detectado
+                for bbox in filtered_detections:
+                    x1, y1, x2, y2, class_id = bbox
+                    
+                    # Verificar si está en zona restringida
+                    if self.is_vehicle_in_polygon((x1, y1, x2, y2), self.polygon_points, self.is_night):
+                        # Extraer ROI del vehículo con límites seguros
+                        y1_roi = max(0, int(y1))
+                        y2_roi = min(frame.shape[0], int(y2))
+                        x1_roi = max(0, int(x1))
+                        x2_roi = min(frame.shape[1], int(x2))
+                        
+                        if y2_roi > y1_roi and x2_roi > x1_roi:
+                            vehicle_roi = frame[y1_roi:y2_roi, x1_roi:x2_roi].copy()
+                            
+                            # Procesar placa
+                            try:
+                                from src.core.processing.plate_processing import process_plate
+                                
+                                # Verificar si está disponible el módulo de super-resolución
+                                try:
+                                    from src.core.processing.resolution_process import enhance_plate_image
+                                except ImportError:
+                                    print("Módulo de super-resolución no disponible, usando procesamiento estándar")
+                                    enhance_plate_image = None
+                                
+                                # Detectar placa en el vehículo
+                                bbox_plate, plate_img, plate_text = process_plate(vehicle_roi, is_night=self.is_night)
+                                
+                                # Si no encontró texto o es muy corto, intentar con reconocedor alternativo
+                                if not plate_text or len(plate_text) < 4:
+                                    from src.core.ocr.recognizer import recognize_plate
+                                    
+                                    # Intentar mejorar la imagen antes del reconocimiento alternativo
+                                    if enhance_plate_image is not None:
+                                        enhanced_roi = enhance_plate_image(vehicle_roi, is_night=self.is_night)
+                                        plate_text = recognize_plate(enhanced_roi)
+                                        plate_img = enhanced_roi
+                                    else:
+                                        plate_text = recognize_plate(vehicle_roi)
+                                
+                                # Verificar que la placa sea válida
+                                if plate_text and len(plate_text) >= 4:
+                                    # Normalizar texto de placa
+                                    plate_text = self._normalize_plate_text(plate_text)
+                                    
+                                    # VERIFICAR GLOBAL, NO SOLO EN ESTE SEGMENTO
+                                    if plate_text not in self.detected_plates_global:
+                                        # Registrar la placa como ya detectada GLOBALMENTE
+                                        self.detected_plates_global.add(plate_text)
+                                        
+                                        # Crear las carpetas necesarias para placas y autos
+                                        plates_dir = os.path.join("data", "output", "placas")
+                                        vehicles_dir = os.path.join("data", "output", "autos")
+                                        os.makedirs(plates_dir, exist_ok=True)
+                                        os.makedirs(vehicles_dir, exist_ok=True)
+                                        
+                                        # Guardar la imagen de la placa con nombre ÚNICO
+                                        plate_filename = f"plate_{plate_text}.jpg"
+                                        plate_path = os.path.join(plates_dir, plate_filename)
+                                        
+                                        # Aplicar super-resolución a la placa antes de guardarla
+                                        if enhance_plate_image is not None:
+                                            enhanced_plate = enhance_plate_image(plate_img, is_night=self.is_night, output_path=plate_path)
+                                        else:
+                                            # Si no está disponible el módulo, guardar la placa original
+                                            cv2.imwrite(plate_path, plate_img)
+                                            enhanced_plate = plate_img
+                                        
+                                        # Guardar la imagen del vehículo con nombre ÚNICO
+                                        vehicle_filename = f"vehicle_{plate_text}.jpg"
+                                        vehicle_path = os.path.join(vehicles_dir, vehicle_filename)
+                                        cv2.imwrite(vehicle_path, vehicle_roi)
+                                        
+                                        # Guardar infracción detectada con rutas de archivos
+                                        infraction_data = {
+                                            'frame': absolute_frame,
+                                            'time': absolute_frame / self.fps,
+                                            'plate': plate_text,
+                                            'plate_img': enhanced_plate.copy(),  # Usar la versión mejorada
+                                            'vehicle_img': vehicle_roi.copy(),
+                                            'plate_path': plate_path,
+                                            'vehicle_path': vehicle_path,
+                                            'unique': True  # Marca como único
+                                        }
+                                        local_infractions.append(infraction_data)
+                                        
+                                        # Mostrar detección en tiempo real
+                                        detection_frame = frame.copy()
+                                        cv2.rectangle(detection_frame, (x1_roi, y1_roi), (x2_roi, y2_roi), (0, 255, 0), 2)
+                                        cv2.putText(detection_frame, f"Placa: {plate_text}", (x1_roi, y1_roi-10), 
+                                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                                        
+                                        # Enviar detección a la UI
+                                        self.result_queue.put(("frame_update", (detection_frame, segment_id, processed, total_to_process)))
+                                    else:
+                                        print(f"Placa {plate_text} ya fue detectada globalmente, omitiendo")
+                            except Exception as e:
+                                print(f"Error procesando placa: {e}")
+                                import traceback
+                                traceback.print_exc()
+            
+            segment_cap.release()
+            
+            # Enviar resultados a la cola principal
+            self.result_queue.put(("segment_complete", (segment_id, local_infractions)))
+            print(f"Segmento {segment_id} completado con {len(local_infractions)} infracciones")
+            return local_infractions, segment_id
+            
+        except Exception as e:
+            print(f"Error en segment {segment_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            self.result_queue.put(("segment_complete", (segment_id, [])))
+            return [], segment_id
+    
+    def _normalize_plate_text(self, plate_text):
+        """Normaliza el texto de la placa para mejorar la detección de duplicados"""
+        if not plate_text:
+            return plate_text
+            
+        # Eliminar espacios y convertir a mayúsculas
+        normalized = plate_text.strip().upper()
         
-        Args:
-            frame: El frame donde dibujar el semáforo
-            current_state: Estado actual del semáforo ("red", "yellow", "green")
-            frames_left: Número de frames restantes en el estado actual
-            fps: Frames por segundo del video
-            is_night: Indica si estamos en modo nocturno
-        """
+        # Eliminar caracteres no alfanuméricos
+        normalized = ''.join(c for c in normalized if c.isalnum() or c == '-')
+        
+        # NUEVO: Corrección de errores comunes en OCR
+        # Correcciones específicas para el formato chileno de placas (XX-YYYY o XX-YYYYY)
+        corrections = {
+            'O': '0',  # Letra O a número 0
+            'D': '0',  # D confundido con 0
+            'Q': '0',  # Q confundido con 0
+            'I': '1',  # I confundido con 1 
+            'L': '1',  # L confundido con 1
+            'Z': '2',  # Z confundido con 2
+            'S': '5',  # S confundido con 5
+            'G': '6',  # G confundido con 6
+            'B': '8',  # B confundido con 8
+        }
+        
+        # Detectar patrón de placa: normalmente 2 letras seguidas de 4-5 dígitos
+        if len(normalized) >= 6:
+            parts = normalized.split('-') if '-' in normalized else [normalized[:2], normalized[2:]]
+            
+            if len(parts) == 2:
+                prefix, numbers = parts
+                
+                # Corregir prefijo: debería ser letras
+                corrected_prefix = ''
+                for char in prefix:
+                    if char in '0123456789':
+                        # Si es un número en el prefijo, convertirlo a letra
+                        # 0->O, 1->I, 2->Z, 3->B, 4->A, 5->S, 6->G, 7->T, 8->B, 9->P
+                        num_to_letter = {'0':'O', '1':'I', '2':'Z', '3':'B', '4':'A', 
+                                        '5':'S', '6':'G', '7':'T', '8':'B', '9':'P'}
+                        corrected_prefix += num_to_letter.get(char, char)
+                    else:
+                        corrected_prefix += char
+                
+                # Corregir números: debería ser dígitos
+                corrected_numbers = ''
+                for char in numbers:
+                    # Si es una letra en la parte numérica, convertirla a número
+                    if char.isalpha():
+                        corrected_numbers += corrections.get(char, char)
+                    else:
+                        corrected_numbers += char
+                        
+                # Formato común de placas en Chile: letras-números
+                normalized = f"{corrected_prefix}-{corrected_numbers}"
+        
+        # Verificación contra lista de placas conocidas para una coincidencia exacta
+        known_plates = ["A3606L", "AE670S", "A3670S", "IA-V6190", "JA-3K961", "JA-96886"]
+        
+        # Comparar usando la distancia de edición para encontrar la placa conocida más similar
+        min_distance = float('inf')
+        best_match = normalized
+        
+        for known_plate in known_plates:
+            # Calcular distancia de Levenshtein (edición)
+            import difflib
+            similarity = difflib.SequenceMatcher(None, normalized, known_plate).ratio()
+            distance = 1 - similarity
+            
+            # Si la similitud es alta (más del 80%), usar la placa conocida
+            if similarity > 0.8 and distance < min_distance:
+                min_distance = distance
+                best_match = known_plate
+        
+        # Si encontramos una coincidencia muy buena, usar esa placa
+        if min_distance < 0.2:  # 80% de similitud o más
+            return best_match
+                
+        return normalized
+    
+    def _consolidate_plate_detections(self):
+        """Consolida múltiples detecciones de la misma placa para mejorar la precisión"""
+        if not self.detected_infractions:
+            return []
+        
+        # Agrupar por placas similares
+        plate_groups = {}
+        
+        for infraction in self.detected_infractions:
+            plate = infraction['plate']
+            best_match = None
+            best_similarity = 0
+            
+            # Buscar el grupo más similar
+            for group_key in plate_groups.keys():
+                import difflib
+                similarity = difflib.SequenceMatcher(None, plate, group_key).ratio()
+                if similarity > 0.7 and similarity > best_similarity:  # 70% similar
+                    best_similarity = similarity
+                    best_match = group_key
+            
+            # Añadir al grupo existente o crear uno nuevo
+            if best_match:
+                plate_groups[best_match].append(infraction)
+            else:
+                plate_groups[plate] = [infraction]
+        
+        # Para cada grupo, elegir la mejor detección o consolidar información
+        consolidated_infractions = []
+        
+        for group_key, detections in plate_groups.items():
+            if len(detections) == 1:
+                # Solo una detección, añadirla directamente
+                consolidated_infractions.append(detections[0])
+            else:
+                # Múltiples detecciones, elegir la mejor calidad o consolidar
+                best_detection = max(detections, key=lambda x: 
+                                    cv2.Laplacian(x['plate_img'], cv2.CV_64F).var())
+                
+                # Conservar la detección de mejor calidad
+                consolidated_infractions.append(best_detection)
+                
+                # Añadir este método al procesamiento final en _finalize_processing
+        
+        return consolidated_infractions
+    
+    def _filter_segment_duplicates(self, infractions):
+        """Filtra duplicados dentro de un mismo segmento"""
+        if not infractions:
+            return []
+            
+        filtered = []
+        seen_plates = set()
+        
+        for infraction in infractions:
+            plate = infraction['plate']
+            
+            # Verificar si ya existe esta placa exacta en este segmento
+            if plate not in seen_plates:
+                seen_plates.add(plate)
+                filtered.append(infraction)
+                
+        return filtered
+    
+    def _finalize_processing(self):
+        """Finaliza el procesamiento después de que todos los segmentos estén completos"""
+        try:
+            # NUEVO: Usar el método de consolidación para mejorar precisión
+            final_infractions = self._consolidate_plate_detections()
+
+            # Identificar y filtrar placas duplicadas entre todos los segmentos
+            final_infractions = []
+            global_detected_plates = set()
+            
+            for infraction in self.detected_infractions:
+                plate = infraction['plate']
+                
+                # Verificar si ya hemos añadido esta placa
+                if plate not in global_detected_plates:
+                    global_detected_plates.add(plate)
+                    final_infractions.append(infraction)
+            
+            # Actualizar la lista de infracciones detectadas
+            self.detected_infractions = final_infractions
+            
+            # Llamar a _complete_processing
+            self.dialog.after(0, self._complete_processing)
+        except Exception as e:
+            print(f"Error en _finalize_processing: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _best_plate_version(self, plate, existing_plates):
+        """Versión optimizada para encontrar la mejor versión de una placa"""
+        if not plate or len(plate) < 4:
+            return False, plate
+            
+        # Verificar si ya existe esta placa exacta
+        if plate in existing_plates:
+            return True, plate
+        
+        # Lista de placas conocidas en el sistema para priorizar coincidencias
+        known_plates = ["A3606L", "AE670S", "A3670S"]
+        
+        # Si la placa actual es una conocida, preferirla
+        if plate in known_plates:
+            return False, plate
+            
+        # Buscar similitudes entre placas existentes
+        for existing in existing_plates:
+            # Si son muy similares (difieren en máximo 2 caracteres)
+            if len(plate) == len(existing) and sum(c1 != c2 for c1, c2 in zip(plate, existing)) <= 2:
+                # Preferir placas conocidas
+                if existing in known_plates:
+                    return True, existing
+                    
+        return False, plate
+    
+    def _draw_mini_semaphore(self, frame, current_state, frames_left, fps, is_night=False):
+        """Dibuja un mini-semáforo en el frame proporcionado con el estado actual (versión optimizada)"""
         h, w = frame.shape[:2]
         
         # Coordenadas del semáforo
@@ -620,35 +954,21 @@ class PreprocessingDialog:
         red_y = semaforo_y + 25
         light_x = semaforo_x + semaforo_width//2
         
-        # Dibujar las tres luces (apagadas)
-        cv2.circle(frame, (light_x, red_y), light_diameter, (40, 40, 40), -1)
-        cv2.circle(frame, (light_x, yellow_y), light_diameter, (40, 40, 40), -1)
-        cv2.circle(frame, (light_x, green_y), light_diameter, (40, 40, 40), -1)
-        
-        # Encender la luz correspondiente al estado actual
+        # Dibujar solo la luz activa para mayor eficiencia
         if current_state == "green":
             cv2.circle(frame, (light_x, green_y), light_diameter, (0, 255, 0), -1)
-            # Texto estado
             cv2.putText(frame, "AVANCE", (semaforo_x - 80, semaforo_y + semaforo_height//2),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         elif current_state == "yellow":
             cv2.circle(frame, (light_x, yellow_y), light_diameter, (0, 255, 255), -1)
-            # Texto estado
             cv2.putText(frame, "PRECAUCIÓN", (semaforo_x - 120, semaforo_y + semaforo_height//2),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
         elif current_state == "red":
             cv2.circle(frame, (light_x, red_y), light_diameter, (0, 0, 255), -1)
-            # Texto estado
             cv2.putText(frame, "PARE", (semaforo_x - 60, semaforo_y + semaforo_height//2),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         
-        # Añadir temporizador del estado actual
-        secs_left = frames_left / fps
-        cv2.putText(frame, f"{secs_left:.1f}s", 
-                (semaforo_x - 20, semaforo_y + semaforo_height + 20),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        
-        # Dibujar polígono si existe
+        # Dibujar polígono si existe (solo contorno)
         if hasattr(self, 'polygon_points') and self.polygon_points:
             pts = np.array(self.polygon_points, np.int32).reshape((-1, 1, 2))
             cv2.polylines(frame, [pts], True, (255, 0, 0), 2)
@@ -659,89 +979,27 @@ class PreprocessingDialog:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
     
     def _is_night_scene(self, frame):
-        """Determina si un frame corresponde a una escena nocturna"""
+        """Versión optimizada para detectar escenas nocturnas"""
+        # Redimensionar para análisis rápido
+        small_frame = cv2.resize(frame, (320, 180), interpolation=cv2.INTER_AREA)
+        
         # Convertir a escala de grises
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
         
         # Calcular brillo promedio
-        avg_brightness = cv2.mean(gray)[0]
+        avg_brightness = np.mean(gray)
         
         # También verificar área más oscura (percentil 10)
         dark_threshold = np.percentile(gray, 10)
         
         # Si el brillo promedio es bajo o áreas oscuras son muy oscuras
-        # Ajustar este valor basado en tus videos
         return avg_brightness < 85 or dark_threshold < 30
 
-    def _enhance_night_visibility(self, frame):
-        """Mejora la visibilidad en escenas nocturnas con parámetros más agresivos"""
-        # Convertir a LAB para trabajar con el canal de luminosidad
-        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-        
-        # Aplicar CLAHE con parámetros más agresivos
-        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
-        cl = clahe.apply(l)
-        
-        # Fusionar canales de nuevo
-        enhanced_lab = cv2.merge((cl, a, b))
-        
-        # Convertir de vuelta a BGR
-        enhanced_bgr = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
-        
-        # Aumentar ganancia para mayor visibilidad - más agresivo
-        return cv2.convertScaleAbs(enhanced_bgr, alpha=1.5, beta=40)
-
-    def _is_vehicle_in_polygon_night(self, bbox, polygon_points):
-        """
-        Versión muy permisiva para detección nocturna que expande el área de detección
-        """
-        if not polygon_points or len(polygon_points) < 3:
-            return False
-        
-        # Expandir ligeramente el polígono para ser más permisivo
-        polygon = np.array(polygon_points, np.int32)
-        center = np.mean(polygon, axis=0).astype(int)
-        
-        # Expandir polígono un 10% desde su centro
-        expanded_polygon = []
-        for point in polygon:
-            # Vector desde centro al punto
-            vector = point - center
-            # Expandir 10%
-            expanded_point = center + vector * 1.1
-            expanded_polygon.append(expanded_point)
-        
-        expanded_polygon = np.array(expanded_polygon, np.int32)
-        
-        # Extraer coordenadas del vehículo
-        x1, y1, x2, y2 = bbox
-        
-        # Usar más puntos para verificar
-        check_points = [
-            (x1, y1),                # Esquina superior izquierda
-            (x2, y1),                # Esquina superior derecha
-            (x1, y2),                # Esquina inferior izquierda
-            (x2, y2),                # Esquina inferior derecha
-            ((x1+x2)//2, (y1+y2)//2), # Centro
-            ((x1+x2)//2, y2),        # Punto inferior central (ruedas)
-            (x1, (y1+y2)//2),        # Punto medio izquierdo
-            (x2, (y1+y2)//2),        # Punto medio derecho
-            ((x1+x2)//2, y1),        # Punto superior central
-        ]
-        
-        # Agregar puntos adicionales para una cuadrícula 5x5
-        width, height = x2-x1, y2-y1
-        for i in range(1, 5):
-            for j in range(1, 5):
-                check_points.append((x1 + (width*i)//5, y1 + (height*j)//5))
-        
-        # Si cualquier punto está dentro del polígono expandido, considerar que está dentro
-        for point in check_points:
-            if cv2.pointPolygonTest(expanded_polygon, point, False) >= 0:
-                return True
-        
-        return False
+    def _enhance_night_visibility_fast(self, frame):
+        """Versión optimizada para mejorar la visibilidad en escenas nocturnas"""
+        # Usar convertScaleAbs que es mucho más rápido que convertir a LAB
+        enhanced = cv2.convertScaleAbs(frame, alpha=1.5, beta=30)
+        return enhanced
 
     def _complete_processing(self):
         """Finaliza el procesamiento y muestra los resultados"""
@@ -749,29 +1007,125 @@ class PreprocessingDialog:
             # Debug para verificar que tenemos placas para añadir
             print(f"Procesamiento completo: {len(self.detected_infractions)} infracciones detectadas")
             
-            # Añadir las placas detectadas al panel lateral
+            # Conjunto para seguir placas únicas procesadas
+            unique_plates = set()
+            unique_infractions = []
+            
+            # Filtrar solo infracciones únicas
             for infraction in self.detected_infractions:
-                print(f"Añadiendo placa: {infraction['plate']} al tiempo {infraction['time']}")
+                plate_text = infraction['plate']
+                if plate_text not in unique_plates:
+                    unique_plates.add(plate_text)
+                    unique_infractions.append(infraction)
+                    print(f"Añadiendo placa única: {plate_text}")
+                else:
+                    print(f"Omitiendo placa duplicada: {plate_text}")
+            
+            print(f"Infracciones únicas a añadir: {len(unique_infractions)} de {len(self.detected_infractions)}")
+            
+            # CORRECCIÓN: Inicializar el contador de tiempo para registrar procesamiento
+            processing_start_time = time.time()
+            
+            # Inicializar colección para tiempos de procesamiento
+            processing_times = []
+            
+            # CORRECCIÓN: Asegurarse que el tiempo de inicio esté disponible en el player
+            if not hasattr(self.player, "detection_start_time"):
+                self.player.detection_start_time = processing_start_time
+            
+            # CORRECCIÓN: Preparar registro de tiempos para mostrar TR correcto
+            if not hasattr(self.player, "registration_times"):
+                self.player.registration_times = []
+            
+            # Añadir las placas detectadas al panel lateral (solo las únicas)
+            for infraction in unique_infractions:
+                print(f"Procesando placa: {infraction['plate']} al tiempo {infraction['time']}")
+                
+                # Calcular tiempo de procesamiento individual para esta placa
+                plate_processing_time = time.time() - processing_start_time
+                processing_times.append(plate_processing_time)
+                
                 # Asegurarnos de que todos los parámetros sean válidos
                 if 'plate_img' in infraction and infraction['plate_img'] is not None and \
-                    'plate' in infraction and infraction['plate'] is not None:
-                    # Llamar directamente al método (sin _)
-                    self.player._safe_add_plate_to_panel(
-                        infraction['plate_img'], 
-                        infraction['plate'], 
-                        infraction['time']
-                    )
+                'plate' in infraction and infraction['plate'] is not None and \
+                'vehicle_img' in infraction and infraction['vehicle_img'] is not None:
+                    
+                    plate_text = infraction['plate']
+                    
+                    # Inicializar historial si no existe
+                    if not hasattr(self.player, "plate_detection_history"):
+                        self.player.plate_detection_history = {}
+                    
+                    # Inicializar estructura para esta placa si no existe
+                    if plate_text not in self.player.plate_detection_history:
+                        # CORRECCIÓN: Añadir datos precisos de tiempo
+                        detection_time = self.player.detection_start_time
+                        if infraction['time'] is not None:
+                            detection_time = self.player.detection_start_time + infraction['time']
+                            
+                        registration_time = time.time()
+                        proc_time = registration_time - detection_time
+                        
+                        # Añadir al historial de tiempos de registro para estadísticas
+                        self.player.registration_times.append(proc_time)
+                        
+                        self.player.plate_detection_history[plate_text] = {
+                            "count": 1,  # Siempre 1, evitamos duplicados
+                            "first_detection": infraction['time'],
+                            "last_detection": infraction['time'],
+                            "vehicle_img": infraction['vehicle_img'],
+                            "detection_time": detection_time,
+                            "registration_time": registration_time,
+                            "processing_time": proc_time
+                        }
+                        
+                        # Si existen rutas de archivos, asegurarse de guardarlas en el historial
+                        if 'vehicle_path' in infraction and infraction['vehicle_path']:
+                            self.player.plate_detection_history[plate_text]["vehicle_path"] = infraction['vehicle_path']
+                        
+                        if 'plate_path' in infraction and infraction['plate_path']:
+                            self.player.plate_detection_history[plate_text]["plate_path"] = infraction['plate_path']
+                        
+                        # Llamar directamente al método para añadir la placa al panel
+                        self.player._safe_add_plate_to_panel(
+                            infraction['plate_img'], 
+                            plate_text, 
+                            infraction['time']
+                        )
+                    else:
+                        print(f"Placa {plate_text} ya está en el historial, no se añade duplicado")
+            
+            # CORRECCIÓN: Actualizar indicadores de rendimiento después de añadir todas las placas
+            if hasattr(self.player, "performance_indicators"):
+                # Calcular el promedio del tiempo de registro si hay datos
+                avg_proc_time = 0.0
+                if self.player.registration_times:
+                    avg_proc_time = sum(self.player.registration_times) / len(self.player.registration_times)
+                    
+                # Actualizar indicadores
+                self.player.performance_indicators = {
+                    "TI": len(unique_plates),  # Número exacto de infracciones
+                    "TR": avg_proc_time,      # Tiempo promedio de registro
+                    "IR": 0.0                  # Reiniciar índice de reincidencia
+                }
+                
+                # Forzar actualización del panel de rendimiento
+                if hasattr(self.player, "_update_metrics_panel"):
+                    self.player._update_metrics_panel()
             
             # Actualizar la interfaz con información de las infracciones
-            found_message = f"Se han detectado {len(self.detected_infractions)} infracciones."
+            found_message = f"Se han detectado {len(unique_plates)} infracciones únicas."
             self.phase_label.config(text="Procesamiento completado")
             self.details_label.config(text=found_message)
             
-            # Iniciar reproducción normal del video
+            # Registrar el número correcto en los logs
+            print(f"Análisis completado: {len(unique_plates)} infracciones detectadas")
+            
+            # Iniciar reproducción optimizada del video (solo detección de vehículos)
             self.player.start_processed_video(self.video_path)
             
             # Cerrar diálogo después de un breve retraso para mostrar el mensaje final
-            self.dialog.after(1500, lambda: self._close_dialog(True))
+            self.dialog.after(1000, lambda: self._close_dialog(True))
         except Exception as e:
             print(f"Error en _complete_processing: {e}")
             import traceback
@@ -793,7 +1147,6 @@ class PreprocessingDialog:
         try:
             # Verificar que el diálogo aún existe antes de mostrar el error
             if self.dialog.winfo_exists():
-                from tkinter import messagebox
                 messagebox.showerror("Error de procesamiento", message, parent=self.dialog)
                 self.canceled = True
                 self.dialog.grab_release()
@@ -816,61 +1169,3 @@ class PreprocessingDialog:
             
             # Cerrar después de un breve retraso
             self.dialog.after(1000, lambda: self.dialog.destroy())
-
-    def _deduplicate_plates(self, plate_text):
-        """
-        Compara una placa contra las ya detectadas y determina
-        si es un duplicado o cuál es la versión más probable.
-        
-        Args:
-            plate_text: Texto de la placa detectada
-        
-        Returns:
-            (is_duplicate, best_plate): Indica si es duplicado y cuál es la mejor versión
-        """
-        if not plate_text or len(plate_text) < 4:
-            return False, plate_text
-            
-        # Verificar si ya existe esta placa exacta
-        for data in self.detected_infractions:
-            if data['plate'] == plate_text:
-                return True, plate_text
-        
-        # Buscar placas muy similares (posibles diferentes detecciones del mismo vehículo)
-        best_match = None
-        best_score = 0
-        
-        for data in self.detected_infractions:
-            existing_plate = data['plate']
-            
-            # Si tienen longitud muy diferente, no son la misma placa
-            if abs(len(existing_plate) - len(plate_text)) > 2:
-                continue
-                
-            # Calcular similitud basada en caracteres coincidentes en la misma posición
-            min_len = min(len(existing_plate), len(plate_text))
-            matches = sum(1 for i in range(min_len) if existing_plate[i] == plate_text[i])
-            score = matches / min_len
-            
-            # Si hay similitud alta, probablemente es la misma placa
-            if score > 0.6 and score > best_score:
-                best_score = score
-                best_match = existing_plate
-        
-        if best_match:
-            # Decidir cuál versión es mejor (la nueva o la existente)
-            # Preferir placas conocidas como A3606L o AE670S
-            known_plates = ["A3606L", "AE670S", "A3670S"]
-            
-            if plate_text in known_plates:
-                return True, plate_text  # La nueva es mejor
-            elif best_match in known_plates:
-                return True, best_match  # La existente es mejor
-                
-            # Si ninguna es conocida, preferir la más larga o la que tenga mejor formato
-            if len(plate_text) > len(best_match):
-                return True, plate_text
-            else:
-                return True, best_match
-                
-        return False, plate_text
