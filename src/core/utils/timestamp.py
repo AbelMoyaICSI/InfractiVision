@@ -17,7 +17,23 @@ class TimestampUpdater:
         self.running = False
 
     def update(self):
-        if self.running:
-            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            self.label.config(text=now_str)
-            self.root.after(100, self.update)
+        """Actualiza el timestamp a la hora actual"""
+        if not self.running:
+            return
+            
+        try:
+            # Solo intentar actualizar el label si todavía existe
+            if self.label.winfo_exists():
+                now_str = time.strftime("%H:%M:%S")
+                self.label.config(text=now_str)
+                # Programar la siguiente actualización
+                self.timer_id = self.label.after(1000, self.update)
+            else:
+                # Si el label ya no existe, detener el timer
+                self.running = False
+                self.timer_id = None
+        except Exception as e:
+            # Si hay cualquier error, detener las actualizaciones
+            print(f"Error actualizando timestamp: {e}")
+            self.running = False
+            self.timer_id = None

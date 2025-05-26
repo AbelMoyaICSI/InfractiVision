@@ -1,0 +1,167 @@
+[
+  {
+    "placa": "AE-6061",
+    "fecha": "25/05/2025",
+    "hora": "20:28:45",
+    "video_timestamp": "00:22",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_AE-6061.jpg",
+    "plate_path": "data\\output\\placas\\plate_AE-6061.jpg"
+  },
+  {
+    "placa": "TP-6006",
+    "fecha": "25/05/2025",
+    "hora": "20:28:45",
+    "video_timestamp": "00:22",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_TP-6006.jpg",
+    "plate_path": "data\\output\\placas\\plate_TP-6006.jpg"
+  },
+  {
+    "placa": "TI-96086",
+    "fecha": "25/05/2025",
+    "hora": "20:28:45",
+    "video_timestamp": "00:23",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_TI-96086.jpg",
+    "plate_path": "data\\output\\placas\\plate_TI-96086.jpg"
+  },
+  {
+    "placa": "EE-7612",
+    "fecha": "25/05/2025",
+    "hora": "20:28:45",
+    "video_timestamp": "00:26",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_EE-7612.jpg",
+    "plate_path": "data\\output\\placas\\plate_EE-7612.jpg"
+  },
+  {
+    "placa": "IMV-6190",
+    "fecha": "25/05/2025",
+    "hora": "20:28:45",
+    "video_timestamp": "00:26",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_IMV-6190.jpg",
+    "plate_path": "data\\output\\placas\\plate_IMV-6190.jpg"
+  },
+  {
+    "placa": "AE-6061",
+    "fecha": "26/05/2025",
+    "hora": "18:10:34",
+    "video_timestamp": "00:22",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_AE-6061.jpg",
+    "plate_path": "data\\output\\placas\\plate_AE-6061.jpg"
+  },
+  {
+    "placa": "TP-6006",
+    "fecha": "26/05/2025",
+    "hora": "18:10:34",
+    "video_timestamp": "00:22",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_TP-6006.jpg",
+    "plate_path": "data\\output\\placas\\plate_TP-6006.jpg"
+  },
+  {
+    "placa": "TI-96086",
+    "fecha": "26/05/2025",
+    "hora": "18:10:34",
+    "video_timestamp": "00:23",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_TI-96086.jpg",
+    "plate_path": "data\\output\\placas\\plate_TI-96086.jpg"
+  },
+  {
+    "placa": "EE-7612",
+    "fecha": "26/05/2025",
+    "hora": "18:10:34",
+    "video_timestamp": "00:26",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_EE-7612.jpg",
+    "plate_path": "data\\output\\placas\\plate_EE-7612.jpg"
+  },
+  {
+    "placa": "IMV-6190",
+    "fecha": "26/05/2025",
+    "hora": "18:10:34",
+    "video_timestamp": "00:26",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_IMV-6190.jpg",
+    "plate_path": "data\\output\\placas\\plate_IMV-6190.jpg"
+  },
+  {
+    "placa": "IV-5751",
+    "fecha": "26/05/2025",
+    "hora": "18:11:25",
+    "video_timestamp": "00:29",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_IV-5751.jpg",
+    "plate_path": "data\\output\\placas\\plate_IV-5751.jpg"
+  },
+  {
+    "placa": "IV625",
+    "fecha": "26/05/2025",
+    "hora": "18:11:25",
+    "video_timestamp": "00:29",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_IV625.jpg",
+    "plate_path": "data\\output\\placas\\plate_IV625.jpg"
+  },
+  {
+    "placa": "TOHUE",
+    "fecha": "26/05/2025",
+    "hora": "18:11:25",
+    "video_timestamp": "00:29",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_TOHUE.jpg",
+    "plate_path": "data\\output\\placas\\plate_TOHUE.jpg"
+  },
+  {
+    "placa": "J1HW",
+    "fecha": "26/05/2025",
+    "hora": "18:11:25",
+    "video_timestamp": "00:29",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_J1HW.jpg",
+    "plate_path": "data\\output\\placas\\plate_J1HW.jpg"
+  },
+  {
+    "placa": "QB0N",
+    "fecha": "26/05/2025",
+    "hora": "18:11:25",
+    "video_timestamp": "00:31",
+    "ubicacion": "Desconocida",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_QB0N.jpg",
+    "plate_path": "data\\output\\placas\\plate_QB0N.jpg"
+  }
+]

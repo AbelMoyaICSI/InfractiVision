@@ -30,7 +30,12 @@ class PlateRecognizerModel:
         if model_path.exists():
             try:
                 # Intentar cargar modelo pre-entrenado
-                self.model = LPRNet(class_num=len('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'))
+                self.model = LPRNet(
+                    class_num=len(self.char_list), 
+                    lpr_max_len=8, 
+                    phase='test',
+                    dropout_rate=0.0  # En inferencia no usamos dropout
+                )
                 self.model.load_state_dict(torch.load(str(model_path), map_location=self.device))
                 self.model.to(self.device)
                 self.model.eval()
@@ -40,13 +45,19 @@ class PlateRecognizerModel:
                 self.create_default_model()
         else:
             self.create_default_model()
-    
+
     def create_default_model(self):
         """Crea un modelo por defecto si no se puede cargar el pre-entrenado"""
         print("Creando modelo de reconocimiento de placas por defecto")
-        self.model = LPRNet(class_num=len('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'))
+        self.model = LPRNet(
+            class_num=len(self.char_list),
+            lpr_max_len=8, 
+            phase='test',
+            dropout_rate=0.0
+        )
         self.model.to(self.device)
         self.model.eval()
+        print("Modelo LPRNet creado en modo evaluación")
     
     def preprocess_image(self, img, is_night=False):
         """Preprocesa la imagen para el modelo con mejor separación entre caracteres similares"""
@@ -275,97 +286,77 @@ class PlateRecognizerModel:
             print(f"Error en enhance_edges_for_ocr: {e}")
             return img
 
+class small_basic_block(nn.Module):
+    def __init__(self, ch_in, ch_out):
+        super(small_basic_block, self).__init__()
+        self.block = nn.Sequential(
+            nn.Conv2d(ch_in, ch_out // 4, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv2d(ch_out // 4, ch_out // 4, kernel_size=(3, 1), padding=(1, 0)),
+            nn.ReLU(),
+            nn.Conv2d(ch_out // 4, ch_out // 4, kernel_size=(1, 3), padding=(0, 1)),
+            nn.ReLU(),
+            nn.Conv2d(ch_out // 4, ch_out, kernel_size=1),
+        )
+    def forward(self, x):
+        return self.block(x)
+
 # Red neuronal LPRNet para reconocimiento de placas
 class LPRNet(nn.Module):
-    def __init__(self, class_num=36, dropout_rate=0.5):
+    def __init__(self, class_num, lpr_max_len=8, phase='test', dropout_rate=0.5):
         super(LPRNet, self).__init__()
-        
+        self.phase = phase
+        self.lpr_max_len = lpr_max_len
         self.class_num = class_num
-        
-        # Aumentamos la capacidad del backbone para mejorar la discriminación
         self.backbone = nn.Sequential(
-            # Capa inicial
-            nn.Conv2d(3, 64, 3, 1, 1),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1), # 0
+            nn.BatchNorm2d(num_features=64),
+            nn.ReLU(),  # 2
+            nn.MaxPool3d(kernel_size=(1, 3, 3), stride=(1, 1, 1)),
+            small_basic_block(ch_in=64, ch_out=128),    # *** 4 ***
+            nn.BatchNorm2d(num_features=128),
+            nn.ReLU(),  # 6
+            nn.MaxPool3d(kernel_size=(1, 3, 3), stride=(2, 1, 2)),
+            small_basic_block(ch_in=128, ch_out=256),   # 8 - Corregido: 128 en lugar de 64
+            nn.BatchNorm2d(num_features=256),
+            nn.ReLU(),  # 10
+            small_basic_block(ch_in=256, ch_out=256),   # *** 11 ***
+            nn.BatchNorm2d(num_features=256),   # 12
             nn.ReLU(),
-            
-            # Bloque 1 mejorado
-            nn.Conv2d(64, 64, 3, 1, 1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            
-            # Bloque 2 mejorado
-            nn.Conv2d(64, 128, 3, 1, 1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.Conv2d(128, 128, 3, 1, 1),  # Capa adicional para mayor capacidad
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            
-            # Bloque 3 mejorado
-            nn.Conv2d(128, 256, 3, 1, 1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-            nn.Conv2d(256, 256, 3, 1, 1),  # Capa adicional para mayor capacidad
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-            nn.MaxPool2d((2, 1), (2, 1)),
-            
-            # Bloque 4 mejorado
-            nn.Conv2d(256, 512, 3, 1, 1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            
-            # Bloque global mejorado
-            nn.Conv2d(512, 512, 3, 1, 1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            
-            # Dropout
-            nn.Dropout(dropout_rate)
+            nn.MaxPool3d(kernel_size=(1, 3, 3), stride=(4, 1, 2)),  # 14
+            nn.Dropout(dropout_rate),
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(1, 4), stride=1),  # 16 - Corregido: 256 en lugar de 64
+            nn.BatchNorm2d(num_features=256),
+            nn.ReLU(),  # 18
+            nn.Dropout(dropout_rate),
+            nn.Conv2d(in_channels=256, out_channels=class_num, kernel_size=(13, 1), stride=1), # 20
+            nn.BatchNorm2d(num_features=class_num),
+            nn.ReLU(),  # *** 22 ***
         )
-        
-        # Capa de salida mejorada
         self.container = nn.Sequential(
-            nn.Conv2d(512, 512, 1, 1, 0),
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            nn.Conv2d(512, 512, 1, 1, 0),  # Capa adicional para mejor proyección
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            nn.Conv2d(512, class_num, 1, 1, 0)
+            nn.Conv2d(in_channels=448+self.class_num, out_channels=self.class_num, kernel_size=(1, 1), stride=(1, 1)),
         )
-        
-        # Capas finales
-        self.dropout = nn.Dropout(dropout_rate)
-        fc_input_size = class_num * (24 // 8)
-        self.fc = nn.Linear(fc_input_size, class_num)
-        
-        # Capa adicional para características específicas
-        # Ayuda a distinguir caracteres problemáticos como 6/G
-        self.char_attention = nn.Sequential(
-            nn.Linear(class_num, class_num),
-            nn.ReLU(),
-            nn.Linear(class_num, class_num)
-        )
-        
+
     def forward(self, x):
-        x = self.backbone(x)
+        keep_features = list()
+        for i, layer in enumerate(self.backbone.children()):
+            x = layer(x)
+            if i in [2, 6, 13, 22]: # [2, 4, 8, 11, 22]
+                keep_features.append(x)
+
+        global_context = list()
+        for i, f in enumerate(keep_features):
+            if i in [0, 1]:
+                f = nn.AvgPool2d(kernel_size=5, stride=5)(f)
+            if i in [2]:
+                f = nn.AvgPool2d(kernel_size=(4, 10), stride=(4, 2))(f)
+            f_pow = torch.pow(f, 2)
+            f_mean = torch.mean(f_pow)
+            f = torch.div(f, f_mean)
+            global_context.append(f)
+
+        x = torch.cat(global_context, 1)
         x = self.container(x)
-        
-        # Procesamiento de secuencia
-        x = x.permute(0, 3, 1, 2)  # [B, W, C, H]
-        B, W, C, H = x.shape
-        x = x.reshape(B, W, C * H)  # [B, W, C*H]
-        
-        # Procesamiento con atención para mejorar caracteres similares
-        x = self.dropout(x)
-        x = self.fc(x)
-        
-        # Aplicar corrección de características para caracteres problemáticos
-        att = self.char_attention(x)
-        x = x + att * 0.1  # Combinar con un peso pequeño para no perturbar demasiado
-        
-        return x
+        logits = torch.mean(x, dim=2)
+
+        return logits

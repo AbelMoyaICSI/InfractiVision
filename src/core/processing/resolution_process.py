@@ -436,22 +436,22 @@ def get_optimal_sr_processor(is_night=False):
         Configured SuperResolutionProcessor instance
     """
     if is_night:
-        # Night scenes - valores EXTREMADAMENTE CONSERVADORES
+        # Night scenes - VALORES OPTIMIZADOS PARA OCR
         return SuperResolutionProcessor(
             scale_factor=2,
-            denoise_strength=4,     # MUCHO más bajo - reducido de 6 a 4
-            sharpen_strength=0.2    # MUCHO más bajo - reducido de 0.3 a 0.2
+            denoise_strength=2,     # Reducido aún más para preservar bordes de caracteres
+            sharpen_strength=0.25   # Ligeramente incrementado para definir mejor los bordes
         )
     else:
-        # Day scenes - valores EXTREMADAMENTE CONSERVADORES
+        # Day scenes - VALORES OPTIMIZADOS PARA OCR
         return SuperResolutionProcessor(
             scale_factor=2,
-            denoise_strength=3,     # Reducido de 4 a 3
-            sharpen_strength=0.25   # Reducido de 0.4 a 0.25
+            denoise_strength=1.5,   # Mínimo para preservar todos los detalles
+            sharpen_strength=0.2    # Ajustado para definir mejor los caracteres
         )
 
 
-def enhance_plate_image(plate_img, is_night=False, output_path=None):
+def enhance_plate_image(plate_img, is_night=False, output_path=None, region="ES"):
     """
     Enhance a license plate image for better OCR recognition.
     Compatible with InfractiVision preprocessing workflow.
@@ -460,6 +460,7 @@ def enhance_plate_image(plate_img, is_night=False, output_path=None):
         plate_img: Input plate image (numpy array or path to image)
         is_night: Boolean indicating if it's a night scene
         output_path: Optional path to save the enhanced image
+        region: Region/country code for plate format rules
         
     Returns:
         Enhanced license plate image
@@ -467,8 +468,10 @@ def enhance_plate_image(plate_img, is_night=False, output_path=None):
     # Configure SR parameters based on lighting conditions
     sr_processor = get_optimal_sr_processor(is_night)
     
-    # NUEVO: Pre-procesamiento específico para mejorar reconocimiento de caracteres
+    # Get filename from path if string was provided
+    filename = ""
     if isinstance(plate_img, str):
+        filename = os.path.basename(plate_img)
         plate_img = cv2.imread(plate_img)
     
     if plate_img is not None and plate_img.size > 0:
@@ -478,38 +481,195 @@ def enhance_plate_image(plate_img, is_night=False, output_path=None):
         else:
             gray = plate_img.copy()
             
+        # Determine lighting conditions if not provided
+        if is_night is None:
+            is_night = gray.mean() < 100  # Umbral para escenas nocturnas
+            
+        # Métricas para evaluar la calidad de la imagen
+        std_dev = np.std(gray)
+        blur_index = cv2.Laplacian(gray, cv2.CV_64F).var()
+        
+        # MEJORA: Pre-procesamiento específico para mejorar reconocimiento de caracteres
+        # Especialmente optimizado para las confusiones comunes vistas en las imágenes
+        
         # Redimensionar para procesamiento consistente si es muy pequeña
         if gray.shape[0] < 50 or gray.shape[1] < 100:
             aspect = gray.shape[1] / gray.shape[0]
-            new_height = 50
+            new_height = 80
             new_width = int(new_height * aspect)
             gray = cv2.resize(gray, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
         
-        # Mejorar la separación entre caracteres
-        # Usar umbralización adaptativa para mejorar la definición de caracteres
+        # Eliminar ruido preservando bordes para mejor OCR
         if is_night:
-            # Para imágenes nocturnas, más agresivo con la ecualización
-            gray = cv2.equalizeHist(gray)
-            binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                          cv2.THRESH_BINARY, 13, 4)
+            # Para imágenes nocturnas - usar filtro bilateral que preserva bordes
+            denoised = cv2.bilateralFilter(gray, 5, 17, 17)
+            
+            # NUEVO: Ecualización de histograma adaptativa para mejorar contraste
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(3, 3))
+            enhanced = clahe.apply(denoised)
+            
+            # NUEVO: Binarización adaptativa con parámetros optimizados para placas nocturnas
+            binary = cv2.adaptiveThreshold(
+                enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY, 15, 4
+            )
+            
+            # NUEVO: Operaciones morfológicas para aclarar los caracteres
+            kernel = np.ones((1, 1), np.uint8)
+            morph = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+            
+            # NUEVO: Dilatar ligeramente para completar caracteres fragmentados
+            kernel_dilate = np.ones((2, 2), np.uint8)
+            morph = cv2.dilate(morph, kernel_dilate, iterations=1)
         else:
-            # Para imágenes diurnas, más conservador
+            # Para imágenes diurnas
+            denoised = cv2.bilateralFilter(gray, 5, 12, 12)
+            
+            # Equilibrar contraste con CLAHE
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(2, 2))
-            gray = clahe.apply(gray)
-            binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                          cv2.THRESH_BINARY, 11, 2)
-                                          
-        # Operaciones morfológicas para mejorar la separación entre caracteres
-        kernel = np.ones((2, 2), np.uint8)
-        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+            enhanced = clahe.apply(denoised)
+            
+            # NUEVO: Binarización con parámetros optimizados para placas diurnas
+            binary = cv2.adaptiveThreshold(
+                enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY, 13, 2
+            )
+            
+            # Suavizar ruido mínimamente para preservar detalles
+            kernel = np.ones((2, 2), np.uint8)
+            morph = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+            
+            # Refinar bordes de caracteres
+            kernel_erode = np.ones((2, 1), np.uint8)
+            morph = cv2.erode(morph, kernel_erode, iterations=1)
         
-        # Volver a convertir la imagen procesada
-        plate_img = binary
+        # NUEVO: Mejorar separación entre caracteres
+        # Detectar componentes conectados y separar si están muy juntos
+        connectivity = 4
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
+            255 - morph, connectivity, cv2.CV_32S
+        )
+        
+        # Crear máscara de caracteres optimizada
+        char_mask = np.zeros_like(morph)
+        min_area = 20  # Filtrar componentes pequeños como ruido
+        
+        # Identificar componentes que probablemente sean caracteres
+        for i in range(1, num_labels):
+            if stats[i, cv2.CC_STAT_AREA] > min_area:
+                # Extraer solo componentes de tamaño adecuado - probables caracteres
+                component_mask = (labels == i).astype(np.uint8) * 255
+                char_mask = cv2.bitwise_or(char_mask, component_mask)
+        
+        # NUEVO: Crear imagen optimizada para OCR mezclando binaria y original
+        blend_ratio = 0.8 if is_night else 0.6
+        result = cv2.addWeighted(binary, blend_ratio, morph, 1.0 - blend_ratio, 0)
+        
+        # Umbralizar nuevamente para asegurar valores binarios
+        _, result = cv2.threshold(result, 127, 255, cv2.THRESH_BINARY)
+        
+        # Volver a convertir la imagen procesada para OCR
+        plate_img = result
     
     # Process the plate con la imagen pre-procesada
     enhanced_plate = sr_processor.process_plate(plate_img, output_path)
     
     return enhanced_plate
+
+# Nuevas funciones auxiliares para mejorar la detección de placas
+
+def determine_plate_region(filename):
+    """
+    Determina la región de la placa basado en el nombre del archivo o características.
+    """
+    # Por defecto usar España, pero se puede extender a otras regiones
+    region = "ES"
+    
+    # Verificar si hay códigos de país en el nombre del archivo
+    country_codes = {
+        "ES": "España", "CL": "Chile", "AR": "Argentina", 
+        "MX": "México", "CO": "Colombia", "PE": "Perú"
+    }
+    
+    for code in country_codes:
+        if code in filename:
+            region = code
+            break
+    
+    return region
+
+def get_common_plate_patterns(region):
+    """
+    Devuelve patrones comunes de placas y confusiones de caracteres por región.
+    """
+    patterns = {
+        # Patrones de placas españolas
+        "ES": {
+            "pattern": r"^\d{4}[BCDFGHJKLMNPRSTVWXYZ]{3}$",  # 1234XXX
+            "old_pattern": r"^[A-Z]{1,2}\d{4}[A-Z]{2}$",      # XX1234XX
+            "character_confusions": {
+                "0": "ODCQ",    # 0 confundido con O, D, C, Q
+                "1": "ILT7",    # 1 confundido con I, L, T, 7
+                "2": "Z",       # 2 confundido con Z
+                "5": "S",       # 5 confundido con S
+                "6": "G",       # 6 confundido con G
+                "8": "B",       # 8 confundido con B
+                "B": "8R",      # B confundido con 8, R
+                "D": "0",       # D confundido con 0
+                "G": "6",       # G confundido con 6
+                "I": "1J",      # I confundido con 1, J
+                "J": "I",       # J confundido con I
+                "O": "0",       # O confundido con 0
+                "S": "5",       # S confundido con 5
+                "Z": "2"        # Z confundido con 2
+            },
+            "forbidden_chars": "AEIÑOQU",  # Caracteres no usados en placas españolas modernas
+        },
+        # Patrones de placas chilenas
+        "CL": {
+            "pattern": r"^[A-Z]{2}[A-Z0-9]{2}\d{2}$",  # XX-XX-99
+            "old_pattern": r"^[A-Z]{2}\d{4}$",         # XX-9999
+            "character_confusions": {
+                "0": "ODCQ",
+                "1": "IL7",
+                "5": "S",
+                "6": "G",
+                "8": "B",
+                "B": "8",
+                "D": "0",
+                "I": "1",
+                "O": "0Q",
+                "Q": "0O",
+                "S": "5"
+            }
+        },
+        # Más regiones se pueden añadir según necesidad
+        # Patrón predeterminado para cualquier región no especificada
+        "DEFAULT": {
+            "character_confusions": {
+                "0": "ODCQ",
+                "1": "ILT7",
+                "2": "Z",
+                "5": "S",
+                "6": "G",
+                "8": "B",
+                "B": "8",
+                "D": "0",
+                "G": "6",
+                "I": "1",
+                "J": "I",
+                "L": "1",
+                "O": "0Q",
+                "Q": "0O",
+                "S": "5",
+                "T": "7",
+                "Z": "2"
+            }
+        }
+    }
+    
+    # Devolver patrones para la región especificada o default si no se encuentra
+    return patterns.get(region, patterns["DEFAULT"])
 
 
 # Utility function to apply super-resolution to all plates in a directory

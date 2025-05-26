@@ -1304,6 +1304,7 @@ class VideoPlayerOpenCV:
         """
         Añade una placa detectada al panel lateral con diseño de card.
         Guarda las imágenes en carpetas separadas de placas y autos.
+        También guarda la infracción en el archivo JSON centralizado.
         """
         # Verificaciones básicas
         if plate_img is None or not isinstance(plate_text, str):
@@ -1472,7 +1473,7 @@ class VideoPlayerOpenCV:
                     "plate_text": plate_text,
                     "timestamp": timestamp,
                     "plate_path": plate_path,
-                    "vehicle_path": vehicle_path
+                    "vehicle_path": vehicle_path if os.path.exists(vehicle_path) else None
                 }
                 self.detected_plates_widgets.append(plate_data)
                 
@@ -1501,7 +1502,7 @@ class VideoPlayerOpenCV:
                     
                     # Almacenar las rutas de los archivos
                     self.plate_detection_history[plate_text]["plate_path"] = plate_path
-                    if vehicle_path:
+                    if os.path.exists(vehicle_path):
                         self.plate_detection_history[plate_text]["vehicle_path"] = vehicle_path
                 else:
                     # Crear nuevo registro
@@ -1510,7 +1511,7 @@ class VideoPlayerOpenCV:
                         "first_detection": timestamp,
                         "last_detection": timestamp,
                         "plate_path": plate_path,
-                        "vehicle_path": vehicle_path,
+                        "vehicle_path": vehicle_path if os.path.exists(vehicle_path) else None,
                         "registration_time": current_registration_time
                     }
                     

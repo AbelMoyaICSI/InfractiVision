@@ -728,83 +728,217 @@ class PreprocessingDialog:
             return [], segment_id
     
     def _normalize_plate_text(self, plate_text):
-        """Normaliza el texto de la placa para mejorar la detección de duplicados"""
+        """
+        Normaliza el texto de la placa para mejorar la precisión de detección.
+        Incorpora diccionarios de confusiones comunes según la región de la placa.
+        """
         if not plate_text:
             return plate_text
             
+        # Importar funciones auxiliares si están disponibles
+        try:
+            from src.core.processing.resolution_process import get_common_plate_patterns
+            region_aware = True
+        except ImportError:
+            region_aware = False
+            
+        # Determinar región de la placa (por defecto España)
+        region = "ES"
+        
         # Eliminar espacios y convertir a mayúsculas
         normalized = plate_text.strip().upper()
         
-        # Eliminar caracteres no alfanuméricos
+        # Eliminar caracteres no alfanuméricos excepto guión
         normalized = ''.join(c for c in normalized if c.isalnum() or c == '-')
         
-        # NUEVO: Corrección de errores comunes en OCR
-        # Correcciones específicas para el formato chileno de placas (XX-YYYY o XX-YYYYY)
-        corrections = {
-            'O': '0',  # Letra O a número 0
-            'D': '0',  # D confundido con 0
-            'Q': '0',  # Q confundido con 0
-            'I': '1',  # I confundido con 1 
-            'L': '1',  # L confundido con 1
-            'Z': '2',  # Z confundido con 2
-            'S': '5',  # S confundido con 5
-            'G': '6',  # G confundido con 6
-            'B': '8',  # B confundido con 8
-        }
+        # Obtener patrones de confusión para la región
+        char_confusions = {}
+        if region_aware:
+            patterns = get_common_plate_patterns(region)
+            char_confusions = patterns.get("character_confusions", {})
+        else:
+            # Diccionario básico de correcciones comunes si no hay acceso a la función
+            char_confusions = {
+                "0": "ODCQ",    # 0 confundido con O, D, C, Q
+                "1": "ILT7",    # 1 confundido con I, L, T, 7
+                "2": "Z",       # 2 confundido con Z
+                "5": "S",       # 5 confundido con S
+                "6": "G",       # 6 confundido con G
+                "8": "B",       # 8 confundido con B
+                "B": "8R",      # B confundido con 8, R
+                "D": "0",       # D confundido con 0
+                "G": "6",       # G confundido con 6
+                "I": "1J",      # I confundido con 1, J
+                "J": "I",       # J confundido con I
+                "O": "0",       # O confundido con 0
+                "S": "5",       # S confundido con 5
+                "Z": "2"        # Z confundido con 2
+            }
         
-        # Detectar patrón de placa: normalmente 2 letras seguidas de 4-5 dígitos
+        # MEJORA: Detectar y corregir formato de placas
+        # Verificar patrones comunes de placas
         if len(normalized) >= 6:
-            parts = normalized.split('-') if '-' in normalized else [normalized[:2], normalized[2:]]
+            # Detectar si hay un separador o si hay que inferirlo
+            if '-' in normalized:
+                parts = normalized.split('-')
+            else:
+                # Intentar segmentar automáticamente entre parte alfabética y numérica
+                # usando algoritmo mejorado basado en secuencias de caracteres
+                
+                # Analizar la secuencia para detectar patrones
+                letter_segments = []
+                number_segments = []
+                current_type = None
+                current_segment = ""
+                
+                for char in normalized:
+                    is_digit = char.isdigit()
+                    char_type = "digit" if is_digit else "letter"
+                    
+                    # Si cambiamos de tipo de carácter o es el primer carácter
+                    if current_type != char_type and current_segment:
+                        if current_type == "digit":
+                            number_segments.append(current_segment)
+                        else:
+                            letter_segments.append(current_segment)
+                        current_segment = char
+                    else:
+                        current_segment += char
+                    
+                    current_type = char_type
+                
+                # Añadir el último segmento
+                if current_segment:
+                    if current_type == "digit":
+                        number_segments.append(current_segment)
+                    else:
+                        letter_segments.append(current_segment)
+                
+                # Combinar segmentos según patrón más probable para la región
+                if region == "ES":
+                    # España: Formato actual NNNNLLL o antiguo LLNNNNLL
+                    if len(letter_segments) == 1 and len(number_segments) == 1:
+                        # Determinar orden basado en posición
+                        if normalized.find(letter_segments[0]) == 0:
+                            # Letras primero (formato antiguo)
+                            parts = [letter_segments[0], number_segments[0]]
+                        else:
+                            # Números primero (formato actual)
+                            parts = [number_segments[0], letter_segments[0]]
+                    else:
+                        # Si hay múltiples segmentos, intentar reconstruir basado en la longitud total
+                        parts = []
+                        if len(normalized) >= 7:  # Probable formato actual
+                            num_prefix = ''.join(c for c in normalized if c.isdigit())[:4]
+                            letter_suffix = ''.join(c for c in normalized if not c.isdigit())[:3]
+                            if num_prefix and letter_suffix:
+                                parts = [num_prefix, letter_suffix]
+                        
+                        if not parts:  # Fallback o formato antiguo
+                            parts = [normalized[:2], normalized[2:]]
+                else:
+                    # Algoritmo genérico para otras regiones
+                    if letter_segments and number_segments:
+                        # Determinar patrón más probable
+                        if len(letter_segments[0]) <= 3 and normalized.find(letter_segments[0]) == 0:
+                            # Letras al inicio
+                            parts = [letter_segments[0], ''.join(number_segments)]
+                        else:
+                            # Números al inicio o mezclados
+                            parts = [number_segments[0], ''.join(letter_segments)]
+                    else:
+                        # No hay segmentación clara, usar división en 2 partes
+                        mid = len(normalized) // 2
+                        parts = [normalized[:mid], normalized[mid:]]
             
+            # Procesar las partes identificadas
             if len(parts) == 2:
                 prefix, numbers = parts
                 
-                # Corregir prefijo: debería ser letras
+                # MEJORADO: Correcciones más robustas basadas en patrones y región
+                
+                # Corregir confusiones en prefijo (convertir dígitos a letras donde sea apropiado)
                 corrected_prefix = ''
                 for char in prefix:
-                    if char in '0123456789':
-                        # Si es un número en el prefijo, convertirlo a letra
-                        # 0->O, 1->I, 2->Z, 3->B, 4->A, 5->S, 6->G, 7->T, 8->B, 9->P
-                        num_to_letter = {'0':'O', '1':'I', '2':'Z', '3':'B', '4':'A', 
-                                        '5':'S', '6':'G', '7':'T', '8':'B', '9':'P'}
-                        corrected_prefix += num_to_letter.get(char, char)
+                    if char.isdigit() and region == "ES" and len(prefix) <= 3:
+                        # Si estamos en un prefijo de España y encontramos dígitos, probablemente sean letras
+                        # conversiones comunes de OCR: 0→O, 1→I, 2→Z, 3→E, 4→A, 5→S, 6→G, 7→T, 8→B, 9→R
+                        digit_to_letter = {
+                            '0': 'O', '1': 'I', '2': 'Z', '3': 'E', 
+                            '4': 'A', '5': 'S', '6': 'G', '7': 'T', 
+                            '8': 'B', '9': 'P'
+                        }
+                        corrected_prefix += digit_to_letter.get(char, char)
                     else:
                         corrected_prefix += char
                 
-                # Corregir números: debería ser dígitos
+                # MEJORADO: Corregir confusiones en números (convertir letras a dígitos)
                 corrected_numbers = ''
                 for char in numbers:
-                    # Si es una letra en la parte numérica, convertirla a número
                     if char.isalpha():
-                        corrected_numbers += corrections.get(char, char)
+                        # Buscar si este carácter suele confundirse con algún número
+                        found = False
+                        for digit, confusions in char_confusions.items():
+                            if char in confusions and digit.isdigit():
+                                corrected_numbers += digit
+                                found = True
+                                break
+                        if not found:  # Si no hay corrección específica
+                            # Conversiones generales para letras en posiciones numéricas
+                            letter_to_digit = {
+                                'O': '0', 'D': '0', 'Q': '0', 'C': '0',
+                                'I': '1', 'L': '1', 'J': '1',
+                                'Z': '2',
+                                'E': '3',
+                                'A': '4',
+                                'S': '5',
+                                'G': '6', 'C': '6',
+                                'T': '7', 'Y': '7',
+                                'B': '8',
+                                'P': '9', 'R': '9'
+                            }
+                            corrected_numbers += letter_to_digit.get(char, char)
                     else:
                         corrected_numbers += char
-                        
-                # Formato común de placas en Chile: letras-números
-                normalized = f"{corrected_prefix}-{corrected_numbers}"
-        
-        # Verificación contra lista de placas conocidas para una coincidencia exacta
-        known_plates = ["A3606L", "AE670S", "A3670S", "IA-V6190", "JA-3K961", "JA-96886"]
-        
-        # Comparar usando la distancia de edición para encontrar la placa conocida más similar
-        min_distance = float('inf')
-        best_match = normalized
-        
-        for known_plate in known_plates:
-            # Calcular distancia de Levenshtein (edición)
-            import difflib
-            similarity = difflib.SequenceMatcher(None, normalized, known_plate).ratio()
-            distance = 1 - similarity
-            
-            # Si la similitud es alta (más del 80%), usar la placa conocida
-            if similarity > 0.8 and distance < min_distance:
-                min_distance = distance
-                best_match = known_plate
-        
-        # Si encontramos una coincidencia muy buena, usar esa placa
-        if min_distance < 0.2:  # 80% de similitud o más
-            return best_match
                 
+                # Si tenemos una estructura clara de parte alfabética+numérica, aplicar formato con guión
+                if corrected_prefix and corrected_numbers:
+                    normalized = f"{corrected_prefix}-{corrected_numbers}"
+                else:
+                    normalized = corrected_prefix + corrected_numbers
+        
+        # Formateo final: asegurar estructura consistente
+        if '-' in normalized:
+            parts = normalized.split('-')
+            if len(parts) == 2:
+                # Formato final: asegurar que se siga el patrón típico
+                prefix, numbers = parts
+                
+                # Verificar reglas específicas por región
+                if region == "ES":
+                    # En España: Preferir letras en el prefijo para formato antiguo
+                    if len(prefix) <= 3 and not prefix.isdigit():
+                        # Convertir cualquier dígito restante a su letra similar
+                        prefix = ''.join(['O' if c == '0' else 
+                                        'I' if c == '1' else 
+                                        'Z' if c == '2' else 
+                                        'E' if c == '3' else 
+                                        'A' if c == '4' else 
+                                        'S' if c == '5' else 
+                                        'G' if c == '6' else 
+                                        'T' if c == '7' else 
+                                        'B' if c == '8' else 
+                                        'P' if c == '9' else c for c in prefix])
+                    
+                    # En la parte numérica, asegurar que tenga el largo típico (4-5 dígitos)
+                    if len(numbers) > 5:
+                        numbers = numbers[:5]
+                    elif len(numbers) < 4 and numbers.isdigit():
+                        # Si es muy corta, puede haber un error - intentar agregar ceros
+                        numbers = numbers.zfill(4)
+                
+                normalized = f"{prefix}-{numbers}"
+        
         return normalized
     
     def _consolidate_plate_detections(self):
@@ -1095,6 +1229,9 @@ class PreprocessingDialog:
                     else:
                         print(f"Placa {plate_text} ya está en el historial, no se añade duplicado")
             
+            # NUEVO: Guardar todas las infracciones detectadas en el archivo JSON
+            self._save_infractions_to_json(unique_infractions)
+                        
             # CORRECCIÓN: Actualizar indicadores de rendimiento después de añadir todas las placas
             if hasattr(self.player, "performance_indicators"):
                 # Calcular el promedio del tiempo de registro si hay datos
@@ -1131,6 +1268,77 @@ class PreprocessingDialog:
             import traceback
             traceback.print_exc()
             self._close_dialog(False)
+
+    # NUEVO MÉTODO: Guardar infracciones en archivo JSON
+    def _save_infractions_to_json(self, infractions):
+        """
+        Guarda las infracciones detectadas en un archivo JSON centralizado
+        para ser utilizadas por el módulo de gestión de infracciones.
+        """
+        import json
+        import os
+        from datetime import datetime
+        
+        # Directorio y archivo para infracciones
+        data_dir = os.path.join("data")
+        os.makedirs(data_dir, exist_ok=True)
+        infractions_file = os.path.join(data_dir, "infracciones.json")
+        
+        # Cargar infracciones existentes si el archivo existe
+        existing_infractions = []
+        if os.path.exists(infractions_file):
+            try:
+                with open(infractions_file, "r", encoding="utf-8") as f:
+                    existing_infractions = json.load(f)
+            except Exception as e:
+                print(f"Error al cargar archivo de infracciones: {e}")
+        
+        # Nombre de la avenida actual
+        avenue_name = "Desconocida"
+        if hasattr(self.player, "current_avenue") and self.player.current_avenue:
+            avenue_name = self.player.current_avenue
+        
+        # Convertir cada infracción a formato compatible con gestión
+        for infraction in infractions:
+            # Obtener la fecha y hora actual para registro
+            now = datetime.now()
+            fecha = now.strftime("%d/%m/%Y")
+            hora = now.strftime("%H:%M:%S")
+            
+            # Obtener tiempo de video donde ocurrió la infracción
+            video_time = infraction.get('time', 0)
+            if video_time:
+                mins = int(video_time // 60)
+                secs = int(video_time % 60)
+                timestamp = f"{mins:02d}:{secs:02d}"
+            else:
+                timestamp = "00:00"
+            
+            # Crear estructura para la infracción
+            infraction_data = {
+                "placa": infraction["plate"],
+                "fecha": fecha,
+                "hora": hora,
+                "video_timestamp": timestamp,
+                "ubicacion": avenue_name,
+                "tipo": "Semáforo en rojo",
+                "estado": "Pendiente",
+                # Rutas a las imágenes guardadas
+                "vehicle_path": infraction.get("vehicle_path", ""),
+                "plate_path": infraction.get("plate_path", "")
+            }
+            
+            # Añadir a la lista de infracciones
+            existing_infractions.append(infraction_data)
+        
+        # Guardar todas las infracciones actualizadas
+        try:
+            with open(infractions_file, "w", encoding="utf-8") as f:
+                json.dump(existing_infractions, f, indent=2, ensure_ascii=False)
+            
+            print(f"Se guardaron {len(infractions)} infracciones en {infractions_file}")
+        except Exception as e:
+            print(f"Error guardando infracciones en JSON: {e}")
 
     def _close_dialog(self, success):
         """Cierra el diálogo y llama a la función de completado"""
