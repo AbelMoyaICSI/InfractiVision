@@ -24,7 +24,7 @@ class Semaforo:
 
         # Canvas para semáforo
         self.canvas = tk.Canvas(self.frame, bg='white', highlightthickness=0)
-        self.canvas.pack(fill="both", expand=True, padx=10, pady=10)
+        self.canvas.pack(fill="both", expand=True, pady=5)
 
         # Label de estado y tiempos
         self.info_label = tk.Label(self.frame, text="Semáforo inactivo", font=("Arial", 14), bg='white')

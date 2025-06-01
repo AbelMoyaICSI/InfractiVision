@@ -76,6 +76,12 @@ class PreprocessingDialog:
                 from src.core.detection.vehicle_detector import VehicleDetector
                 self.player.vehicle_detector = VehicleDetector(model_path="models/yolov8n.pt")
                 
+            # Inicializar el detector ANPR para placas
+            if not hasattr(self.player, 'anpr_detector'):
+                from src.core.detection.anpr import ANPR
+                self.player.anpr_detector = ANPR(languages=['es', 'en'])
+                
+            # Mantener el detector de placas anterior como fallback
             if not hasattr(self.player, 'plate_detector'):
                 from src.core.detection.plate_detector import PlateDetector
                 self.player.plate_detector = PlateDetector()
@@ -524,7 +530,7 @@ class PreprocessingDialog:
                 cap.release()
 
     def _process_segment_optimized(self, segment_id, start_frame, end_frame, 
-         frame_sampling, vehicle_detector, conf_threshold):
+     frame_sampling, vehicle_detector, conf_threshold):
         """Función optimizada para procesar un segmento de video en un hilo separado"""
         try:
             # Abrir segmento de video
@@ -539,6 +545,9 @@ class PreprocessingDialog:
             # Variable para seguir las placas ya detectadas GLOBALMENTE (no solo en este segmento)
             if not hasattr(self, "detected_plates_global"):
                 self.detected_plates_global = set()
+            
+            # Verificar si tenemos acceso al detector ANPR
+            has_anpr = hasattr(self.player, 'anpr_detector')
             
             # Enviar frame inicial para mostrar que estamos procesando este segmento
             ret, first_frame = segment_cap.read()
@@ -578,7 +587,6 @@ class PreprocessingDialog:
                     frame = self._enhance_night_visibility_fast(frame)
                 
                 # MOSTRAR FRAME EN LA UI MÁS FRECUENTEMENTE
-                # Enviar cada frame procesado para visualización en tiempo real
                 if processed % max(1, frame_sampling // 2) == 0:  # Actualizar más seguido
                     display_frame = frame.copy()
                     # Dibujar información sobre el procesamiento
@@ -591,7 +599,107 @@ class PreprocessingDialog:
                     # Poner el frame en la cola para UI
                     self.result_queue.put(("frame_update", (display_frame, segment_id, processed, total_to_process)))
                 
-                # Detectar vehículos (sin el parámetro classes que causaba el error)
+                # NUEVA IMPLEMENTACIÓN: Intentar detección directa con ANPR primero
+                anpr_detection_interval = 10  # Solo intentar ANPR directo cada X frames muestreados
+                direct_anpr_detections = []
+                
+                if has_anpr and processed % anpr_detection_interval == 0:
+                    # Intentar detección directa con ANPR
+                    try:
+                        # Procesar el frame completo directamente con ANPR
+                        processed_frame, anpr_results = self.player.anpr_detector.process_frame(
+                            frame, 
+                            frame_idx=absolute_frame,
+                            is_night=self.is_night
+                        )
+                        
+                        # Procesar resultados de ANPR si los hay
+                        for detection in anpr_results:
+                            plate_text = detection.get("plate", "")
+                            coords = detection.get("coords")
+                            
+                            if plate_text and coords and len(plate_text) >= 4:
+                                # Normalizar texto de placa
+                                plate_text = self._normalize_plate_text(plate_text)
+                                
+                                # Verificar si esta placa ya fue detectada
+                                if plate_text not in self.detected_plates_global:
+                                    self.detected_plates_global.add(plate_text)
+                                    
+                                    # Extraer imagen de la placa
+                                    x1, y1, x2, y2 = coords
+                                    if all(c >= 0 for c in (x1, y1, x2, y2)):
+                                        plate_img = frame[y1:y2, x1:x2].copy() if y2 > y1 and x2 > x1 else None
+                                        
+                                        # Crear directorio para placas si no existe
+                                        plates_dir = os.path.join("data", "output", "placas")
+                                        vehicles_dir = os.path.join("data", "output", "autos")
+                                        os.makedirs(plates_dir, exist_ok=True)
+                                        os.makedirs(vehicles_dir, exist_ok=True)
+                                        
+                                        # Guardar la imagen de la placa
+                                        plate_filename = f"plate_{plate_text}.jpg"
+                                        plate_path = os.path.join(plates_dir, plate_filename)
+                                        cv2.imwrite(plate_path, plate_img)
+                                        
+                                        # Guardar la imagen del vehículo (área ampliada alrededor de la placa)
+                                        expansion_factor = 2.5  # Expandir 2.5x el área de la placa
+                                        height, width = frame.shape[:2]
+                                        
+                                        # Calcular el centro de la placa
+                                        center_x = (x1 + x2) // 2
+                                        center_y = (y1 + y2) // 2
+                                        
+                                        # Calcular dimensiones expandidas
+                                        plate_width = x2 - x1
+                                        plate_height = y2 - y1
+                                        expanded_width = int(plate_width * expansion_factor)
+                                        expanded_height = int(plate_height * expansion_factor)
+                                        
+                                        # Calcular las nuevas coordenadas
+                                        ex1 = max(0, center_x - expanded_width // 2)
+                                        ey1 = max(0, center_y - expanded_height // 2)
+                                        ex2 = min(width, center_x + expanded_width // 2)
+                                        ey2 = min(height, center_y + expanded_height // 2)
+                                        
+                                        # Extraer el área ampliada
+                                        vehicle_img = frame[ey1:ey2, ex1:ex2].copy()
+                                        
+                                        # Guardar la imagen del vehículo
+                                        vehicle_filename = f"vehicle_{plate_text}.jpg"
+                                        vehicle_path = os.path.join(vehicles_dir, vehicle_filename)
+                                        cv2.imwrite(vehicle_path, vehicle_img)
+                                        
+                                        # Añadir a infracciones
+                                        direct_anpr_detections.append({
+                                            'frame': absolute_frame,
+                                            'time': absolute_frame / self.fps,
+                                            'plate': plate_text,
+                                            'plate_img': plate_img,
+                                            'vehicle_img': vehicle_img,
+                                            'plate_path': plate_path,
+                                            'vehicle_path': vehicle_path,
+                                            'unique': True
+                                        })
+                    except Exception as e:
+                        print(f"Error en detección directa ANPR: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
+                # Si encontramos placas con detección directa, agregarlas y continuar
+                if direct_anpr_detections:
+                    local_infractions.extend(direct_anpr_detections)
+                    
+                    # Mostrar detecciones en tiempo real
+                    detection_frame = frame.copy()
+                    for detection in direct_anpr_detections:
+                        cv2.putText(detection_frame, f"Placa (ANPR): {detection['plate']}", (10, 90), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    
+                    self.result_queue.put(("frame_update", (detection_frame, segment_id, processed, total_to_process)))
+                    continue  # Seguir con el siguiente frame si ya encontramos placas
+                
+                # Si no hubo detecciones directas, proceder con el flujo normal de detección por vehículos
                 detections = vehicle_detector.detect(
                     frame, 
                     conf=conf_threshold,
@@ -605,10 +713,9 @@ class PreprocessingDialog:
                         x1, y1, x2, y2, class_id = detection[:5]
                         
                         # Verificar si es un vehículo (esto puede variar según el modelo)
-                        # Clases típicas de YOLO: 2=coche, 5=bus, 7=camión
                         if isinstance(class_id, (int, float)):
                             class_id = int(class_id)
-                            if class_id in [2, 5, 7]:
+                            if class_id in [2, 5, 7]:  # coche, bus, camión
                                 filtered_detections.append((x1, y1, x2, y2, class_id))
                 
                 # Procesar cada vehículo detectado
@@ -626,31 +733,49 @@ class PreprocessingDialog:
                         if y2_roi > y1_roi and x2_roi > x1_roi:
                             vehicle_roi = frame[y1_roi:y2_roi, x1_roi:x2_roi].copy()
                             
-                            # Procesar placa
+                            # Procesar placa con el detector ANPR si está disponible
                             try:
-                                from src.core.processing.plate_processing import process_plate
+                                plate_text = ""
+                                plate_img = None
+                                plate_bbox = None
+                                enhance_plate_image = None  # Inicializar para evitar errores
                                 
-                                # Verificar si está disponible el módulo de super-resolución
+                                # Intentar cargar la función de mejora de imagen primero
                                 try:
                                     from src.core.processing.resolution_process import enhance_plate_image
                                 except ImportError:
-                                    print("Módulo de super-resolución no disponible, usando procesamiento estándar")
                                     enhance_plate_image = None
                                 
-                                # Detectar placa en el vehículo
-                                bbox_plate, plate_img, plate_text = process_plate(vehicle_roi, is_night=self.is_night)
+                                # Usar ANPR si está disponible
+                                if has_anpr:
+                                    try:
+                                        # Intentar con ANPR primero para mayor precisión
+                                        _, plate_text, plate_bbox, plate_img = self.player.anpr_detector.detect_and_recognize_plate(vehicle_roi)
+                                    except Exception as anpr_error:
+                                        print(f"Error en ANPR: {anpr_error}")
+                                        plate_text = ""
                                 
-                                # Si no encontró texto o es muy corto, intentar con reconocedor alternativo
+                                # Si ANPR no encuentra nada, usar el detector tradicional
                                 if not plate_text or len(plate_text) < 4:
-                                    from src.core.ocr.recognizer import recognize_plate
+                                    from src.core.processing.plate_processing import process_plate
                                     
-                                    # Intentar mejorar la imagen antes del reconocimiento alternativo
-                                    if enhance_plate_image is not None:
-                                        enhanced_roi = enhance_plate_image(vehicle_roi, is_night=self.is_night)
-                                        plate_text = recognize_plate(enhanced_roi)
-                                        plate_img = enhanced_roi
-                                    else:
-                                        plate_text = recognize_plate(vehicle_roi)
+                                    # Detectar placa en el vehículo con el método tradicional
+                                    plate_bbox, plate_img, plate_text = process_plate(vehicle_roi, is_night=self.is_night)
+                                    
+                                    # Si no encontró texto o es muy corto, intentar con reconocedor alternativo
+                                    if not plate_text or len(plate_text) < 4:
+                                        from src.core.ocr.recognizer import recognize_plate
+                                        
+                                        # Intentar mejorar la imagen antes del reconocimiento alternativo
+                                        if enhance_plate_image is not None:
+                                            enhanced_roi = enhance_plate_image(vehicle_roi, is_night=self.is_night)
+                                            plate_text = recognize_plate(enhanced_roi)
+                                            if plate_img is None:
+                                                plate_img = enhanced_roi
+                                        else:
+                                            plate_text = recognize_plate(vehicle_roi)
+                                            if plate_img is None:
+                                                plate_img = vehicle_roi
                                 
                                 # Verificar que la placa sea válida
                                 if plate_text and len(plate_text) >= 4:
@@ -673,12 +798,17 @@ class PreprocessingDialog:
                                         plate_path = os.path.join(plates_dir, plate_filename)
                                         
                                         # Aplicar super-resolución a la placa antes de guardarla
-                                        if enhance_plate_image is not None:
-                                            enhanced_plate = enhance_plate_image(plate_img, is_night=self.is_night, output_path=plate_path)
+                                        if enhance_plate_image is not None and plate_img is not None:
+                                            enhanced_plate = enhance_plate_image(plate_img, is_night=self.is_night)
+                                            cv2.imwrite(plate_path, enhanced_plate)
                                         else:
                                             # Si no está disponible el módulo, guardar la placa original
-                                            cv2.imwrite(plate_path, plate_img)
-                                            enhanced_plate = plate_img
+                                            if plate_img is not None:
+                                                cv2.imwrite(plate_path, plate_img)
+                                                enhanced_plate = plate_img
+                                            else:
+                                                enhanced_plate = vehicle_roi
+                                                cv2.imwrite(plate_path, vehicle_roi)
                                         
                                         # Guardar la imagen del vehículo con nombre ÚNICO
                                         vehicle_filename = f"vehicle_{plate_text}.jpg"
@@ -690,7 +820,7 @@ class PreprocessingDialog:
                                             'frame': absolute_frame,
                                             'time': absolute_frame / self.fps,
                                             'plate': plate_text,
-                                            'plate_img': enhanced_plate.copy(),  # Usar la versión mejorada
+                                            'plate_img': enhanced_plate if plate_img is not None else vehicle_roi.copy(),
                                             'vehicle_img': vehicle_roi.copy(),
                                             'plate_path': plate_path,
                                             'vehicle_path': vehicle_path,
@@ -704,6 +834,14 @@ class PreprocessingDialog:
                                         cv2.putText(detection_frame, f"Placa: {plate_text}", (x1_roi, y1_roi-10), 
                                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                                         
+                                        # Si tenemos coordenadas de la placa, dibujarlas también
+                                        if plate_bbox and len(plate_bbox) == 4:
+                                            px1, py1, px2, py2 = plate_bbox
+                                            # Ajustar coordenadas relativas al frame completo
+                                            px1, py1 = x1_roi + px1, y1_roi + py1
+                                            px2, py2 = x1_roi + px2, y1_roi + py2
+                                            cv2.rectangle(detection_frame, (px1, py1), (px2, py2), (0, 0, 255), 2)
+                                        
                                         # Enviar detección a la UI
                                         self.result_queue.put(("frame_update", (detection_frame, segment_id, processed, total_to_process)))
                                     else:
@@ -715,10 +853,13 @@ class PreprocessingDialog:
             
             segment_cap.release()
             
+            # Filtrar duplicados antes de enviar resultados
+            filtered_infractions = self._filter_segment_duplicates(local_infractions)
+            
             # Enviar resultados a la cola principal
-            self.result_queue.put(("segment_complete", (segment_id, local_infractions)))
-            print(f"Segmento {segment_id} completado con {len(local_infractions)} infracciones")
-            return local_infractions, segment_id
+            self.result_queue.put(("segment_complete", (segment_id, filtered_infractions)))
+            print(f"Segmento {segment_id} completado con {len(filtered_infractions)} infracciones")
+            return filtered_infractions, segment_id
             
         except Exception as e:
             print(f"Error en segment {segment_id}: {e}")
@@ -726,6 +867,7 @@ class PreprocessingDialog:
             traceback.print_exc()
             self.result_queue.put(("segment_complete", (segment_id, [])))
             return [], segment_id
+
     
     def _normalize_plate_text(self, plate_text):
         """

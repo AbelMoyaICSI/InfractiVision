@@ -37,7 +37,7 @@ class VideoPlayerOpenCV:
         self.CAR_CLASS_ID = 2               # en COCO, 'car' = 2
         self.CONF_THRESH   = 0.4
 
-         # Variables para métricas
+        # Variables para métricas
         self.detected_plates_widgets = []
         self.seen_plates = set()
         
@@ -70,14 +70,14 @@ class VideoPlayerOpenCV:
 
         btn_style = {
             "font": ("Arial", 12),
-            "bg": "#4F4F4F",
+            "bg": "#34495e",
             "fg": "white",
-            "activebackground": "#6E6E6E",
+            "activebackground": "#34495e",
             "activeforeground": "white",
             "bd": 0,
             "relief": "flat",
             "cursor": "hand2",
-            "width": 14,
+            "width": 36,
             "anchor": "center",
             "justify": "center"
         }
@@ -87,36 +87,14 @@ class VideoPlayerOpenCV:
             command=self.select_video,
             **btn_style
         )
-        self.load_button.pack(side="left", padx=6)
-
-        self.save_poly_button = tk.Button(
-            self.btn_frame, text="GUARDAR\nÁREA",
-            command=self.save_polygon,
-            **btn_style
-        )
-        self.save_poly_button.pack(side="left", padx=6)
-
-        self.delete_poly_button = tk.Button(
-            self.btn_frame, text="BORRAR\nÁREA",
-            command=self.delete_polygon,
-            **btn_style
-        )
-        self.delete_poly_button.pack(side="left", padx=6)
-
-        self.btn_gestion_polys = tk.Button(
-            self.btn_frame, text="GESTIONAR\nÁREAS",
-            command=self.gestionar_poligonos,
-            **btn_style
-        )
-        self.btn_gestion_polys.pack(side="left", padx=6)
+        self.load_button.pack(side="left", padx=10)
 
         self.btn_gestion_camaras = tk.Button(
-            self.btn_frame, text="GESTIONAR\nCÁMARAS",
+            self.btn_frame, text="PREPROCESAMIENTO\nDE VIDEO",
             command=self.gestionar_camaras,
             **btn_style
         )
-        self.btn_gestion_camaras.pack(side="left", padx=6)
-
+        self.btn_gestion_camaras.pack(side="left", padx=10)
 
         # Panel vídeo + lateral
         self.video_panel_container = tk.Frame(self.frame, bg='black')

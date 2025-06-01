@@ -494,6 +494,11 @@ def recognize_plate(plate_bgr, is_night=False):
         is_night: Flag que indica si es escena nocturna
     """
     try:
+        # Verificar que la imagen no sea None
+        if plate_bgr is None:
+            print("Error: imagen de placa vacía")
+            return ""
+            
         # Verificar dimensiones mínimas
         h, w = plate_bgr.shape[:2]
         if h < 15 or w < 40:
@@ -526,27 +531,41 @@ def recognize_plate(plate_bgr, is_night=False):
         # Preprocesar imagen para mejor lectura
         processed_images = []
         
+        # CORRECCIÓN: Verificar el número de canales antes de convertir
+        if len(plate_bgr.shape) == 2:
+            # Ya está en escala de grises, convertir a BGR para procesamiento uniforme
+            plate_bgr_color = cv2.cvtColor(plate_bgr, cv2.COLOR_GRAY2BGR)
+            gray = plate_bgr.copy()  # Ya está en escala de grises
+        else:
+            # Es una imagen a color, usarla directamente
+            plate_bgr_color = plate_bgr.copy()
+            # Convertir a escala de grises de forma segura
+            gray = cv2.cvtColor(plate_bgr, cv2.COLOR_BGR2GRAY)
+        
         # 2.1 Mejora de contraste
         alpha = 1.5 if is_night else 1.3
         beta = 40 if is_night else 20
-        enhanced = cv2.convertScaleAbs(plate_bgr, alpha=alpha, beta=beta)
+        enhanced = cv2.convertScaleAbs(plate_bgr_color, alpha=alpha, beta=beta)
         processed_images.append(enhanced)
         
         # 2.2 Umbralización adaptativa
-        gray = cv2.cvtColor(plate_bgr, cv2.COLOR_BGR2GRAY)
         block_size = 15 if is_night else 11
         c_value = 4 if is_night else 2
         thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                      cv2.THRESH_BINARY, block_size, c_value)
-        processed_images.append(cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR))
+        # Convertir de vuelta a BGR para que EasyOCR lo procese correctamente
+        thresh_bgr = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
+        processed_images.append(thresh_bgr)
         
         # 2.3 Umbralización Otsu
         _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        processed_images.append(cv2.cvtColor(otsu, cv2.COLOR_GRAY2BGR))
+        # Convertir de vuelta a BGR para que EasyOCR lo procese correctamente
+        otsu_bgr = cv2.cvtColor(otsu, cv2.COLOR_GRAY2BGR)
+        processed_images.append(otsu_bgr)
         
         # 2.4 Ampliación para ver mejor los detalles pequeños
-        h, w = plate_bgr.shape[:2]
-        enlarged = cv2.resize(plate_bgr, (w*2, h*2), interpolation=cv2.INTER_CUBIC)
+        h, w = plate_bgr_color.shape[:2]
+        enlarged = cv2.resize(plate_bgr_color, (w*2, h*2), interpolation=cv2.INTER_CUBIC)
         processed_images.append(enlarged)
         
         # Procesar todas las versiones
@@ -563,7 +582,7 @@ def recognize_plate(plate_bgr, is_night=False):
         # Si se detectan pocas placas, ser más flexibles
         if len(all_results) < 2:
             # Intentar sin restricción de caracteres
-            for img in [plate_bgr] + processed_images[:2]:
+            for img in [plate_bgr_color] + processed_images[:2]:
                 results = reader.readtext(img, detail=1)
                 for (bbox, text, prob) in results:
                     if prob > 0.2:
@@ -596,7 +615,10 @@ def recognize_plate(plate_bgr, is_night=False):
         counts = Counter(corrected_results)
         
         # Obtener el resultado más común
-        most_common = counts.most_common(1)[0][0]
+        if counts:
+            most_common = counts.most_common(1)[0][0]
+        else:
+            return ""
         
         # Verificación final para placas específicas
         for correct_plate, variants in specific_plate_variants.items():

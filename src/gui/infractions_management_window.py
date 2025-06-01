@@ -211,19 +211,28 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
 
     # — Contenedor scrollable para las tarjetas —
     container = tk.Frame(window, bg="gray")
-    container.pack(fill="both", expand=True, padx=160, pady=(20,100))
-
+    container.pack(fill="both", expand=True, padx=100, pady=(20,100))  # Añadido padding horizontal moderado
+    
+    # Ajustar el ancho del canvas para ocupar toda la ventana
     canvas = tk.Canvas(container, bg="gray", highlightthickness=0)
     scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
     scrollable_frame = tk.Frame(canvas, bg="gray")
-
-    scrollable_frame.bind(
-        "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-    )
-    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    
+    # Hacer que scrollable_frame mantenga el ancho del canvas
+    def configure_frame(event):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+        canvas.itemconfig(frame_id, width=event.width)  # Ajustar el ancho del frame al canvas
+    
+    scrollable_frame.bind("<Configure>", configure_frame)
+    frame_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=window.winfo_width())
+    
+    # Hacer que el canvas cambie de tamaño con la ventana
+    def on_canvas_configure(event):
+        canvas.itemconfig(frame_id, width=event.width)
+    
+    canvas.bind("<Configure>", on_canvas_configure)
     canvas.configure(yscrollcommand=scrollbar.set)
-
+    
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
 
@@ -254,14 +263,14 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             # Card principal con elevación y bordes redondeados
             card = tk.Frame(scrollable_frame, bg="#F2F2F2", 
                          bd=1, relief=tk.RAISED)
-            card.pack(fill="x", padx=20, pady=10)
+            card.pack(fill="x", padx=15, pady=10, expand=True)  # Añadido padding horizontal para separar del borde
             
             # Parte superior: información principal
             top_frame = tk.Frame(card, bg="#F2F2F2")
-            top_frame.pack(fill="x", padx=10, pady=(10, 5))
+            top_frame.pack(fill="x", padx=15, pady=(10, 5), expand=True)  # Aumentado el padding interno
             
             # Marco de imagen con tamaño fijo
-            img_frame = tk.Frame(top_frame, width=120, height=80, bg="#DDDDDD", 
+            img_frame = tk.Frame(top_frame, width=150, height=100, bg="#DDDDDD", 
                               relief=tk.SUNKEN, bd=1)
             img_frame.pack(side="left", padx=10, pady=10)
             img_frame.pack_propagate(False)
@@ -275,7 +284,7 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                     from PIL import Image, ImageTk
                     # Cargar y redimensionar la imagen
                     img = Image.open(vehicle_path)
-                    img = img.resize((120, 80), Image.LANCZOS)
+                    img = img.resize((150, 100), Image.LANCZOS)  # Ajustado al nuevo tamaño
                     photo = ImageTk.PhotoImage(img)
                     vehicle_img_label = tk.Label(img_frame, image=photo, bg="#DDDDDD")
                     vehicle_img_label.image = photo  # Guardar referencia
@@ -323,11 +332,12 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             
             # Ubicación y coordenadas
             ubicacion_info = inf.get('ubicacion','Desconocida')
-            tk.Label(
+            ubicacion_label = tk.Label(
                 text_right, text=f"Ubicación: {ubicacion_info}",
                 font=("Arial", 12), bg="#F2F2F2", fg="#333333",
-                wraplength=300, justify="left"
-            ).pack(anchor="w")
+                wraplength=800, justify="left", anchor="w"  # Añadido anchor="w" para alinear a la izquierda
+            )
+            ubicacion_label.pack(anchor="w", fill="x")  # Quitado expand=True para mejor control del espaciado
                 
             # Tipo de infracción
             tipo_info = inf.get('tipo','Semáforo en rojo')
@@ -338,7 +348,7 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             
             # Panel de botones para acciones
             btn_frame = tk.Frame(card, bg="#F2F2F2")
-            btn_frame.pack(fill="x", padx=10, pady=(0, 10))
+            btn_frame.pack(fill="x", padx=15, pady=(0, 10), expand=True)  # Aumentado el padding para alinear con el resto
             
             # Crear una función específica para cada infracción
             def create_show_plate_func(plate_path, placa_text):

@@ -25,7 +25,7 @@ class PlateRecognizerModel:
     
     def load_or_create_model(self):
         """Carga o crea el modelo para reconocimiento de placas"""
-        model_path = Path("models/plate_recognition_model.pt")
+        model_path = Path("models/license_plate_detector.pt")
         
         if model_path.exists():
             try:
@@ -60,11 +60,21 @@ class PlateRecognizerModel:
         print("Modelo LPRNet creado en modo evaluación")
     
     def preprocess_image(self, img, is_night=False):
-        """Preprocesa la imagen para el modelo con mejor separación entre caracteres similares"""
+        """Preprocesa la imagen para el modelo con mejor separación entre caracteres similares y control de canales"""
         try:
-            # Asegurarse de que sea BGR
-            if len(img.shape) == 2:
+            # Verificación crítica del formato de la imagen
+            if img is None:
+                print("Error: imagen vacía en preprocess_image")
+                return None
+            
+            # Asegurarse de que sea BGR (3 canales)
+            if len(img.shape) == 2:  # Imagen en escala de grises (1 canal)
                 img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            elif img.shape[2] == 4:  # Imagen RGBA (4 canales)
+                img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR) 
+            elif img.shape[2] != 3:  # No es BGR
+                print(f"Error: formato de imagen no soportado, canales: {img.shape[2]}")
+                return None
             
             # Redimensionar a tamaño fijo para el modelo
             img_resized = cv2.resize(img, (94, 24))
@@ -112,15 +122,34 @@ class PlateRecognizerModel:
             return img_tensor
         except Exception as e:
             print(f"Error en preprocesamiento: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def recognize(self, img, is_night=False):
-        """Reconoce la placa en la imagen con correcciones para caracteres similares"""
+        """Reconoce la placa en la imagen con correcciones para caracteres similares y control de canales"""
         try:
+            # Verificación importante: asegurarse de que la imagen tenga el formato correcto
+            if img is None:
+                print("Error: imagen vacía en recognize")
+                return ""
+            
             # Verificar cache usando hash de la imagen
             img_hash = hash(cv2.resize(img, (32, 16)).tobytes())
             if img_hash in self.result_cache:
                 return self.result_cache[img_hash]
+            
+            # Verificar número de canales y convertir si es necesario
+            if len(img.shape) == 2:
+                # La imagen ya está en escala de grises (1 canal), convertirla a BGR
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            elif len(img.shape) == 3 and img.shape[2] == 4:
+                # Imagen RGBA, convertir a BGR
+                img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+            elif len(img.shape) == 3 and img.shape[2] != 3:
+                # No es BGR ni escala de grises ni RGBA - formato no soportado
+                print(f"Error: formato de imagen no soportado, canales: {img.shape[2]}")
+                return ""
             
             # Preprocesar imagen
             img_tensor = self.preprocess_image(img, is_night)
@@ -196,6 +225,8 @@ class PlateRecognizerModel:
                 
         except Exception as e:
             print(f"Error en reconocimiento de placa: {e}")
+            import traceback
+            traceback.print_exc()
             return ""
         
     def correct_plate_format(text, is_night=False):
@@ -252,7 +283,12 @@ class PlateRecognizerModel:
         Mejora imágenes con bordes (edge maps) para mejorar reconocimiento OCR
         """
         try:
-            # Verificar si es imagen de bordes (mayormente blanco y negro)
+            # Verificaciones de seguridad para el formato de la imagen
+            if img is None:
+                print("Error: imagen vacía en enhance_edges_for_ocr")
+                return None
+            
+            # Verificar número de canales
             if len(img.shape) == 3:
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             else:
@@ -280,11 +316,17 @@ class PlateRecognizerModel:
                 enhanced_bgr = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
                 return enhanced_bgr
             
+            # Si no es imagen de bordes, asegurar que tenga 3 canales
+            if len(img.shape) == 2:
+                return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+                
             return img
             
         except Exception as e:
             print(f"Error en enhance_edges_for_ocr: {e}")
-            return img
+            import traceback
+            traceback.print_exc()
+            return img if img is not None else None
 
 class small_basic_block(nn.Module):
     def __init__(self, ch_in, ch_out):

@@ -43,9 +43,9 @@
     "time_slot": "7:00 - 19:00"
   },
   "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\Traffic IP Camera video.mp4": {
-    "green": 16,
+    "green": 12,
     "yellow": 5,
-    "red": 10,
+    "red": 16,
     "time_slot": "7:00 - 19:00"
   }
 }
