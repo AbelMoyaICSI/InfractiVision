@@ -845,72 +845,24 @@ class VideoPlayerOpenCV:
         self.semaforo.deactivate_semaphore()
 
     def plate_loop(self):
+        """
+        Versión completamente inactiva que simplemente vacía la cola sin procesar nada.
+        No detecta placas, ya que esto lo maneja exclusivamente el preprocesamiento.
+        """
         while self.plate_running:
             try:
-                # Ahora recibimos también el flag de noche y el timestamp
+                # Simplemente vaciar la cola sin procesar los datos
                 if hasattr(self, 'plate_queue') and not self.plate_queue.empty():
                     try:
-                        frame, roi, is_night, timestamp = self.plate_queue.get(timeout=1)
-                    except ValueError:
-                        # Para compatibilidad con código que no envía timestamp
-                        try:
-                            frame, roi, is_night = self.plate_queue.get(timeout=1)
-                            timestamp = None
-                        except ValueError:
-                            # Para compatibilidad con código que solo envía frame y roi
-                            frame, roi = self.plate_queue.get(timeout=1)
-                            is_night = False
-                            timestamp = None
+                        self.plate_queue.get_nowait()  # Eliminar datos sin procesarlos
+                        self.plate_queue.task_done()
+                    except Exception:
+                        pass
                 else:
                     time.sleep(0.1)
-                    continue
-                    
-                # Pasar el flag de noche para que process_plate pueda aplicar
-                # tratamientos específicos para la noche
-                start_process = time.time()
-                bbox, plate_sr, ocr_text = process_plate(roi, is_night)
-                end_process = time.time()
-                
-                if ocr_text:
-                    # Registrar tiempo de proceso
-                    process_time = end_process - start_process
-                    if not hasattr(self, "registration_times"):
-                        self.registration_times = []
-                    self.registration_times.append(process_time)
-                    
-                    # Crear directorios para placas y autos
-                    plates_dir = os.path.join("data", "output", "placas")
-                    vehicles_dir = os.path.join("data", "output", "autos")
-                    os.makedirs(plates_dir, exist_ok=True)
-                    os.makedirs(vehicles_dir, exist_ok=True)
-                    
-                    # Guardar la imagen del vehículo
-                    vehicle_filename = f"vehicle_{ocr_text}_{int(time.time())}.jpg"
-                    vehicle_path = os.path.join(vehicles_dir, vehicle_filename)
-                    cv2.imwrite(vehicle_path, roi)
-                    
-                    # Si no tenemos historial de detección, lo creamos
-                    if not hasattr(self, "plate_detection_history"):
-                        self.plate_detection_history = {}
-                    
-                    # Guardar referencia a la imagen del vehículo
-                    if ocr_text not in self.plate_detection_history:
-                        self.plate_detection_history[ocr_text] = {}
-                    
-                    # Guardar imagen del vehículo en el historial
-                    self.plate_detection_history[ocr_text]["vehicle_img"] = roi.copy()
-                    
-                    # Pasar el timestamp al método de añadir placa
-                    self._safe_add_plate_to_panel(plate_sr, ocr_text, timestamp)
-                    
-                self.plate_queue.task_done()
-                
-            except queue.Empty:
-                # Si la cola está vacía, esperar un poco
-                time.sleep(0.1)
             except Exception as e:
                 print(f"Error en plate_loop: {e}")
-                time.sleep(0.5)  # Evitar bucle rápido en caso de error
+                time.sleep(0.5)
 
     def detect_and_draw_cars(self, frame):
         """

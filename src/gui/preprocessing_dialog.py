@@ -1440,6 +1440,11 @@ class PreprocessingDialog:
         if hasattr(self.player, "current_avenue") and self.player.current_avenue:
             avenue_name = self.player.current_avenue
         
+        # Obtener la franja horaria configurada para este video
+        time_slot = "No especificada"
+        if self.cycle_durations and "time_slot" in self.cycle_durations:
+            time_slot = self.cycle_durations["time_slot"]
+        
         # Convertir cada infracción a formato compatible con gestión
         for infraction in infractions:
             # Obtener la fecha y hora actual para registro
@@ -1463,12 +1468,17 @@ class PreprocessingDialog:
                 "hora": hora,
                 "video_timestamp": timestamp,
                 "ubicacion": avenue_name,
+                "franja_horaria": time_slot,  # Añadimos la franja horaria aquí
                 "tipo": "Semáforo en rojo",
                 "estado": "Pendiente",
                 # Rutas a las imágenes guardadas
                 "vehicle_path": infraction.get("vehicle_path", ""),
                 "plate_path": infraction.get("plate_path", "")
             }
+            
+            # Añadir modo nocturno si está activo
+            if hasattr(self, 'is_night') and self.is_night:
+                infraction_data["modo_nocturno"] = True
             
             # Añadir a la lista de infracciones
             existing_infractions.append(infraction_data)
@@ -1477,8 +1487,6 @@ class PreprocessingDialog:
         try:
             with open(infractions_file, "w", encoding="utf-8") as f:
                 json.dump(existing_infractions, f, indent=2, ensure_ascii=False)
-            
-            print(f"Se guardaron {len(infractions)} infracciones en {infractions_file}")
         except Exception as e:
             print(f"Error guardando infracciones en JSON: {e}")
 

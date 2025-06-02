@@ -39,13 +39,13 @@
   "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\Night Time Traffic Camera video.mp4": {
     "green": 12,
     "yellow": 3,
-    "red": 16,
+    "red": 12,
     "time_slot": "7:00 - 19:00"
   },
   "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\Traffic IP Camera video.mp4": {
     "green": 12,
-    "yellow": 5,
-    "red": 16,
-    "time_slot": "7:00 - 19:00"
+    "yellow": 3,
+    "red": 14,
+    "time_slot": "15:00 - 21:00"
   }
 }
