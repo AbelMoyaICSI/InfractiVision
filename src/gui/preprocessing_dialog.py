@@ -1147,26 +1147,653 @@ class PreprocessingDialog:
                 
         return filtered
     
+    def _dedup_similar_plates(self, infractions):
+        """
+        Elimina placas duplicadas o muy similares, conservando la mejor calidad.
+        Versión mejorada con enfoque en similitud de imágenes para casos difíciles.
+        
+        Args:
+            infractions: Lista de infracciones detectadas
+            
+        Returns:
+            list: Lista de infracciones sin duplicados
+        """
+        if not infractions or len(infractions) <= 1:
+            return infractions
+        
+        # Importar módulos necesarios
+        import cv2
+        import numpy as np
+        import re
+        from datetime import datetime
+        
+        # Lista para almacenar grupos de placas similares
+        similarity_groups = []
+        processed_indices = set()
+        
+        # Extraer patrón numérico de una placa
+        def extract_numeric_pattern(plate_text):
+            if not plate_text:
+                return ""
+            # Extraer todos los dígitos consecutivos en la placa
+            numeric_patterns = re.findall(r'\d+', plate_text)
+            # Devolver el patrón numérico más largo (probable número de serie)
+            return max(numeric_patterns, key=len, default="")
+        
+        # Función para calcular similitud entre imágenes (vehículos)
+        def calculate_image_similarity(img1, img2):
+            """Calcula similitud entre dos imágenes de vehículos con múltiples métricas"""
+            # Si alguna imagen es None, no hay similitud
+            if img1 is None or img2 is None:
+                return 0.0
+                
+            try:
+                # Redimensionar imágenes para comparación eficiente
+                target_size = (128, 128)
+                img1_resized = cv2.resize(img1, target_size)
+                img2_resized = cv2.resize(img2, target_size)
+                
+                # Convertir a escala de grises
+                if len(img1_resized.shape) == 3:
+                    img1_gray = cv2.cvtColor(img1_resized, cv2.COLOR_BGR2GRAY)
+                    img1_color = img1_resized
+                else:
+                    img1_gray = img1_resized
+                    img1_color = cv2.cvtColor(img1_gray, cv2.COLOR_GRAY2BGR)
+                    
+                if len(img2_resized.shape) == 3:
+                    img2_gray = cv2.cvtColor(img2_resized, cv2.COLOR_BGR2GRAY)
+                    img2_color = img2_resized
+                else:
+                    img2_gray = img2_resized
+                    img2_color = cv2.cvtColor(img2_gray, cv2.COLOR_GRAY2BGR)
+                
+                # 1. SIMILITUD DE COLOR: Usar histogramas RGB para capturar diferencias de color
+                similarity_scores = []
+                
+                # Histogramas de color (uno por canal)
+                for i in range(3):  # BGR channels
+                    hist1 = cv2.calcHist([img1_color], [i], None, [32], [0, 256])
+                    hist2 = cv2.calcHist([img2_color], [i], None, [32], [0, 256])
+                    
+                    # Normalizar histogramas
+                    cv2.normalize(hist1, hist1, 0, 1, cv2.NORM_MINMAX)
+                    cv2.normalize(hist2, hist2, 0, 1, cv2.NORM_MINMAX)
+                    
+                    # Comparar histogramas y guardar score
+                    color_similarity = cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL)
+                    similarity_scores.append(max(0, color_similarity))  # Asegurar no negativos
+                
+                # Combinar similitudes de color (promedio)
+                color_similarity = sum(similarity_scores) / len(similarity_scores)
+                
+                # 2. SIMILITUD ESTRUCTURAL: Usar SSIM para comparar estructura
+                try:
+                    # Mejor métrica de similitud estructural
+                    from skimage.metrics import structural_similarity as ssim
+                    ssim_score = ssim(img1_gray, img2_gray)
+                except ImportError:
+                    # Si no está disponible, usar MSE inverso como alternativa
+                    mse = np.mean((img1_gray.astype("float") - img2_gray.astype("float")) ** 2)
+                    ssim_score = 1 - min(1.0, mse / 10000.0)
+                            
+                # 3. SIMILITUD DE CARACTERÍSTICAS: Usar ORB para extraer y comparar características
+                try:
+                    # Crear detector ORB y extraer keypoints
+                    orb = cv2.ORB_create(nfeatures=100)
+                    kp1, des1 = orb.detectAndCompute(img1_gray, None)
+                    kp2, des2 = orb.detectAndCompute(img2_gray, None)
+                    
+                    # Verificar si hay suficientes puntos clave
+                    if des1 is not None and des2 is not None and len(kp1) > 5 and len(kp2) > 5:
+                        # Matcher de fuerza bruta para comparar descriptores
+                        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+                        matches = bf.match(des1, des2)
+                        
+                        # Calcular similitud basada en coincidencias
+                        if matches:
+                            # Ordenar por distancia más baja
+                            matches = sorted(matches, key=lambda x: x.distance)
+                            
+                            # Tomar los mejores matches (hasta 30)
+                            good_matches = matches[:min(30, len(matches))]
+                            avg_distance = sum(m.distance for m in good_matches) / len(good_matches)
+                            
+                            # Convertir distancia a similitud (menor distancia = mayor similitud)
+                            # Normalizar: 0 distancia = 1.0 similitud, 100 distancia = 0.0 similitud
+                            feature_similarity = max(0.0, 1.0 - (avg_distance / 100.0))
+                        else:
+                            feature_similarity = 0.0
+                    else:
+                        feature_similarity = 0.0
+                except Exception:
+                    feature_similarity = 0.0
+                
+                # Calcular similitud global ponderada
+                # Damos más peso a color y estructura que a características
+                global_similarity = (
+                    0.45 * color_similarity +    # Color es importante para identificar mismo vehículo
+                    0.35 * ssim_score +          # Estructura general de la imagen
+                    0.20 * feature_similarity    # Características específicas
+                )
+                
+                # IMPORTANTE: Añadir UMBRAL ADICIONAL para alta similitud en color
+                # Este es clave para detectar mismo vehículo aunque la placa sea muy diferente
+                if color_similarity >= 0.85 and ssim_score >= 0.70:
+                    global_similarity = max(global_similarity, 0.85)
+                
+                return max(0.0, min(1.0, global_similarity))
+                
+            except Exception as e:
+                print(f"Error calculando similitud de imágenes: {e}")
+                return 0.0
+        
+        # Función mejorada para calcular similitud entre placas
+        def calculate_plate_similarity(p1, p2, img1=None, img2=None, time1=None, time2=None):
+            """Calcula similitud entre dos placas combinando texto, imagen y tiempo"""
+            if not p1 or not p2:
+                return 0.0
+            
+            # Factor de similitud base iniciando en 0
+            text_similarity = 0.0
+                
+            # Normalizar: eliminar guiones, espacios y convertir a mayúsculas
+            p1_norm = p1.replace('-', '').replace(' ', '').upper()
+            p2_norm = p2.replace('-', '').replace(' ', '').upper()
+            
+            # 1. VERIFICACIÓN DE IGUALDAD EXACTA
+            if p1_norm == p2_norm:
+                text_similarity = 1.0
+            else:
+                # 2. VERIFICACIÓN DE PATRONES NUMÉRICOS
+                num_pattern1 = extract_numeric_pattern(p1_norm)
+                num_pattern2 = extract_numeric_pattern(p2_norm)
+                
+                # Si ambas placas tienen patrones numéricos significativos
+                if num_pattern1 and num_pattern2 and min(len(num_pattern1), len(num_pattern2)) >= 3:
+                    # Si los patrones numéricos coinciden completamente
+                    if num_pattern1 == num_pattern2:
+                        text_similarity = max(text_similarity, 0.85)
+                        print(f"Coincidencia numérica exacta: '{p1}' y '{p2}' comparten {num_pattern1}")
+                    # Si comparten últimos dígitos (común en errores de OCR)
+                    else:
+                        # Buscar coincidencias al final del patrón numérico
+                        suffix_len = 0
+                        for i in range(1, min(len(num_pattern1), len(num_pattern2)) + 1):
+                            if num_pattern1[-i:] == num_pattern2[-i:]:
+                                suffix_len = i
+                            else:
+                                break
+                        
+                        if suffix_len >= 3:  # Si comparten al menos 3 dígitos finales
+                            similarity_factor = suffix_len / max(len(num_pattern1), len(num_pattern2))
+                            text_similarity = max(text_similarity, 0.6 + (similarity_factor * 0.3))
+                            print(f"Coincidencia en sufijo numérico ({suffix_len} dígitos): '{p1}' y '{p2}'")
+                
+                # 3. VERIFICACIÓN DE CARACTERES CONFUNDIBLES
+                if text_similarity < 0.8:
+                    # Convertir a secuencias comparables normalizando caracteres confundibles
+                    def normalize_confusable(text):
+                        # Reemplazar caracteres confundibles
+                        replacements = {
+                            'O': '0', '0': '0', 'D': '0', 'Q': '0',
+                            'I': '1', '1': '1', 'L': '1', 'J': '1',
+                            'Z': '2', '2': '2',
+                            'E': '3', '3': '3',
+                            'A': '4', '4': '4',
+                            'S': '5', '5': '5',
+                            'G': '6', '6': '6', 'C': '6',
+                            'T': '7', '7': '7',
+                            'B': '8', '8': '8',
+                            'P': '9', 'R': '9', '9': '9',
+                            'H': 'H', 'M': 'M', 'N': 'N',
+                            'U': 'U', 'V': 'V', 'W': 'W',
+                            'X': 'X', 'Y': 'Y', 'K': 'K',
+                            'F': 'F'
+                        }
+                        return ''.join(replacements.get(c, c) for c in text.upper())
+                    
+                    p1_normalized = normalize_confusable(p1_norm)
+                    p2_normalized = normalize_confusable(p2_norm)
+                    
+                    # Si coinciden después de normalizar caracteres confundibles
+                    if p1_normalized == p2_normalized:
+                        text_similarity = max(text_similarity, 0.85)
+                        print(f"Iguales después de normalizar caracteres confundibles: '{p1}' y '{p2}'")
+            
+            # 5. SIMILITUD DE IMAGEN
+            # CAMBIO CRÍTICO: Usar umbral MÁS BAJO para la similitud de imagen (60%)
+            image_similarity = 0.0
+            if img1 is not None and img2 is not None:
+                image_similarity = calculate_image_similarity(img1, img2)
+                # AQUÍ ES DONDE HACEMOS EL CAMBIO IMPORTANTE
+                if image_similarity >= 0.60:  # Bajado el umbral a 60% - CRÍTICO
+                    print(f"Similitud de imágenes entre '{p1}' y '{p2}': {image_similarity:.2f}")
+            
+            # 6. PROXIMIDAD TEMPORAL (si se proporcionan timestamps)
+            time_similarity = 0.0
+            if time1 is not None and time2 is not None:
+                # Si están a menos de 5 segundos de diferencia (AMPLIADO de 2 a 5s)
+                time_diff = abs(time1 - time2)
+                if time_diff < 5.0:  # AMPLIAR ventana temporal a 5 segundos
+                    time_similarity = 1.0 - (time_diff / 5.0)
+                    print(f"Proximidad temporal entre '{p1}' y '{p2}': {time_diff:.2f}s")
+            
+            # NUEVO SISTEMA DE PONDERACIÓN DINÁMICA
+            # - Si la similitud de imagen es ALTA, darle más peso
+            # - Si la similitud de texto es BAJA, dar aún más peso a la imagen
+            if image_similarity >= 0.70:
+                # Alta similitud de imagen: dar más peso a imagen cuando texto es bajo
+                if text_similarity < 0.5:
+                    text_weight = 0.30       # 30% texto
+                    img_weight = 0.60        # 60% imagen
+                    time_weight = 0.10       # 10% tiempo
+                else:
+                    text_weight = 0.50       # 50% texto
+                    img_weight = 0.40        # 40% imagen
+                    time_weight = 0.10       # 10% tiempo
+            else:
+                # Similitud de imagen normal: usar pesos estándar
+                text_weight = 0.60           # 60% texto
+                img_weight = 0.30            # 30% imagen
+                time_weight = 0.10           # 10% tiempo
+            
+            # Si no hay imagen o tiempo, ajustar pesos relativamente
+            if image_similarity == 0:
+                img_weight = 0
+                # Redistribuir pesos
+                total = text_weight + time_weight
+                if total > 0:
+                    text_weight = text_weight / total
+                    time_weight = time_weight / total
+                else:
+                    text_weight = 1.0
+                    time_weight = 0.0
+            
+            if time_similarity == 0:
+                time_weight = 0
+                # Redistribuir pesos
+                total = text_weight + img_weight
+                if total > 0:
+                    text_weight = text_weight / total
+                    img_weight = img_weight / total
+                else:
+                    text_weight = 1.0
+                    img_weight = 0.0
+            
+            # Calcular similitud final ponderada
+            final_similarity = (
+                text_weight * text_similarity + 
+                img_weight * image_similarity + 
+                time_weight * time_similarity
+            )
+            
+            # UMBRAL DINÁMICO CRÍTICO: Si imagen y tiempo son AMBOS altos, forzar similitud alta
+            if image_similarity >= 0.75 and time_similarity >= 0.80:
+                final_similarity = max(final_similarity, 0.85)  # Forzar mínimo 85% similitud
+                print(f"⭐ MATCH FORZADO por alta similitud de imagen y proximidad temporal: '{p1}' y '{p2}'")
+                
+            if final_similarity >= 0.5:
+                print(f"Similitud final: {final_similarity:.2f} entre '{p1}' y '{p2}' [texto:{text_similarity:.2f}, imagen:{image_similarity:.2f}, tiempo:{time_similarity:.2f}]")
+                
+            return final_similarity
+        
+        # Función para evaluar calidad de imagen de placa
+        def evaluate_plate_quality(img, plate_text=None):
+            """Evalúa la calidad de una imagen de placa basada en múltiples factores"""
+            if img is None:
+                return 0.0
+                
+            try:
+                # Convertir a escala de grises si es necesario
+                if len(img.shape) == 3:
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = img
+                    
+                # 1. Nitidez (varianza de Laplaciano)
+                laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+                
+                # 2. Contraste
+                contrast = gray.std()
+                
+                # 3. Tamaño de la imagen
+                height, width = img.shape[:2]
+                size_score = min(1.0, (width * height) / 10000)  # Normalizado
+                
+                # 4. Uniformidad/ruido (desviación estándar local)
+                noise_score = 0.5  # Valor predeterminado
+                try:
+                    local_std = cv2.Sobel(gray, cv2.CV_64F, 1, 1).std()
+                    noise_score = 1.0 - min(1.0, local_std / 100)  # Menos ruido es mejor
+                except Exception:
+                    pass
+                    
+                # 5. Bonificación por formato de placa bien estructurado
+                format_score = 0.0
+                if plate_text:
+                    # Verificar patrones comunes de placas
+                    if re.match(r'^[A-Z]+-\d{4}$', plate_text):  # Formato tipo A-1234
+                        format_score = 1.0
+                    elif re.match(r'^[A-Z]{3}-\d{4}$', plate_text):  # LVS-0254
+                        format_score = 1.0
+                    elif re.match(r'^[A-Z]{2}-\d{4}$', plate_text):  # BV-5256 
+                        format_score = 0.9
+                    elif re.match(r'^[A-Z]\d{4}$', plate_text):  # A1234
+                        format_score = 0.8
+                    elif re.match(r'^[A-Z]\d{4}[A-Z]$', plate_text):  # Formato B1234C
+                        format_score = 0.8
+                    elif '-' in plate_text:  # Cualquier otro formato con guión
+                        format_score = 0.7
+                    # Consistencia con caracteres alfanuméricos esperados
+                    if all(c.isalnum() or c == '-' for c in plate_text):
+                        format_score += 0.1
+                
+                # Combinar métricas con pesos
+                score = (
+                    0.4 * (laplacian_var / 500) +  # Nitidez (normalizada)
+                    0.3 * (contrast / 80) +        # Contraste (normalizado)
+                    0.15 * size_score +            # Tamaño adecuado
+                    0.05 * noise_score +           # Bajo ruido
+                    0.1 * format_score             # Formato adecuado
+                )
+                
+                return min(1.0, max(0.0, score))
+            except Exception as e:
+                print(f"Error al evaluar calidad: {e}")
+                return 0.1
+        
+        print("\n==== INICIANDO PROCESO DE DEDUPLICACIÓN DE PLACAS MEJORADO ====")
+        print(f"Total de infracciones a analizar: {len(infractions)}")
+        
+        # Fase 1: Precálculo de similitudes entre todas las placas
+        similarity_matrix = {}
+        print("Calculando similitudes entre placas...")
+        
+        # Calcular TODAS las similaridades de una vez
+        for i in range(len(infractions)):
+            for j in range(i+1, len(infractions)):
+                plate1 = infractions[i].get('plate', '')
+                plate2 = infractions[j].get('plate', '')
+                
+                if not plate1 or not plate2:
+                    continue
+                    
+                # Calcular similitud considerando imagen y tiempo
+                img1 = infractions[i].get('vehicle_img')
+                img2 = infractions[j].get('vehicle_img')
+                time1 = infractions[i].get('time')
+                time2 = infractions[j].get('time')
+                
+                similarity = calculate_plate_similarity(plate1, plate2, img1, img2, time1, time2)
+                
+                # CAMBIO CRÍTICO: Almacenar incluso similitudes bajas para análisis posterior
+                similarity_matrix[(i, j)] = similarity
+        
+        # Fase 2: Agrupación basada en similitud usando Union-Find
+        # Ordenar pares por similitud descendente para agrupar primero los más similares
+        similar_pairs = sorted(
+            [(pair, sim) for pair, sim in similarity_matrix.items() if sim >= 0.50], 
+            key=lambda x: x[1], 
+            reverse=True
+        )
+        
+        # CAMBIO CRÍTICO: Umbral reducido a 60% para capturar más duplicados potenciales
+        SIMILARITY_THRESHOLD = 0.60  # Reducido de 0.7 a 0.6
+        
+        # Implementación de Union-Find para manejar grupos de forma eficiente
+        parent = list(range(len(infractions)))
+        
+        def find(x):
+            if parent[x] != x:
+                parent[x] = find(parent[x])  # Path compression
+            return parent[x]
+        
+        def union(x, y):
+            parent[find(x)] = find(y)
+        
+        # PRIMERA PASADA: Agrupar primero los pares con muy alta similitud
+        for (i, j), similarity in similar_pairs:
+            if similarity >= 0.80 and find(i) != find(j):  # Threshold alto = 80%
+                union(i, j)
+                print(f"⭐ Agrupación prioritaria: '{infractions[i].get('plate', '')}' y '{infractions[j].get('plate', '')}' (similitud: {similarity:.2f})")
+        
+        # SEGUNDA PASADA: Agrupar el resto de pares con umbral más bajo
+        for (i, j), similarity in similar_pairs:
+            if similarity >= SIMILARITY_THRESHOLD and find(i) != find(j):
+                # VITAL: Verificar si las imágenes son muy similares (vehículos del mismo tipo/color)
+                img1 = infractions[i].get('vehicle_img')
+                img2 = infractions[j].get('vehicle_img')
+                time1 = infractions[i].get('time')
+                time2 = infractions[j].get('time')
+                
+                # Si las imágenes son muy similares o timestamps son cercanos, forzar agrupación
+                if img1 is not None and img2 is not None:
+                    img_similarity = calculate_image_similarity(img1, img2)
+                    time_proximity = 1.0 - min(1.0, abs(time1 - time2) / 5.0) if time1 is not None and time2 is not None else 0.0
+                    
+                    # CRUCIAL: Si las imágenes son muy similares, agrupar incluso con bajo umbral general
+                    if img_similarity >= 0.75 or (img_similarity >= 0.65 and time_proximity >= 0.8):
+                        union(i, j)
+                        print(f"👁️ Agrupación por imagen: '{infractions[i].get('plate', '')}' y '{infractions[j].get('plate', '')}' (img:{img_similarity:.2f}, tiempo:{time_proximity:.2f})")
+                    elif similarity >= SIMILARITY_THRESHOLD:
+                        union(i, j)
+                        print(f"Agrupación normal: '{infractions[i].get('plate', '')}' y '{infractions[j].get('plate', '')}' (similitud: {similarity:.2f})")
+        
+        # Construir grupos basados en Union-Find
+        groups = {}
+        for i in range(len(infractions)):
+            root = find(i)
+            if root not in groups:
+                groups[root] = []
+            groups[root].append(i)
+        
+        # Convertir el diccionario de grupos a una lista de grupos
+        similarity_groups = list(groups.values())
+        
+        print(f"Encontrados {len(similarity_groups)} grupos tras agrupar por similitud")
+        
+        # Fase 3: Evaluación de calidad y selección de la mejor placa por grupo
+        deduped_infractions = []
+        
+        for group in similarity_groups:
+            if len(group) == 1:
+                # Solo una placa en el grupo, conservarla
+                deduped_infractions.append(infractions[group[0]])
+                continue
+            
+            print(f"\n>>> GRUPO DE PLACAS SIMILARES DETECTADO:")
+            for idx in group:
+                print(f"  • {infractions[idx].get('plate', 'Sin placa')}")
+                
+            # Evaluar calidad de cada placa en el grupo
+            quality_scores = []
+            for idx in group:
+                infraction = infractions[idx]
+                plate_text = infraction.get('plate', '')
+                plate_img = infraction.get('plate_img')
+                vehicle_img = infraction.get('vehicle_img')
+                
+                # CRITERIO 1: Calidad de la imagen de placa
+                plate_quality = evaluate_plate_quality(plate_img, plate_text) if plate_img is not None else 0
+                
+                # CRITERIO 2: Calidad de la imagen del vehículo
+                vehicle_quality = evaluate_plate_quality(vehicle_img) if vehicle_img is not None else 0
+                
+                # CRITERIO 3: Formato de placa
+                format_score = 0.0
+                # Preferir formatos estándar (letras-números o números-letras)
+                if plate_text:
+                    # Formato ideal: una o más letras, guión, varios números
+                    if re.match(r'^[A-Z]+-\d+$', plate_text):
+                        format_score = 1.0
+                    # Formato secundario: letras y números sin guión
+                    elif re.match(r'^[A-Z]+\d+$', plate_text):
+                        format_score = 0.8
+                    # Tercer formato: números, guión, letras
+                    elif re.match(r'^\d+-[A-Z]+$', plate_text):
+                        format_score = 0.7
+                    # Puntuación por guión (estructura clara)
+                    elif '-' in plate_text:
+                        format_score = 0.5
+                    
+                    # Bonificación por longitud típica
+                    if 6 <= len(plate_text) <= 8:
+                        format_score += 0.1
+                        
+                    # Penalización por caracteres ambiguos o inusuales 
+                    if any(c in plate_text for c in 'ÓÑÜÁÉÍÚÀÈÌÒÙ*#%&='):
+                        format_score -= 0.3
+                
+                # CRITERIO 4: Consistencia con patrones esperados de placas
+                pattern_score = 0.0
+                if plate_text:
+                    # Formatos comunes
+                    # Tipo ABC-1234
+                    if re.match(r'^[A-Z]{2,3}-\d{3,4}$', plate_text):
+                        pattern_score = 0.9
+                    # Tipo A-1234
+                    elif re.match(r'^[A-Z]-\d{3,5}$', plate_text):
+                        pattern_score = 0.8
+                    # Tipo 1234-ABC
+                    elif re.match(r'^\d{3,4}-[A-Z]{2,3}$', plate_text):
+                        pattern_score = 0.7
+                
+                # CRITERIO 5: Coherencia de imagen vs texto
+                coherence_score = 0.0
+                if vehicle_img is not None and plate_text:
+                    # Más puntos si la placa parece válida y la imagen es clara
+                    if plate_quality > 0.5 and vehicle_quality > 0.5 and format_score > 0.5:
+                        coherence_score = 0.8
+                    # Menos puntos si hay inconsistencias
+                    elif plate_quality < 0.3 or vehicle_quality < 0.3:
+                        coherence_score = 0.2
+                
+                # Calcular puntuación combinada (ponderada)
+                combined_quality = (
+                    0.4 * plate_quality +      # Calidad de imagen de placa (40%)
+                    0.2 * vehicle_quality +    # Calidad de imagen de vehículo (20%)
+                    0.2 * format_score +       # Calidad del formato (20%)
+                    0.1 * pattern_score +      # Patrón de placa probable (10%)
+                    0.1 * coherence_score      # Coherencia imagen-texto (10%)
+                )
+                
+                # Penalización especial para placas probablemente erróneas (demasiado largas/cortas)
+                if plate_text and (len(plate_text) < 4 or len(plate_text) > 10):
+                    combined_quality *= 0.7
+                
+                quality_scores.append((idx, combined_quality, plate_text))
+            
+            # Ordenar por calidad (mayor puntuación primero)
+            quality_scores.sort(key=lambda x: x[1], reverse=True)
+            
+            # Seleccionar la placa de mayor calidad
+            best_idx = quality_scores[0][0]
+            best_plate = infractions[best_idx]
+            
+            # Log ampliado para mostrar detalles de selección
+            print(f"EVALUACIÓN DE CALIDAD:")
+            for idx, score, text in quality_scores:
+                status = "✅ SELECCIONADA" if idx == best_idx else "❌ DESCARTADA"
+                print(f"  {status} | '{text}' | Puntuación: {score:.2f}")
+            
+            print(f">>> DECISIÓN: Se conserva '{best_plate.get('plate', '')}' y se eliminan las demás")
+            
+            # Agregar la mejor placa
+            deduped_infractions.append(best_plate)
+        
+        # Resumen final
+        print(f"\n==== RESUMEN DE DEDUPLICACIÓN ====")
+        print(f"Reducidas {len(infractions)} placas detectadas a {len(deduped_infractions)} placas únicas")
+        
+        # Mostrar las placas finales
+        print("PLACAS FINALES DESPUÉS DE DEDUPLICACIÓN:")
+        for idx, infraction in enumerate(deduped_infractions):
+            print(f"  {idx+1}. {infraction.get('plate', 'Sin placa')}")
+        
+        return deduped_infractions
+    
     def _finalize_processing(self):
         """Finaliza el procesamiento después de que todos los segmentos estén completos"""
         try:
-            # NUEVO: Usar el método de consolidación para mejorar precisión
-            final_infractions = self._consolidate_plate_detections()
-
-            # Identificar y filtrar placas duplicadas entre todos los segmentos
-            final_infractions = []
-            global_detected_plates = set()
+            # PASO 1: Agrupar por vehículo usando algoritmo de clustering visual
+            self.detected_infractions = self._assign_vehicle_ids(self.detected_infractions)
             
+            # PASO 2: Filtrar para mantener solo una detección por vehículo (la mejor)
+            unique_vehicle_infractions = []
+            
+            # Agrupar por vehicle_id
+            vehicle_groups = {}
             for infraction in self.detected_infractions:
-                plate = infraction['plate']
-                
-                # Verificar si ya hemos añadido esta placa
-                if plate not in global_detected_plates:
-                    global_detected_plates.add(plate)
-                    final_infractions.append(infraction)
+                vehicle_id = infraction.get('vehicle_id', 'unknown')
+                if vehicle_id not in vehicle_groups:
+                    vehicle_groups[vehicle_id] = []
+                vehicle_groups[vehicle_id].append(infraction)
             
-            # Actualizar la lista de infracciones detectadas
-            self.detected_infractions = final_infractions
+            print(f"Identificados {len(vehicle_groups)} vehículos únicos")
+            
+            # Seleccionar la mejor detección de cada grupo
+            for vehicle_id, detections in vehicle_groups.items():
+                if len(detections) == 1:
+                    unique_vehicle_infractions.append(detections[0])
+                else:
+                    # Solo mostrar log cuando hay múltiples detecciones
+                    if len(detections) > 3:  # Solo mostrar cuando hay muchas variantes
+                        print(f"Vehículo {vehicle_id}: {len(detections)} variantes de placa")
+                    
+                    best_detection = self._select_best_plate_detection(detections)
+                    unique_vehicle_infractions.append(best_detection)
+            
+            # PASO 3: Guardar las imágenes finales
+            plates_dir = os.path.join("data", "output", "placas")
+            vehicles_dir = os.path.join("data", "output", "autos")
+            os.makedirs(plates_dir, exist_ok=True)
+            os.makedirs(vehicles_dir, exist_ok=True)
+            
+            # PASO 4: Guardar las imágenes finales (con logs mínimos)
+            guardadas = 0
+            for infraction in unique_vehicle_infractions:
+                plate_text = infraction.get('plate', '')
+                if not plate_text:
+                    continue
+                    
+                plate_img = infraction.get('plate_img')
+                vehicle_img = infraction.get('vehicle_img')
+                
+                # Rutas completas para guardar
+                plate_path = os.path.join(plates_dir, f"plate_{plate_text}.jpg")
+                vehicle_path = os.path.join(vehicles_dir, f"vehicle_{plate_text}.jpg")
+                
+                # Guardar imagen de placa
+                if plate_img is not None:
+                    try:
+                        # Intentar mejorar la imagen de placa antes de guardarla
+                        try:
+                            from src.core.processing.resolution_process import enhance_plate_image
+                            enhanced_plate = enhance_plate_image(plate_img, is_night=getattr(self, 'is_night', False))
+                            cv2.imwrite(plate_path, enhanced_plate)
+                        except ImportError:
+                            # Si la función no está disponible, guardar original
+                            cv2.imwrite(plate_path, plate_img)
+                        
+                        # Actualizar ruta en la infracción
+                        infraction['plate_path'] = plate_path
+                        guardadas += 1
+                    except Exception:
+                        pass  # Suprimir mensajes de error individuales
+                
+                # Guardar imagen de vehículo
+                if vehicle_img is not None:
+                    try:
+                        cv2.imwrite(vehicle_path, vehicle_img)
+                        # Actualizar ruta en la infracción
+                        infraction['vehicle_path'] = vehicle_path
+                    except Exception:
+                        pass  # Suprimir mensajes de error individuales
+            
+            # PASO 5: Actualizar la lista final de infracciones
+            self.detected_infractions = unique_vehicle_infractions
+            print(f"Procesamiento completado: {len(self.detected_infractions)} vehículos infractores ({guardadas} imágenes guardadas)")
             
             # Llamar a _complete_processing
             self.dialog.after(0, self._complete_processing)
@@ -1174,6 +1801,223 @@ class PreprocessingDialog:
             print(f"Error en _finalize_processing: {e}")
             import traceback
             traceback.print_exc()
+
+    def _assign_vehicle_ids(self, infractions):
+        """
+        Asigna IDs únicos a vehículos basados en características visuales
+        y agrupa detecciones del mismo vehículo.
+        """
+        if not infractions or len(infractions) <= 1:
+            # Si solo hay una infracción, asignar ID simple
+            if infractions:
+                infractions[0]['vehicle_id'] = 'V1'
+            return infractions
+        
+        import cv2
+        import numpy as np
+        
+        # Extraer características visuales de cada vehículo
+        features = []
+        valid_indices = []
+        
+        # 1. EXTRAER CARACTERÍSTICAS DE COLOR Y FORMA
+        for i, infraction in enumerate(infractions):
+            vehicle_img = infraction.get('vehicle_img')
+            timestamp = infraction.get('time', 0)
+            
+            if vehicle_img is not None:
+                try:
+                    # Normalizar tamaño
+                    img = cv2.resize(vehicle_img, (100, 100))
+                    
+                    # Histograma de color (característica principal)
+                    color_features = []
+                    for channel in range(3):  # BGR channels
+                        hist = cv2.calcHist([img], [channel], None, [16], [0, 256])
+                        cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
+                        color_features.extend(hist.flatten())
+                    
+                    # Añadir características de textura (Haralick)
+                    if len(img.shape) == 3:
+                        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    else:
+                        gray = img
+                    
+                    # Añadir tiempo como característica (normalizada)
+                    time_feature = [timestamp / 100.0] if timestamp else [0.0]
+                    
+                    # Combinar características
+                    feature_vector = np.array(color_features + time_feature)
+                    features.append(feature_vector)
+                    valid_indices.append(i)
+                    
+                except Exception as e:
+                    print(f"Error procesando vehículo {i}: {e}")
+        
+        if len(features) <= 1:
+            # No hay suficientes características, asignar IDs simples
+            for i, infraction in enumerate(infractions):
+                infraction['vehicle_id'] = f'V{i+1}'
+            return infractions
+        
+        # 2. AGRUPAR POR SIMILITUD VISUAL
+        # Convertir a matriz numpy
+        X = np.array(features)
+        
+        # Normalizar características para dar el mismo peso a todas
+        from sklearn.preprocessing import StandardScaler
+        try:
+            X_scaled = StandardScaler().fit_transform(X)
+        except Exception as e:
+            print(f"Error al escalar características: {e}")
+            # Plan B: Normalizar manualmente
+            mean = np.mean(X, axis=0)
+            std = np.std(X, axis=0)
+            std[std == 0] = 1  # Evitar división por cero
+            X_scaled = (X - mean) / std
+        
+        # Aplicar agrupamiento jerárquico
+        from scipy.cluster.hierarchy import linkage, fcluster
+        try:
+            # Calcular matriz de distancias
+            Z = linkage(X_scaled, method='ward')
+            
+            # Determinar número óptimo de clusters (entre 1 y n)
+            max_clusters = min(len(infractions), 10)  # Máximo 10 clusters
+            
+            # Distancia de corte para conseguir entre 1 y max_clusters
+            clusters = fcluster(Z, t=0.7*max(Z[:,2]), criterion='distance')
+        except Exception as e:
+            print(f"Error en clustering jerárquico: {e}")
+            
+            # Plan B: K-means como fallback
+            try:
+                from sklearn.cluster import KMeans
+                optimal_k = min(len(infractions), 10)  # Entre 1 y 10 clusters
+                kmeans = KMeans(n_clusters=optimal_k, random_state=42).fit(X_scaled)
+                clusters = kmeans.labels_ + 1  # Para empezar desde 1
+            except Exception as e2:
+                print(f"Error en K-means: {e2}")
+                # Último recurso: asignar un cluster diferente a cada uno
+                clusters = np.arange(len(valid_indices)) + 1
+        
+        # 3. ASIGNAR IDS DE VEHÍCULOS
+        # Mapear clusters a IDs únicos
+        cluster_to_id = {}
+        
+        # Crear infracciones con IDs
+        for idx, cluster in zip(valid_indices, clusters):
+            if cluster not in cluster_to_id:
+                cluster_to_id[cluster] = f"V{len(cluster_to_id) + 1}"
+            
+            vehicle_id = cluster_to_id[cluster]
+            infractions[idx]['vehicle_id'] = vehicle_id
+        
+        # Asignar IDs a cualquier infracción que no haya sido procesada
+        next_id = len(cluster_to_id) + 1
+        for infraction in infractions:
+            if 'vehicle_id' not in infraction:
+                infraction['vehicle_id'] = f"V{next_id}"
+                next_id += 1
+        
+        return infractions
+
+    def _select_best_plate_detection(self, detections):
+        """Selecciona la mejor detección de placa entre múltiples del mismo vehículo"""
+        if not detections or len(detections) == 0:
+            return None
+        
+        if len(detections) == 1:
+            return detections[0]
+        
+        # Criterios para evaluar calidad de detección
+        scored_detections = []
+        
+        for detection in detections:
+            plate_text = detection.get('plate', '')
+            plate_img = detection.get('plate_img')
+            
+            score = 0
+            
+            # 1. Longitud de la placa (preferir placas de longitud estándar)
+            plate_len = len(plate_text.replace('-', ''))
+            if 5 <= plate_len <= 7:  # Longitud ideal
+                score += 5
+            elif 4 <= plate_len <= 8:  # Longitud aceptable
+                score += 3
+            else:  # Longitud atípica
+                score += 1
+            
+            # 2. Formato (preferir placas con formatos estándar)
+            import re
+            # MODIFICACIÓN CRÍTICA: Priorizar formato XX-NNNN sobre XXX-NNNN
+            if re.match(r'^[A-Z]{2}-\d{4}$', plate_text):  # Ej: BV-5256 (FORMATO PREFERIDO)
+                score += 8  # Puntuación más alta para este formato específico
+            elif re.match(r'^[A-Z]{3}-\d{4}$', plate_text):  # Ej: LVS-0254
+                score += 5  # Menos prioritario
+            elif re.match(r'^[A-Z]-\d{4,5}$', plate_text):  # Ej: A-1234
+                score += 4
+            elif re.match(r'^[A-Z]{2,3}-\d{4}$', plate_text):  # Otros formatos con guión
+                score += 3
+            elif '-' in plate_text:  # Al menos tiene un guión
+                score += 2
+            
+            # MODIFICACIÓN: Preferir placas con caracteres bien definidos
+            # Si el formato parece BV-XXXX, dar puntos adicionales
+            if plate_text.startswith("BV-"):
+                score += 3  # Bonus específico para placas BV
+            
+            # 3. Calidad de imagen de placa (nitidez)
+            if plate_img is not None:
+                import cv2
+                try:
+                    if len(plate_img.shape) > 2:
+                        gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
+                    else:
+                        gray = plate_img
+                    # Usar varianza de Laplaciano como medida de nitidez
+                    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+                    # Normalizar y añadir al score (máximo 5 puntos)
+                    sharpness_score = min(5, laplacian_var / 100)
+                    score += sharpness_score
+                except Exception as e:
+                    print(f"Error evaluando nitidez: {e}")
+            
+            # 4. Caracteres inválidos (penalizar)
+            invalid_chars = sum(1 for c in plate_text if not (c.isalnum() or c == '-'))
+            score -= invalid_chars * 2
+            
+            # 5. NUEVO: Evaluar claridad de los caracteres (preferir secuencias claras)
+            clarity_score = 0
+            
+            # Penalizar placas con letras potencialmente confusas (como L vs I)
+            confusable_pairs = [('L', 'I'), ('O', '0'), ('S', '5'), ('B', '8')]
+            for a, b in confusable_pairs:
+                if a in plate_text and b in plate_text:
+                    clarity_score -= 1  # Penalizar si contiene letras y números confundibles
+            
+            # Bonificar placas con secuencias numéricas claras
+            if '-' in plate_text:
+                parts = plate_text.split('-')
+                if len(parts) == 2 and parts[1].isdigit():
+                    clarity_score += 2  # Bonus por tener parte numérica clara
+            
+            score += clarity_score
+            
+            # 6. NUEVO: Priorizar placas "canónicas" que se ven con mayor frecuencia
+            common_patterns = ["BV-", "AB-", "CD-", "XY-"]
+            for pattern in common_patterns:
+                if plate_text.startswith(pattern):
+                    score += 2  # Bonus para formatos conocidos de placas frecuentes
+            
+            scored_detections.append((detection, score, plate_text))
+            print(f"Evaluación de '{plate_text}': {score} puntos")
+        
+        # Ordenar por puntuación (mayor primero)
+        scored_detections.sort(key=lambda x: x[1], reverse=True)
+        
+        # Devolver la detección con mejor puntuación
+        return scored_detections[0][0]
     
     def _best_plate_version(self, plate, existing_plates):
         """Versión optimizada para encontrar la mejor versión de una placa"""
@@ -1280,24 +2124,11 @@ class PreprocessingDialog:
     def _complete_processing(self):
         """Finaliza el procesamiento y muestra los resultados"""
         try:
-            # Debug para verificar que tenemos placas para añadir
-            print(f"Procesamiento completo: {len(self.detected_infractions)} infracciones detectadas")
+            # PASO 1: Aplicar la deduplicación mejorada a las infracciones detectadas
+            deduped_infractions = self._dedup_similar_plates(self.detected_infractions)
             
-            # Conjunto para seguir placas únicas procesadas
-            unique_plates = set()
-            unique_infractions = []
-            
-            # Filtrar solo infracciones únicas
-            for infraction in self.detected_infractions:
-                plate_text = infraction['plate']
-                if plate_text not in unique_plates:
-                    unique_plates.add(plate_text)
-                    unique_infractions.append(infraction)
-                    print(f"Añadiendo placa única: {plate_text}")
-                else:
-                    print(f"Omitiendo placa duplicada: {plate_text}")
-            
-            print(f"Infracciones únicas a añadir: {len(unique_infractions)} de {len(self.detected_infractions)}")
+            # PASO 2: Actualizar las infracciones detectadas con la lista deduplicada
+            self.detected_infractions = deduped_infractions
             
             # CORRECCIÓN: Inicializar el contador de tiempo para registrar procesamiento
             processing_start_time = time.time()
@@ -1313,9 +2144,9 @@ class PreprocessingDialog:
             if not hasattr(self.player, "registration_times"):
                 self.player.registration_times = []
             
-            # Añadir las placas detectadas al panel lateral (solo las únicas)
-            for infraction in unique_infractions:
-                print(f"Procesando placa: {infraction['plate']} al tiempo {infraction['time']}")
+            # PASO 3: Añadir TODAS las placas deduplicadas al panel lateral
+            # IMPORTANTE: Ya NO filtramos por placas únicas aquí, porque la deduplicación ya se hizo
+            for infraction in deduped_infractions:
                 
                 # Calcular tiempo de procesamiento individual para esta placa
                 plate_processing_time = time.time() - processing_start_time
@@ -1332,21 +2163,21 @@ class PreprocessingDialog:
                     if not hasattr(self.player, "plate_detection_history"):
                         self.player.plate_detection_history = {}
                     
-                    # Inicializar estructura para esta placa si no existe
+                    # Inicializar estructura para esta placa (sea nueva o duplicada)
+                    detection_time = self.player.detection_start_time
+                    if infraction['time'] is not None:
+                        detection_time = self.player.detection_start_time + infraction['time']
+                        
+                    registration_time = time.time()
+                    proc_time = registration_time - detection_time
+                    
+                    # Añadir al historial de tiempos de registro para estadísticas
+                    self.player.registration_times.append(proc_time)
+                    
+                    # Actualizar o crear entrada en el historial
                     if plate_text not in self.player.plate_detection_history:
-                        # CORRECCIÓN: Añadir datos precisos de tiempo
-                        detection_time = self.player.detection_start_time
-                        if infraction['time'] is not None:
-                            detection_time = self.player.detection_start_time + infraction['time']
-                            
-                        registration_time = time.time()
-                        proc_time = registration_time - detection_time
-                        
-                        # Añadir al historial de tiempos de registro para estadísticas
-                        self.player.registration_times.append(proc_time)
-                        
                         self.player.plate_detection_history[plate_text] = {
-                            "count": 1,  # Siempre 1, evitamos duplicados
+                            "count": 1,
                             "first_detection": infraction['time'],
                             "last_detection": infraction['time'],
                             "vehicle_img": infraction['vehicle_img'],
@@ -1354,25 +2185,28 @@ class PreprocessingDialog:
                             "registration_time": registration_time,
                             "processing_time": proc_time
                         }
-                        
-                        # Si existen rutas de archivos, asegurarse de guardarlas en el historial
-                        if 'vehicle_path' in infraction and infraction['vehicle_path']:
-                            self.player.plate_detection_history[plate_text]["vehicle_path"] = infraction['vehicle_path']
-                        
-                        if 'plate_path' in infraction and infraction['plate_path']:
-                            self.player.plate_detection_history[plate_text]["plate_path"] = infraction['plate_path']
-                        
-                        # Llamar directamente al método para añadir la placa al panel
-                        self.player._safe_add_plate_to_panel(
-                            infraction['plate_img'], 
-                            plate_text, 
-                            infraction['time']
-                        )
                     else:
-                        print(f"Placa {plate_text} ya está en el historial, no se añade duplicado")
+                        # Si ya existe, actualizar información
+                        self.player.plate_detection_history[plate_text]["count"] += 1
+                        self.player.plate_detection_history[plate_text]["last_detection"] = infraction['time']
+                    
+                    # Si existen rutas de archivos, asegurarse de guardarlas en el historial
+                    if 'vehicle_path' in infraction and infraction['vehicle_path']:
+                        self.player.plate_detection_history[plate_text]["vehicle_path"] = infraction['vehicle_path']
+                    
+                    if 'plate_path' in infraction and infraction['plate_path']:
+                        self.player.plate_detection_history[plate_text]["plate_path"] = infraction['plate_path']
+                    
+                    # MODIFICACIÓN IMPORTANTE: Añadir TODAS las placas al panel, sin filtrar duplicados
+                    # porque ya eliminamos los duplicados en _dedup_similar_plates
+                    self.player._safe_add_plate_to_panel(
+                        infraction['plate_img'], 
+                        plate_text, 
+                        infraction['time']
+                    )
             
             # NUEVO: Guardar todas las infracciones detectadas en el archivo JSON
-            self._save_infractions_to_json(unique_infractions)
+            self._save_infractions_to_json(deduped_infractions)
                         
             # CORRECCIÓN: Actualizar indicadores de rendimiento después de añadir todas las placas
             if hasattr(self.player, "performance_indicators"):
@@ -1383,9 +2217,9 @@ class PreprocessingDialog:
                     
                 # Actualizar indicadores
                 self.player.performance_indicators = {
-                    "TI": len(unique_plates),  # Número exacto de infracciones
-                    "TR": avg_proc_time,      # Tiempo promedio de registro
-                    "IR": 0.0                  # Reiniciar índice de reincidencia
+                    "TI": len(deduped_infractions),  # Número exacto de infracciones
+                    "TR": avg_proc_time,             # Tiempo promedio de registro
+                    "IR": 0.0                       # Reiniciar índice de reincidencia
                 }
                 
                 # Forzar actualización del panel de rendimiento
@@ -1393,12 +2227,9 @@ class PreprocessingDialog:
                     self.player._update_metrics_panel()
             
             # Actualizar la interfaz con información de las infracciones
-            found_message = f"Se han detectado {len(unique_plates)} infracciones únicas."
+            found_message = f"Se han detectado {len(deduped_infractions)} infracciones."
             self.phase_label.config(text="Procesamiento completado")
             self.details_label.config(text=found_message)
-            
-            # Registrar el número correcto en los logs
-            print(f"Análisis completado: {len(unique_plates)} infracciones detectadas")
             
             # Iniciar reproducción optimizada del video (solo detección de vehículos)
             self.player.start_processed_video(self.video_path)

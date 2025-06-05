@@ -24,12 +24,6 @@
     "yellow": 2,
     "red": 20
   },
-  "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\LPR Camera China in Day Time DEMO from PTCCTV.mp4": {
-    "green": 21,
-    "yellow": 2,
-    "red": 12,
-    "time_slot": "7:00 - 19:00"
-  },
   "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\1080P 2.0Megapixel IP camera video on road.mp4": {
     "green": 12,
     "yellow": 3,
@@ -44,8 +38,14 @@
   },
   "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\Traffic IP Camera video.mp4": {
     "green": 12,
-    "yellow": 3,
-    "red": 14,
-    "time_slot": "15:00 - 21:00"
+    "yellow": 2,
+    "red": 15,
+    "time_slot": "7:00 - 19:00"
+  },
+  "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\LPR Camera China in Day Time DEMO from PTCCTV.mp4": {
+    "green": 18,
+    "yellow": 6,
+    "red": 10,
+    "time_slot": "7:00 - 19:00"
   }
 }

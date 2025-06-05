@@ -1,0 +1,52 @@
+{
+  "fecha_generacion": "04/06/2025 20:08:49",
+  "periodo_analisis": "04/06/2025 - 04/06/2025",
+  "dias_analizados": 1,
+  "indicadores": {
+    "TI": {
+      "sin_software": {
+        "total_mensual": 508,
+        "total_diario": 4.233333333333333,
+        "meses_analizados": 4
+      },
+      "con_software": {
+        "total_periodo": 3,
+        "total_diario": 3.0,
+        "dias_analizados": 1
+      },
+      "mejora_porcentual": -29.13385826771654
+    },
+    "TR": {
+      "sin_software": {
+        "tiempo_promedio_segundos": 412.8,
+        "tiempo_promedio_minutos": 6.88,
+        "fuente": "Encuesta a oficiales PNP"
+      },
+      "con_software": {
+        "tiempo_promedio_segundos": 9.5,
+        "muestras_analizadas": 3
+      },
+      "reduccion_tiempo_porcentual": 97.69864341085271,
+      "veces_mas_rapido": 43.45263157894737
+    },
+    "IR": {
+      "sin_software": {
+        "porcentaje_reincidencia_mensual": 12.795275590551181,
+        "total_reincidentes": 65,
+        "periodo": "Mensual"
+      },
+      "con_software": {
+        "porcentaje_reincidencia_diaria": 0.0,
+        "muestras_diarias": 1
+      },
+      "mejora_deteccion_porcentual": -100.0,
+      "ratio_deteccion": 0.0
+    }
+  },
+  "resumen_global": {
+    "infracciones_detectadas_mejora": "+-29.1%",
+    "tiempo_registro_reduccion": "-97.7%",
+    "tiempo_registro_factor": "43.5x más rápido",
+    "reincidencia_deteccion_factor": "0.0x más detección"
+  }
+}

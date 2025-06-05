@@ -1307,8 +1307,6 @@ class VideoPlayerOpenCV:
                         print(f"Placa {plate_text} ya existe en el panel - no duplicando")
                         return
                 
-                print(f"Creando card para placa: {plate_text}")
-                
                 # CRÍTICO: Verificar que el panel interno existe
                 if not hasattr(self, "plates_inner_frame") or self.plates_inner_frame is None:
                     print("ERROR: El frame interno no existe")

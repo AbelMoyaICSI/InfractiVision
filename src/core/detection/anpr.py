@@ -1066,6 +1066,151 @@ class ANPR:
         
         return processed_frame, detections
 
+    def calculate_plate_similarity(self, plate1, plate2):
+        """
+        Calcula la similitud entre dos textos de placas vehiculares.
+        
+        Args:
+            plate1: Texto de la primera placa
+            plate2: Texto de la segunda placa
+            
+        Returns:
+            float: Puntuación de similitud entre 0.0 (totalmente diferentes) y 1.0 (idénticas)
+        """
+        if not plate1 or not plate2:
+            return 0.0
+        
+        # Normalizar placas: eliminar guiones y convertir a mayúsculas
+        p1 = plate1.replace('-', '').upper()
+        p2 = plate2.replace('-', '').upper()
+        
+        # Coincidencia exacta
+        if p1 == p2:
+            return 1.0
+        
+        # Si tienen longitudes muy diferentes, probablemente sean placas distintas
+        if abs(len(p1) - len(p2)) > 2:
+            return 0.0
+        
+        # Calcular distancia de edición (Levenshtein distance)
+        def levenshtein_distance(s1, s2):
+            if len(s1) < len(s2):
+                return levenshtein_distance(s2, s1)
+            
+            if len(s2) == 0:
+                return len(s1)
+            
+            previous_row = range(len(s2) + 1)
+            for i, c1 in enumerate(s1):
+                current_row = [i + 1]
+                for j, c2 in enumerate(s2):
+                    # Calcular inserciones, eliminaciones y sustituciones
+                    insertions = previous_row[j + 1] + 1
+                    deletions = current_row[j] + 1
+                    substitutions = previous_row[j] + (c1 != c2)
+                    current_row.append(min(insertions, deletions, substitutions))
+                previous_row = current_row
+            
+            return previous_row[-1]
+        
+        # Convertir distancia de edición a similitud
+        max_len = max(len(p1), len(p2))
+        edit_distance = levenshtein_distance(p1, p2)
+        base_similarity = 1.0 - (edit_distance / max_len)
+        
+        # Ajustes adicionales para mejorar la detección de similitud en placas
+        
+        # 1. Verificar caracteres confundibles (0/O, 1/I, 8/B, etc.)
+        confusable_pairs = [
+            ('0', 'O'), ('O', '0'), 
+            ('1', 'I'), ('I', '1'), 
+            ('5', 'S'), ('S', '5'),
+            ('8', 'B'), ('B', '8'),
+            ('2', 'Z'), ('Z', '2')
+        ]
+        
+        # Contar coincidencias de caracteres confundibles
+        confusable_matches = 0
+        for i in range(min(len(p1), len(p2))):
+            if i < len(p1) and i < len(p2):
+                if p1[i] == p2[i]:
+                    continue
+                
+                # Comprobar si hay un par confundible
+                for c1, c2 in confusable_pairs:
+                    if (p1[i] == c1 and p2[i] == c2) or (p1[i] == c2 and p2[i] == c1):
+                        confusable_matches += 1
+                        break
+        
+        # Aumentar similitud basada en coincidencias de caracteres confundibles
+        confusable_boost = 0.1 * (confusable_matches / max(1, min(len(p1), len(p2))))
+        
+        # 2. Verificar patrones comunes de placas (formato de letras/números)
+        def get_pattern(text):
+            pattern = ""
+            for c in text:
+                if c.isalpha():
+                    pattern += "L"
+                elif c.isdigit():
+                    pattern += "N"
+                else:
+                    pattern += c
+            return pattern
+        
+        pattern1 = get_pattern(p1)
+        pattern2 = get_pattern(p2)
+        
+        # Incrementar similitud si los patrones coinciden
+        pattern_match = 1.0 if pattern1 == pattern2 else 0.0
+        
+        # Calcular similitud total combinada
+        combined_similarity = base_similarity + confusable_boost + (0.2 * pattern_match)
+        
+        # Normalizar para que no exceda 1.0
+        return min(1.0, combined_similarity)
+
+    def evaluate_plate_quality(self, plate_img):
+        """
+        Evalúa la calidad de una imagen de placa para determinar cuál conservar
+        
+        Args:
+            plate_img: Imagen de la placa
+            
+        Returns:
+            float: Puntuación de calidad de la imagen
+        """
+        if plate_img is None:
+            return 0.0
+        
+        try:
+            # 1. Nitidez (usando varianza de Laplaciano)
+            laplacian_var = cv2.Laplacian(cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var()
+            
+            # 2. Contraste
+            gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
+            contrast = gray.std()
+            
+            # 3. Brillo medio (preferimos brillo moderado)
+            brightness = np.mean(gray)
+            brightness_score = 1.0 - abs((brightness - 127.5) / 127.5)
+            
+            # 4. Tamaño de la imagen
+            height, width = plate_img.shape[:2]
+            size_score = min(1.0, (width * height) / (200 * 50))  # Normalizado para placas típicas
+            
+            # Calcular puntuación ponderada
+            quality_score = (
+                0.4 * (laplacian_var / 100) +  # Nitidez (normalizada)
+                0.3 * (contrast / 80) +        # Contraste (normalizado)
+                0.2 * brightness_score +       # Brillo óptimo
+                0.1 * size_score               # Tamaño adecuado
+            )
+            
+            return min(1.0, max(0.0, quality_score))
+        
+        except Exception as e:
+            print(f"Error al evaluar calidad de placa: {e}")
+            return 0.1  # Valor bajo por defecto en caso de error
 
 # Example usage remains unchanged
 if __name__ == "__main__":
