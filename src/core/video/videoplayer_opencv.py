@@ -1486,40 +1486,15 @@ class VideoPlayerOpenCV:
             print("Error: No se puede acceder al widget principal")
 
     def _create_metrics_panel(self):
-        """Crea el panel de métricas de rendimiento"""
-        # Panel de métricas con estilo moderno
+        """Crea el panel de métricas de rendimiento (oculto)"""
+        # Crear pero no mostrar el panel
         self.metrics_frame = tk.Frame(self.plates_frame, bg="#34495e")
-        self.metrics_frame.pack(side="top", fill="x", pady=0, after=self.plates_title)
+        # NO hacer pack() del frame para que no se muestre
         
-        # Título con mejor estilo
-        metrics_title = tk.Label(self.metrics_frame, text="Indicadores de Rendimiento",
-                            bg="#34495e", fg="white", font=("Arial", 12, "bold"),
-                            pady=5)
-        metrics_title.pack(fill="x")
-        
-        # Contenedor para indicadores con estilo moderno
-        indicators_container = tk.Frame(self.metrics_frame, bg="#34495e", padx=10, pady=5)
-        indicators_container.pack(fill="x")
-        
-        # Crear etiquetas para indicadores
-        self.ti_label = tk.Label(indicators_container, bg="#34495e", fg="white", 
-                            font=("Arial", 10), anchor="w")
-        self.ti_label.pack(fill="x", pady=2)
-        
-        self.tr_label = tk.Label(indicators_container, bg="#34495e", fg="white", 
-                            font=("Arial", 10), anchor="w")
-        self.tr_label.pack(fill="x", pady=2)
-        
-        self.ir_label = tk.Label(indicators_container, bg="#34495e", fg="white", 
-                            font=("Arial", 10), anchor="w")
-        self.ir_label.pack(fill="x", pady=2)
-        
-        # Separador estético
-        separator = tk.Frame(self.metrics_frame, height=2, bg="#ecf0f1")
-        separator.pack(fill="x", padx=10, pady=5)
-        
-        # Inicializar con valores en cero
-        self._update_metrics_panel()
+        # Creamos las referencias a las etiquetas pero no las mostramos
+        self.ti_label = tk.Label(self.metrics_frame, bg="#34495e", fg="white", font=("Arial", 10))
+        self.tr_label = tk.Label(self.metrics_frame, bg="#34495e", fg="white", font=("Arial", 10))
+        self.ir_label = tk.Label(self.metrics_frame, bg="#34495e", fg="white", font=("Arial", 10))
 
     def _update_metrics_panel(self):
         """Actualiza los valores de los indicadores de rendimiento"""
