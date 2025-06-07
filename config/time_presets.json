@@ -24,12 +24,6 @@
     "yellow": 2,
     "red": 20
   },
-  "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\1080P 2.0Megapixel IP camera video on road.mp4": {
-    "green": 12,
-    "yellow": 3,
-    "red": 15,
-    "time_slot": "7:00 - 19:00"
-  },
   "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\Night Time Traffic Camera video.mp4": {
     "green": 12,
     "yellow": 3,
@@ -46,6 +40,12 @@
     "green": 18,
     "yellow": 6,
     "red": 10,
+    "time_slot": "7:00 - 19:00"
+  },
+  "C:\\Users\\Christopeer\\Downloads\\InfractiVision\\videos\\1080P 2.0Megapixel IP camera video on road.mp4": {
+    "green": 5,
+    "yellow": 2,
+    "red": 5,
     "time_slot": "7:00 - 19:00"
   }
 }

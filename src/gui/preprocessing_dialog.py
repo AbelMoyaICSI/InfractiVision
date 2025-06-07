@@ -530,7 +530,7 @@ class PreprocessingDialog:
                 cap.release()
 
     def _process_segment_optimized(self, segment_id, start_frame, end_frame, 
-     frame_sampling, vehicle_detector, conf_threshold):
+ frame_sampling, vehicle_detector, conf_threshold):
         """Función optimizada para procesar un segmento de video en un hilo separado"""
         try:
             # Abrir segmento de video
@@ -618,69 +618,72 @@ class PreprocessingDialog:
                             plate_text = detection.get("plate", "")
                             coords = detection.get("coords")
                             
-                            if plate_text and coords and len(plate_text) >= 4:
+                            if plate_text and coords:
                                 # Normalizar texto de placa
                                 plate_text = self._normalize_plate_text(plate_text)
                                 
-                                # Verificar si esta placa ya fue detectada
-                                if plate_text not in self.detected_plates_global:
-                                    self.detected_plates_global.add(plate_text)
-                                    
-                                    # Extraer imagen de la placa
-                                    x1, y1, x2, y2 = coords
-                                    if all(c >= 0 for c in (x1, y1, x2, y2)):
-                                        plate_img = frame[y1:y2, x1:x2].copy() if y2 > y1 and x2 > x1 else None
+                                # NUEVO: Verificar que la placa normalizada no esté vacía (por longitud excesiva)
+                                # y que no tenga más de 8 caracteres (sin contar guiones)
+                                if plate_text and len(plate_text.replace('-', '')) <= 8:
+                                    # Verificar si esta placa ya fue detectada
+                                    if plate_text not in self.detected_plates_global:
+                                        self.detected_plates_global.add(plate_text)
                                         
-                                        # Crear directorio para placas si no existe
-                                        plates_dir = os.path.join("data", "output", "placas")
-                                        vehicles_dir = os.path.join("data", "output", "autos")
-                                        os.makedirs(plates_dir, exist_ok=True)
-                                        os.makedirs(vehicles_dir, exist_ok=True)
-                                        
-                                        # Guardar la imagen de la placa
-                                        plate_filename = f"plate_{plate_text}.jpg"
-                                        plate_path = os.path.join(plates_dir, plate_filename)
-                                        cv2.imwrite(plate_path, plate_img)
-                                        
-                                        # Guardar la imagen del vehículo (área ampliada alrededor de la placa)
-                                        expansion_factor = 2.5  # Expandir 2.5x el área de la placa
-                                        height, width = frame.shape[:2]
-                                        
-                                        # Calcular el centro de la placa
-                                        center_x = (x1 + x2) // 2
-                                        center_y = (y1 + y2) // 2
-                                        
-                                        # Calcular dimensiones expandidas
-                                        plate_width = x2 - x1
-                                        plate_height = y2 - y1
-                                        expanded_width = int(plate_width * expansion_factor)
-                                        expanded_height = int(plate_height * expansion_factor)
-                                        
-                                        # Calcular las nuevas coordenadas
-                                        ex1 = max(0, center_x - expanded_width // 2)
-                                        ey1 = max(0, center_y - expanded_height // 2)
-                                        ex2 = min(width, center_x + expanded_width // 2)
-                                        ey2 = min(height, center_y + expanded_height // 2)
-                                        
-                                        # Extraer el área ampliada
-                                        vehicle_img = frame[ey1:ey2, ex1:ex2].copy()
-                                        
-                                        # Guardar la imagen del vehículo
-                                        vehicle_filename = f"vehicle_{plate_text}.jpg"
-                                        vehicle_path = os.path.join(vehicles_dir, vehicle_filename)
-                                        cv2.imwrite(vehicle_path, vehicle_img)
-                                        
-                                        # Añadir a infracciones
-                                        direct_anpr_detections.append({
-                                            'frame': absolute_frame,
-                                            'time': absolute_frame / self.fps,
-                                            'plate': plate_text,
-                                            'plate_img': plate_img,
-                                            'vehicle_img': vehicle_img,
-                                            'plate_path': plate_path,
-                                            'vehicle_path': vehicle_path,
-                                            'unique': True
-                                        })
+                                        # Extraer imagen de la placa
+                                        x1, y1, x2, y2 = coords
+                                        if all(c >= 0 for c in (x1, y1, x2, y2)):
+                                            plate_img = frame[y1:y2, x1:x2].copy() if y2 > y1 and x2 > x1 else None
+                                            
+                                            # Crear directorio para placas si no existe
+                                            plates_dir = os.path.join("data", "output", "placas")
+                                            vehicles_dir = os.path.join("data", "output", "autos")
+                                            os.makedirs(plates_dir, exist_ok=True)
+                                            os.makedirs(vehicles_dir, exist_ok=True)
+                                            
+                                            # Guardar la imagen de la placa
+                                            plate_filename = f"plate_{plate_text}.jpg"
+                                            plate_path = os.path.join(plates_dir, plate_filename)
+                                            cv2.imwrite(plate_path, plate_img)
+                                            
+                                            # Guardar la imagen del vehículo (área ampliada alrededor de la placa)
+                                            expansion_factor = 2.5  # Expandir 2.5x el área de la placa
+                                            height, width = frame.shape[:2]
+                                            
+                                            # Calcular el centro de la placa
+                                            center_x = (x1 + x2) // 2
+                                            center_y = (y1 + y2) // 2
+                                            
+                                            # Calcular dimensiones expandidas
+                                            plate_width = x2 - x1
+                                            plate_height = y2 - y1
+                                            expanded_width = int(plate_width * expansion_factor)
+                                            expanded_height = int(plate_height * expansion_factor)
+                                            
+                                            # Calcular las nuevas coordenadas
+                                            ex1 = max(0, center_x - expanded_width // 2)
+                                            ey1 = max(0, center_y - expanded_height // 2)
+                                            ex2 = min(width, center_x + expanded_width // 2)
+                                            ey2 = min(height, center_y + expanded_height // 2)
+                                            
+                                            # Extraer el área ampliada
+                                            vehicle_img = frame[ey1:ey2, ex1:ex2].copy()
+                                            
+                                            # Guardar la imagen del vehículo
+                                            vehicle_filename = f"vehicle_{plate_text}.jpg"
+                                            vehicle_path = os.path.join(vehicles_dir, vehicle_filename)
+                                            cv2.imwrite(vehicle_path, vehicle_img)
+                                            
+                                            # Añadir a infracciones
+                                            direct_anpr_detections.append({
+                                                'frame': absolute_frame,
+                                                'time': absolute_frame / self.fps,
+                                                'plate': plate_text,
+                                                'plate_img': plate_img,
+                                                'vehicle_img': vehicle_img,
+                                                'plate_path': plate_path,
+                                                'vehicle_path': vehicle_path,
+                                                'unique': True
+                                            })
                     except Exception as e:
                         print(f"Error en detección directa ANPR: {e}")
                         import traceback
@@ -777,75 +780,78 @@ class PreprocessingDialog:
                                             if plate_img is None:
                                                 plate_img = vehicle_roi
                                 
-                                # Verificar que la placa sea válida
+                                # Verificar que la placa sea válida y normalizar
                                 if plate_text and len(plate_text) >= 4:
                                     # Normalizar texto de placa
                                     plate_text = self._normalize_plate_text(plate_text)
                                     
-                                    # VERIFICAR GLOBAL, NO SOLO EN ESTE SEGMENTO
-                                    if plate_text not in self.detected_plates_global:
-                                        # Registrar la placa como ya detectada GLOBALMENTE
-                                        self.detected_plates_global.add(plate_text)
-                                        
-                                        # Crear las carpetas necesarias para placas y autos
-                                        plates_dir = os.path.join("data", "output", "placas")
-                                        vehicles_dir = os.path.join("data", "output", "autos")
-                                        os.makedirs(plates_dir, exist_ok=True)
-                                        os.makedirs(vehicles_dir, exist_ok=True)
-                                        
-                                        # Guardar la imagen de la placa con nombre ÚNICO
-                                        plate_filename = f"plate_{plate_text}.jpg"
-                                        plate_path = os.path.join(plates_dir, plate_filename)
-                                        
-                                        # Aplicar super-resolución a la placa antes de guardarla
-                                        if enhance_plate_image is not None and plate_img is not None:
-                                            enhanced_plate = enhance_plate_image(plate_img, is_night=self.is_night)
-                                            cv2.imwrite(plate_path, enhanced_plate)
-                                        else:
-                                            # Si no está disponible el módulo, guardar la placa original
-                                            if plate_img is not None:
-                                                cv2.imwrite(plate_path, plate_img)
-                                                enhanced_plate = plate_img
+                                    # NUEVO: Verificar que la placa normalizada no esté vacía (por longitud excesiva)
+                                    # y que no tenga más de 8 caracteres (sin contar guiones)
+                                    if plate_text and len(plate_text.replace('-', '')) <= 8:
+                                        # VERIFICAR GLOBAL, NO SOLO EN ESTE SEGMENTO
+                                        if plate_text not in self.detected_plates_global:
+                                            # Registrar la placa como ya detectada GLOBALMENTE
+                                            self.detected_plates_global.add(plate_text)
+                                            
+                                            # Crear las carpetas necesarias para placas y autos
+                                            plates_dir = os.path.join("data", "output", "placas")
+                                            vehicles_dir = os.path.join("data", "output", "autos")
+                                            os.makedirs(plates_dir, exist_ok=True)
+                                            os.makedirs(vehicles_dir, exist_ok=True)
+                                            
+                                            # Guardar la imagen de la placa con nombre ÚNICO
+                                            plate_filename = f"plate_{plate_text}.jpg"
+                                            plate_path = os.path.join(plates_dir, plate_filename)
+                                            
+                                            # Aplicar super-resolución a la placa antes de guardarla
+                                            if enhance_plate_image is not None and plate_img is not None:
+                                                enhanced_plate = enhance_plate_image(plate_img, is_night=self.is_night)
+                                                cv2.imwrite(plate_path, enhanced_plate)
                                             else:
-                                                enhanced_plate = vehicle_roi
-                                                cv2.imwrite(plate_path, vehicle_roi)
-                                        
-                                        # Guardar la imagen del vehículo con nombre ÚNICO
-                                        vehicle_filename = f"vehicle_{plate_text}.jpg"
-                                        vehicle_path = os.path.join(vehicles_dir, vehicle_filename)
-                                        cv2.imwrite(vehicle_path, vehicle_roi)
-                                        
-                                        # Guardar infracción detectada con rutas de archivos
-                                        infraction_data = {
-                                            'frame': absolute_frame,
-                                            'time': absolute_frame / self.fps,
-                                            'plate': plate_text,
-                                            'plate_img': enhanced_plate if plate_img is not None else vehicle_roi.copy(),
-                                            'vehicle_img': vehicle_roi.copy(),
-                                            'plate_path': plate_path,
-                                            'vehicle_path': vehicle_path,
-                                            'unique': True  # Marca como único
-                                        }
-                                        local_infractions.append(infraction_data)
-                                        
-                                        # Mostrar detección en tiempo real
-                                        detection_frame = frame.copy()
-                                        cv2.rectangle(detection_frame, (x1_roi, y1_roi), (x2_roi, y2_roi), (0, 255, 0), 2)
-                                        cv2.putText(detection_frame, f"Placa: {plate_text}", (x1_roi, y1_roi-10), 
-                                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                                        
-                                        # Si tenemos coordenadas de la placa, dibujarlas también
-                                        if plate_bbox and len(plate_bbox) == 4:
-                                            px1, py1, px2, py2 = plate_bbox
-                                            # Ajustar coordenadas relativas al frame completo
-                                            px1, py1 = x1_roi + px1, y1_roi + py1
-                                            px2, py2 = x1_roi + px2, y1_roi + py2
-                                            cv2.rectangle(detection_frame, (px1, py1), (px2, py2), (0, 0, 255), 2)
-                                        
-                                        # Enviar detección a la UI
-                                        self.result_queue.put(("frame_update", (detection_frame, segment_id, processed, total_to_process)))
-                                    else:
-                                        print(f"Placa {plate_text} ya fue detectada globalmente, omitiendo")
+                                                # Si no está disponible el módulo, guardar la placa original
+                                                if plate_img is not None:
+                                                    cv2.imwrite(plate_path, plate_img)
+                                                    enhanced_plate = plate_img
+                                                else:
+                                                    enhanced_plate = vehicle_roi
+                                                    cv2.imwrite(plate_path, vehicle_roi)
+                                            
+                                            # Guardar la imagen del vehículo con nombre ÚNICO
+                                            vehicle_filename = f"vehicle_{plate_text}.jpg"
+                                            vehicle_path = os.path.join(vehicles_dir, vehicle_filename)
+                                            cv2.imwrite(vehicle_path, vehicle_roi)
+                                            
+                                            # Guardar infracción detectada con rutas de archivos
+                                            infraction_data = {
+                                                'frame': absolute_frame,
+                                                'time': absolute_frame / self.fps,
+                                                'plate': plate_text,
+                                                'plate_img': enhanced_plate if plate_img is not None else vehicle_roi.copy(),
+                                                'vehicle_img': vehicle_roi.copy(),
+                                                'plate_path': plate_path,
+                                                'vehicle_path': vehicle_path,
+                                                'unique': True  # Marca como único
+                                            }
+                                            local_infractions.append(infraction_data)
+                                            
+                                            # Mostrar detección en tiempo real
+                                            detection_frame = frame.copy()
+                                            cv2.rectangle(detection_frame, (x1_roi, y1_roi), (x2_roi, y2_roi), (0, 255, 0), 2)
+                                            cv2.putText(detection_frame, f"Placa: {plate_text}", (x1_roi, y1_roi-10), 
+                                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                                            
+                                            # Si tenemos coordenadas de la placa, dibujarlas también
+                                            if plate_bbox and len(plate_bbox) == 4:
+                                                px1, py1, px2, py2 = plate_bbox
+                                                # Ajustar coordenadas relativas al frame completo
+                                                px1, py1 = x1_roi + px1, y1_roi + py1
+                                                px2, py2 = x1_roi + px2, y1_roi + py2
+                                                cv2.rectangle(detection_frame, (px1, py1), (px2, py2), (0, 0, 255), 2)
+                                            
+                                            # Enviar detección a la UI
+                                            self.result_queue.put(("frame_update", (detection_frame, segment_id, processed, total_to_process)))
+                                        else:
+                                            print(f"Placa {plate_text} ya fue detectada globalmente, omitiendo")
                             except Exception as e:
                                 print(f"Error procesando placa: {e}")
                                 import traceback
@@ -867,7 +873,81 @@ class PreprocessingDialog:
             traceback.print_exc()
             self.result_queue.put(("segment_complete", (segment_id, [])))
             return [], segment_id
-
+        
+    def _filter_segment_duplicates(self, infractions):
+        """
+        Filtra duplicados dentro de un segmento antes de enviar los resultados.
+        Esto ayuda a reducir la cantidad de datos que se transfieren entre hilos.
+        
+        Args:
+            infractions: Lista de infracciones detectadas en un segmento
+            
+        Returns:
+            list: Lista de infracciones sin duplicados dentro del segmento
+        """
+        if not infractions or len(infractions) <= 1:
+            return infractions
+        
+        # Conjunto para seguir placas ya procesadas en este segmento
+        processed_plates = set()
+        filtered_infractions = []
+        
+        # Ordenar primero por calidad (menor puntuación de laplaciano primero)
+        def quality_score(infraction):
+            plate_img = infraction.get('plate_img')
+            if plate_img is None:
+                return 0
+                
+            import cv2
+            try:
+                if len(plate_img.shape) > 2:
+                    gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = plate_img
+                # Usar varianza de Laplaciano como medida de nitidez
+                return cv2.Laplacian(gray, cv2.CV_64F).var()
+            except Exception:
+                return 0
+        
+        # Ordenar infracciones por nitidez (mayor primero)
+        sorted_infractions = sorted(infractions, key=quality_score, reverse=True)
+        
+        # Filtrar duplicados basados en placas
+        for infraction in sorted_infractions:
+            plate_text = infraction.get('plate', '')
+            if not plate_text:
+                continue
+            
+            # REQUISITO ESTRICTO: Verificar longitud máxima (7 caracteres sin guiones/espacios)
+            plate_without_special = plate_text.replace('-', '').replace(' ', '')
+            if len(plate_without_special) > 7:
+                continue
+            
+            # Verificar si esta placa (o una muy similar) ya fue procesada
+            duplicate = False
+            for existing_plate in processed_plates:
+                # Si son exactamente iguales
+                if plate_text == existing_plate:
+                    duplicate = True
+                    break
+                    
+                # O si son muy similares (difieren en máximo 1 carácter para placas cortas o 2 para largas)
+                max_diff = 1 if len(plate_text) <= 6 else 2
+                if len(plate_text) == len(existing_plate):
+                    differences = sum(c1 != c2 for c1, c2 in zip(plate_text, existing_plate))
+                    if differences <= max_diff:
+                        duplicate = True
+                        break
+            
+            # Si no es un duplicado, añadir a la lista filtrada
+            if not duplicate:
+                processed_plates.add(plate_text)
+                filtered_infractions.append(infraction)
+        
+        if len(filtered_infractions) < len(infractions):
+            print(f"Filtro de segmento: reducidas {len(infractions)} a {len(filtered_infractions)} placas")
+        
+        return filtered_infractions
     
     def _normalize_plate_text(self, plate_text):
         """
@@ -876,22 +956,33 @@ class PreprocessingDialog:
         """
         if not plate_text:
             return plate_text
-            
+                
         # Importar funciones auxiliares si están disponibles
         try:
             from src.core.processing.resolution_process import get_common_plate_patterns
             region_aware = True
         except ImportError:
             region_aware = False
-            
+                
         # Determinar región de la placa (por defecto España)
         region = "ES"
-        
+            
         # Eliminar espacios y convertir a mayúsculas
         normalized = plate_text.strip().upper()
         
+        # NUEVO: Comprobar específicamente "B OHID" que está causando problemas
+        if "BOHID" in normalized or "B OHID" in normalized or "B-OHID" in normalized:
+            print(f"Placa problemática específica detectada y descartada: {normalized}")
+            return ""  # Devolver cadena vacía para que esta placa sea descartada
+            
         # Eliminar caracteres no alfanuméricos excepto guión
         normalized = ''.join(c for c in normalized if c.isalnum() or c == '-')
+        
+        # REFORZADO: Descartar placas demasiado largas (más de 8 caracteres sin contar guiones ni espacios)
+        plate_without_special = normalized.replace('-', '').replace(' ', '')
+        if len(plate_without_special) > 8:
+            print(f"Placa demasiado larga descartada: {normalized} ({len(plate_without_special)} caracteres)")
+            return ""  # Devolver cadena vacía para que esta placa sea descartada
         
         # Obtener patrones de confusión para la región
         char_confusions = {}
@@ -1081,71 +1172,18 @@ class PreprocessingDialog:
                 
                 normalized = f"{prefix}-{numbers}"
         
+        # VERIFICACIÓN FINAL: Descartar placas específicas problemáticas
+        if "BOHID" in normalized or "B OHID" in normalized or "B-OHID" in normalized:
+            print(f"Placa problemática específica detectada después de normalizar: {normalized}")
+            return ""
+        
+        # VERIFICACIÓN FINAL de longitud máxima (8 caracteres sin guiones)
+        plate_without_dash = normalized.replace('-', '').replace(' ', '')
+        if len(plate_without_dash) > 8:
+            print(f"Placa demasiado larga después de normalizar: {normalized} ({len(plate_without_dash)} caracteres)")
+            return ""  # Devolver cadena vacía para que esta placa sea descartada
+        
         return normalized
-    
-    def _consolidate_plate_detections(self):
-        """Consolida múltiples detecciones de la misma placa para mejorar la precisión"""
-        if not self.detected_infractions:
-            return []
-        
-        # Agrupar por placas similares
-        plate_groups = {}
-        
-        for infraction in self.detected_infractions:
-            plate = infraction['plate']
-            best_match = None
-            best_similarity = 0
-            
-            # Buscar el grupo más similar
-            for group_key in plate_groups.keys():
-                import difflib
-                similarity = difflib.SequenceMatcher(None, plate, group_key).ratio()
-                if similarity > 0.7 and similarity > best_similarity:  # 70% similar
-                    best_similarity = similarity
-                    best_match = group_key
-            
-            # Añadir al grupo existente o crear uno nuevo
-            if best_match:
-                plate_groups[best_match].append(infraction)
-            else:
-                plate_groups[plate] = [infraction]
-        
-        # Para cada grupo, elegir la mejor detección o consolidar información
-        consolidated_infractions = []
-        
-        for group_key, detections in plate_groups.items():
-            if len(detections) == 1:
-                # Solo una detección, añadirla directamente
-                consolidated_infractions.append(detections[0])
-            else:
-                # Múltiples detecciones, elegir la mejor calidad o consolidar
-                best_detection = max(detections, key=lambda x: 
-                                    cv2.Laplacian(x['plate_img'], cv2.CV_64F).var())
-                
-                # Conservar la detección de mejor calidad
-                consolidated_infractions.append(best_detection)
-                
-                # Añadir este método al procesamiento final en _finalize_processing
-        
-        return consolidated_infractions
-    
-    def _filter_segment_duplicates(self, infractions):
-        """Filtra duplicados dentro de un mismo segmento"""
-        if not infractions:
-            return []
-            
-        filtered = []
-        seen_plates = set()
-        
-        for infraction in infractions:
-            plate = infraction['plate']
-            
-            # Verificar si ya existe esta placa exacta en este segmento
-            if plate not in seen_plates:
-                seen_plates.add(plate)
-                filtered.append(infraction)
-                
-        return filtered
     
     def _dedup_similar_plates(self, infractions):
         """
@@ -1716,6 +1754,19 @@ class PreprocessingDialog:
     def _finalize_processing(self):
         """Finaliza el procesamiento después de que todos los segmentos estén completos"""
         try:
+            # NUEVO: Filtrar primero las placas inválidas por longitud
+            filtered_infractions = []
+            for infraction in self.detected_infractions:
+                plate_text = infraction.get('plate', '')
+                # Verificar longitud válida (máximo 8 caracteres sin contar guiones)
+                if plate_text and len(plate_text.replace('-', '')) <= 8:
+                    filtered_infractions.append(infraction)
+                else:
+                    print(f"Descartando placa inválida por longitud: {plate_text}")
+            
+            # Actualizar con solo las placas de longitud válida
+            self.detected_infractions = filtered_infractions
+            
             # PASO 1: Agrupar por vehículo usando algoritmo de clustering visual
             self.detected_infractions = self._assign_vehicle_ids(self.detected_infractions)
             
@@ -1755,6 +1806,11 @@ class PreprocessingDialog:
             for infraction in unique_vehicle_infractions:
                 plate_text = infraction.get('plate', '')
                 if not plate_text:
+                    continue
+                    
+                # VERIFICACIÓN FINAL: descartar placas demasiado largas
+                if len(plate_text.replace('-', '')) > 8:
+                    print(f"Descartando placa demasiado larga en paso final: {plate_text}")
                     continue
                     
                 plate_img = infraction.get('plate_img')
@@ -1939,15 +1995,22 @@ class PreprocessingDialog:
             
             score = 0
             
-            # 1. Longitud de la placa (preferir placas de longitud estándar)
-            plate_len = len(plate_text.replace('-', ''))
-            if 5 <= plate_len <= 7:  # Longitud ideal
+            # REFORZADO: Verificar y penalizar placas demasiado largas con regla más estricta
+            plate_without_special = plate_text.replace('-', '').replace(' ', '')
+            if len(plate_without_special) > 8:
+                score -= 100  # Penalización aún más severa para descartar completamente
+                print(f"Placa demasiado larga fuertemente penalizada: {plate_text} ({len(plate_without_special)} caracteres)")
+            elif 5 <= len(plate_without_special) <= 7:  # Longitud ideal
                 score += 5
-            elif 4 <= plate_len <= 8:  # Longitud aceptable
+            elif 4 <= len(plate_without_special) <= 8:  # Longitud aceptable
                 score += 3
             else:  # Longitud atípica
                 score += 1
-            
+                
+            # Verificar específicamente placas problemáticas
+            if "BOHID" in plate_text or "B OHID" in plate_text or "B-OHID" in plate_text:
+                score -= 100  # Penalizar severamente estas placas específicas
+                
             # 2. Formato (preferir placas con formatos estándar)
             import re
             # MODIFICACIÓN CRÍTICA: Priorizar formato XX-NNNN sobre XXX-NNNN
@@ -2278,6 +2341,23 @@ class PreprocessingDialog:
         
         # Convertir cada infracción a formato compatible con gestión
         for infraction in infractions:
+            # NUEVO: Verificación adicional de seguridad para placas inválidas
+            plate_text = infraction.get("plate", "")
+            if not plate_text:
+                print("Omitiendo guardar en JSON placa vacía")
+                continue
+                
+            # Verificación adicional de longitud
+            plate_without_special = plate_text.replace('-', '').replace(' ', '')
+            if len(plate_without_special) > 8:
+                print(f"Omitiendo guardar en JSON placa inválida por longitud: {plate_text}")
+                continue
+            
+            # Verificación específica para placas problemáticas
+            if "BOHID" in plate_text or "B OHID" in plate_text or "B-OHID" in plate_text:
+                print(f"Omitiendo guardar en JSON placa problemática específica: {plate_text}")
+                continue
+                
             # Obtener la fecha y hora actual para registro
             now = datetime.now()
             fecha = now.strftime("%d/%m/%Y")
@@ -2294,7 +2374,7 @@ class PreprocessingDialog:
             
             # Crear estructura para la infracción
             infraction_data = {
-                "placa": infraction["plate"],
+                "placa": plate_text,
                 "fecha": fecha,
                 "hora": hora,
                 "video_timestamp": timestamp,
