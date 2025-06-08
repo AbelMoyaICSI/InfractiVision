@@ -1,8 +1,44 @@
 [
   {
+    "placa": "A-76190",
+    "fecha": "07/06/2025",
+    "hora": "21:13:37",
+    "video_timestamp": "00:26",
+    "ubicacion": "Desconocida",
+    "franja_horaria": "7:00 - 19:00",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_A-76190.jpg",
+    "plate_path": "data\\output\\placas\\plate_A-76190.jpg"
+  },
+  {
+    "placa": "A-96886",
+    "fecha": "07/06/2025",
+    "hora": "21:13:37",
+    "video_timestamp": "00:22",
+    "ubicacion": "Desconocida",
+    "franja_horaria": "7:00 - 19:00",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_A-96886.jpg",
+    "plate_path": "data\\output\\placas\\plate_A-96886.jpg"
+  },
+  {
+    "placa": "A-34961",
+    "fecha": "07/06/2025",
+    "hora": "21:13:37",
+    "video_timestamp": "00:22",
+    "ubicacion": "Desconocida",
+    "franja_horaria": "7:00 - 19:00",
+    "tipo": "Semáforo en rojo",
+    "estado": "Pendiente",
+    "vehicle_path": "data\\output\\autos\\vehicle_A-34961.jpg",
+    "plate_path": "data\\output\\placas\\plate_A-34961.jpg"
+  },
+  {
     "placa": "EOHIO",
     "fecha": "07/06/2025",
-    "hora": "17:41:28",
+    "hora": "21:14:14",
     "video_timestamp": "00:30",
     "ubicacion": "Desconocida",
     "franja_horaria": "7:00 - 19:00",
@@ -14,7 +50,7 @@
   {
     "placa": "BV-525F",
     "fecha": "07/06/2025",
-    "hora": "17:41:28",
+    "hora": "21:14:14",
     "video_timestamp": "00:29",
     "ubicacion": "Desconocida",
     "franja_horaria": "7:00 - 19:00",
@@ -26,7 +62,7 @@
   {
     "placa": "O-60470",
     "fecha": "07/06/2025",
-    "hora": "17:41:28",
+    "hora": "21:14:14",
     "video_timestamp": "00:31",
     "ubicacion": "Desconocida",
     "franja_horaria": "7:00 - 19:00",
@@ -34,41 +70,5 @@
     "estado": "Pendiente",
     "vehicle_path": "data\\output\\autos\\vehicle_O-60470.jpg",
     "plate_path": "data\\output\\placas\\plate_O-60470.jpg"
-  },
-  {
-    "placa": "A-76190",
-    "fecha": "07/06/2025",
-    "hora": "17:41:45",
-    "video_timestamp": "00:26",
-    "ubicacion": "AV CASA",
-    "franja_horaria": "7:00 - 19:00",
-    "tipo": "Semáforo en rojo",
-    "estado": "Pendiente",
-    "vehicle_path": "data\\output\\autos\\vehicle_A-76190.jpg",
-    "plate_path": "data\\output\\placas\\plate_A-76190.jpg"
-  },
-  {
-    "placa": "A-96886",
-    "fecha": "07/06/2025",
-    "hora": "17:41:45",
-    "video_timestamp": "00:22",
-    "ubicacion": "AV CASA",
-    "franja_horaria": "7:00 - 19:00",
-    "tipo": "Semáforo en rojo",
-    "estado": "Pendiente",
-    "vehicle_path": "data\\output\\autos\\vehicle_A-96886.jpg",
-    "plate_path": "data\\output\\placas\\plate_A-96886.jpg"
-  },
-  {
-    "placa": "A-34961",
-    "fecha": "07/06/2025",
-    "hora": "17:41:45",
-    "video_timestamp": "00:22",
-    "ubicacion": "AV CASA",
-    "franja_horaria": "7:00 - 19:00",
-    "tipo": "Semáforo en rojo",
-    "estado": "Pendiente",
-    "vehicle_path": "data\\output\\autos\\vehicle_A-34961.jpg",
-    "plate_path": "data\\output\\placas\\plate_A-34961.jpg"
   }
 ]

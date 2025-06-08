@@ -17,6 +17,10 @@ class PreprocessingDialog:
     Diálogo que muestra una barra de progreso mientras se procesa un video.
     Analiza las infracciones y detecta las placas sin reproducir el video completo.
     """
+
+    # Atributo estático para almacenar tiempos de procesamiento
+    recorded_processing_times = []
+
     def __init__(self, parent, video_path, player_instance, on_complete=None):
         """
         Inicializa el diálogo de preprocesamiento.
@@ -43,6 +47,13 @@ class PreprocessingDialog:
         self.POLYGON_CONFIG_FILE = "config/polygon_config.json"
         self.AVENUE_CONFIG_FILE = "config/avenue_config.json"
         self.PRESETS_FILE = "config/time_presets.json"
+
+        # Add this line to track start time
+        self.processing_start_time = time.time()
+        
+        # Reset class variable for this instance
+        if len(PreprocessingDialog.recorded_processing_times) > 100:  # Limit history
+            PreprocessingDialog.recorded_processing_times = []
         
         # Cargar configuración del video si existe
         self.load_video_config()
@@ -2270,6 +2281,54 @@ class PreprocessingDialog:
             
             # NUEVO: Guardar todas las infracciones detectadas en el archivo JSON
             self._save_infractions_to_json(deduped_infractions)
+            
+            # MODIFICADO: Calcular y almacenar el tiempo de procesamiento para los indicadores
+            try:
+                # Calcular el tiempo total desde el inicio hasta ahora
+                total_time = time.time() - self.processing_start_time
+                
+                # Calcular el tiempo promedio por infracción
+                avg_time = 0
+                if len(deduped_infractions) > 0:
+                    avg_time = total_time / len(deduped_infractions)
+                
+                # Registrar en la variable estática de clase para acceso global
+                PreprocessingDialog.recorded_processing_times.append(avg_time)
+                
+                # Actualizar el JSON de indicadores de rendimiento existente con este tiempo
+                indicators_file = os.path.join("data", "indicadores_rendimiento.json")
+                
+                try:
+                    if os.path.exists(indicators_file):
+                        # Leer el archivo JSON existente
+                        with open(indicators_file, "r", encoding="utf-8") as f:
+                            indicators_data = json.load(f)
+                            
+                        # Actualizar el tiempo de procesamiento en el TR
+                        if "indicadores" in indicators_data and "TR" in indicators_data["indicadores"]:
+                            indicators_data["indicadores"]["TR"]["con_software"]["tiempo_promedio_segundos"] = avg_time
+                            indicators_data["indicadores"]["TR"]["con_software"]["muestras_analizadas"] = len(PreprocessingDialog.recorded_processing_times)
+                            
+                            # Recalcular reducción y factor de velocidad
+                            pnp_avg_time = indicators_data["indicadores"]["TR"]["sin_software"]["tiempo_promedio_segundos"]
+                            indicators_data["indicadores"]["TR"]["reduccion_tiempo_porcentual"] = ((pnp_avg_time - avg_time) / pnp_avg_time * 100) if pnp_avg_time else 0
+                            indicators_data["indicadores"]["TR"]["veces_mas_rapido"] = pnp_avg_time / avg_time if avg_time else 0
+                            
+                            # Actualizar resumen global
+                            tr_reduction = indicators_data["indicadores"]["TR"]["reduccion_tiempo_porcentual"]
+                            tr_speedup = indicators_data["indicadores"]["TR"]["veces_mas_rapido"]
+                            indicators_data["resumen_global"]["tiempo_registro_reduccion"] = f"-{tr_reduction:.1f}%"
+                            indicators_data["resumen_global"]["tiempo_registro_factor"] = f"{tr_speedup:.1f}x más rápido"
+                            
+                            # Guardar el JSON actualizado
+                            with open(indicators_file, "w", encoding="utf-8") as f:
+                                json.dump(indicators_data, f, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    print(f"Error actualizando indicadores: {e}")
+                
+                print(f"Tiempo de procesamiento registrado: {avg_time:.2f} segundos por infracción")
+            except Exception as e:
+                print(f"Error guardando tiempos de procesamiento: {e}")
                         
             # CORRECCIÓN: Actualizar indicadores de rendimiento después de añadir todas las placas
             if hasattr(self.player, "performance_indicators"):

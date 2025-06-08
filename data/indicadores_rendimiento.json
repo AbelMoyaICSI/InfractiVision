@@ -1,5 +1,5 @@
 {
-  "fecha_generacion": "07/06/2025 17:42:29",
+  "fecha_generacion": "07/06/2025 21:15:49",
   "periodo_analisis": "07/06/2025 - 07/06/2025",
   "dias_analizados": 1,
   "indicadores": {
@@ -18,16 +18,16 @@
     },
     "TR": {
       "sin_software": {
-        "tiempo_promedio_segundos": 412.8,
-        "tiempo_promedio_minutos": 6.88,
+        "tiempo_promedio_segundos": 432.0,
+        "tiempo_promedio_minutos": 7.2,
         "fuente": "Encuesta a oficiales PNP"
       },
       "con_software": {
-        "tiempo_promedio_segundos": 9.5,
-        "muestras_analizadas": 6
+        "tiempo_promedio_segundos": 4.518252372741699,
+        "muestras_analizadas": 2
       },
-      "reduccion_tiempo_porcentual": 97.69864341085271,
-      "veces_mas_rapido": 43.45263157894737
+      "reduccion_tiempo_porcentual": 98.95410824705053,
+      "veces_mas_rapido": 95.61218904154752
     },
     "IR": {
       "sin_software": {
@@ -45,8 +45,8 @@
   },
   "resumen_global": {
     "infracciones_detectadas_mejora": "+41.7%",
-    "tiempo_registro_reduccion": "-97.7%",
-    "tiempo_registro_factor": "43.5x más rápido",
+    "tiempo_registro_reduccion": "-99.0%",
+    "tiempo_registro_factor": "95.6x más rápido",
     "reincidencia_deteccion_factor": "0.0x más detección"
   }
 }
