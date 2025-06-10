@@ -541,7 +541,7 @@ class PreprocessingDialog:
                 cap.release()
 
     def _process_segment_optimized(self, segment_id, start_frame, end_frame, 
- frame_sampling, vehicle_detector, conf_threshold):
+        frame_sampling, vehicle_detector, conf_threshold):
         """Función optimizada para procesar un segmento de video en un hilo separado"""
         try:
             # Abrir segmento de video
@@ -853,11 +853,18 @@ class PreprocessingDialog:
                                             
                                             # Si tenemos coordenadas de la placa, dibujarlas también
                                             if plate_bbox and len(plate_bbox) == 4:
-                                                px1, py1, px2, py2 = plate_bbox
-                                                # Ajustar coordenadas relativas al frame completo
-                                                px1, py1 = x1_roi + px1, y1_roi + py1
-                                                px2, py2 = x1_roi + px2, y1_roi + py2
-                                                cv2.rectangle(detection_frame, (px1, py1), (px2, py2), (0, 0, 255), 2)
+                                                try:
+                                                    # CORRECCIÓN: Convertir explícitamente a enteros y validar
+                                                    px1 = int(x1_roi + plate_bbox[0])
+                                                    py1 = int(y1_roi + plate_bbox[1])
+                                                    px2 = int(x1_roi + plate_bbox[2])
+                                                    py2 = int(y1_roi + plate_bbox[3])
+                                                    
+                                                    # Verificar que las coordenadas son válidas antes de dibujar
+                                                    if px1 >= 0 and py1 >= 0 and px2 > px1 and py2 > py1:
+                                                        cv2.rectangle(detection_frame, (px1, py1), (px2, py2), (0, 0, 255), 2)
+                                                except (TypeError, ValueError, IndexError) as e:
+                                                    print(f"Error al dibujar rectángulo de placa: {e}")
                                             
                                             # Enviar detección a la UI
                                             self.result_queue.put(("frame_update", (detection_frame, segment_id, processed, total_to_process)))
@@ -1588,7 +1595,7 @@ class PreprocessingDialog:
         )
         
         # CAMBIO CRÍTICO: Umbral reducido a 60% para capturar más duplicados potenciales
-        SIMILARITY_THRESHOLD = 0.60  # Reducido de 0.7 a 0.6
+        SIMILARITY_THRESHOLD = 0.75  # Reducido de 0.7 a 0.6
         
         # Implementación de Union-Find para manejar grupos de forma eficiente
         parent = list(range(len(infractions)))
@@ -1622,9 +1629,11 @@ class PreprocessingDialog:
                     time_proximity = 1.0 - min(1.0, abs(time1 - time2) / 5.0) if time1 is not None and time2 is not None else 0.0
                     
                     # CRUCIAL: Si las imágenes son muy similares, agrupar incluso con bajo umbral general
-                    if img_similarity >= 0.75 or (img_similarity >= 0.65 and time_proximity >= 0.8):
+                    if img_similarity >= 0.85 or (img_similarity >= 0.75 and time_proximity >= 0.9):
+                        # Umbral de similitud de imagen aumentado de 0.65 a 0.75
+                        # Umbral de proximidad temporal aumentado de 0.8 a 0.9
                         union(i, j)
-                        print(f"👁️ Agrupación por imagen: '{infractions[i].get('plate', '')}' y '{infractions[j].get('plate', '')}' (img:{img_similarity:.2f}, tiempo:{time_proximity:.2f})")
+                        print(f"Agrupación por imagen: '{infractions[i].get('plate', '')}' y '{infractions[j].get('plate', '')}' (img:{img_similarity:.2f}, tiempo:{time_proximity:.2f})")
                     elif similarity >= SIMILARITY_THRESHOLD:
                         union(i, j)
                         print(f"Agrupación normal: '{infractions[i].get('plate', '')}' y '{infractions[j].get('plate', '')}' (similitud: {similarity:.2f})")

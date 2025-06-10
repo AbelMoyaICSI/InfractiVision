@@ -451,130 +451,86 @@ def get_optimal_sr_processor(is_night=False):
         )
 
 
-def enhance_plate_image(plate_img, is_night=False, output_path=None, region="ES"):
+def enhance_plate_image(plate_img, is_night=False):
     """
-    Enhance a license plate image for better OCR recognition.
-    Compatible with InfractiVision preprocessing workflow.
+    Aplica técnicas de super-resolución y mejora específicamente para imágenes de placas.
+    Esta función debe ser llamada una vez que se ha detectado una placa.
     
     Args:
-        plate_img: Input plate image (numpy array or path to image)
-        is_night: Boolean indicating if it's a night scene
-        output_path: Optional path to save the enhanced image
-        region: Region/country code for plate format rules
+        plate_img: Imagen de la placa recortada
+        is_night: Booleano que indica si es una escena nocturna
         
     Returns:
-        Enhanced license plate image
+        Imagen de placa mejorada para mejor OCR
     """
-    # Configure SR parameters based on lighting conditions
-    sr_processor = get_optimal_sr_processor(is_night)
-    
-    # Get filename from path if string was provided
-    filename = ""
-    if isinstance(plate_img, str):
-        filename = os.path.basename(plate_img)
-        plate_img = cv2.imread(plate_img)
-    
-    if plate_img is not None and plate_img.size > 0:
-        # Convertir a escala de grises si es color
-        if len(plate_img.shape) > 2:
+    if plate_img is None or plate_img.size == 0:
+        return None
+        
+    try:
+        # 1. PREPARACIÓN INICIAL
+        # Redimensionar la imagen para procesamiento consistente
+        h, w = plate_img.shape[:2]
+        min_dim = 150  # Dimensión mínima para procesamiento
+        
+        # Si la imagen es muy pequeña, ampliarla para mejor procesamiento
+        if h < min_dim or w < min_dim:
+            scale = max(min_dim / h, min_dim / w)
+            new_w, new_h = int(w * scale), int(h * scale)
+            plate_img = cv2.resize(plate_img, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+        
+        # 2. CONVERTIR A ESCALA DE GRISES PARA MEJOR OCR
+        if len(plate_img.shape) == 3:
             gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
         else:
             gray = plate_img.copy()
             
-        # Determine lighting conditions if not provided
-        if is_night is None:
-            is_night = gray.mean() < 100  # Umbral para escenas nocturnas
+        # 3. MEJORAS ESPECÍFICAS PARA OCR
+        # 3.1 ELIMINAR RUIDO
+        denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+        
+        # 3.2 MEJORAR CONTRASTE LOCAL
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(denoised)
+        
+        # 3.3 BINARIZACIÓN ADAPTATIVA
+        # Umbral adaptativo para mejor segmentación de caracteres
+        binary = cv2.adaptiveThreshold(
+            enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+            cv2.THRESH_BINARY_INV, 13, 5)
             
-        # Métricas para evaluar la calidad de la imagen
-        std_dev = np.std(gray)
-        blur_index = cv2.Laplacian(gray, cv2.CV_64F).var()
+        # 3.4 OPERACIONES MORFOLÓGICAS PARA LIMPIAR RUIDO
+        kernel = np.ones((2, 2), np.uint8)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
         
-        # MEJORA: Pre-procesamiento específico para mejorar reconocimiento de caracteres
-        # Especialmente optimizado para las confusiones comunes vistas en las imágenes
+        # Invertir de nuevo para tener texto negro sobre fondo blanco (mejor para OCR)
+        binary = cv2.bitwise_not(binary)
         
-        # Redimensionar para procesamiento consistente si es muy pequeña
-        if gray.shape[0] < 50 or gray.shape[1] < 100:
-            aspect = gray.shape[1] / gray.shape[0]
-            new_height = 80
-            new_width = int(new_height * aspect)
-            gray = cv2.resize(gray, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+        # 3.5 SUPER-RESOLUCIÓN SIMULADA MEDIANTE INTERPOLACIÓN CÚBICA
+        # Dimensiones finales óptimas para OCR
+        target_height = 100
+        target_width = int(w * (target_height / h))
         
-        # Eliminar ruido preservando bordes para mejor OCR
+        # Si la escena es nocturna, aplicar procesamiento adicional
         if is_night:
-            # Para imágenes nocturnas - usar filtro bilateral que preserva bordes
-            denoised = cv2.bilateralFilter(gray, 5, 17, 17)
+            # Crear un kernel de sharpen más agresivo para escenas nocturnas
+            sharpen_kernel = np.array([[-1, -1, -1], [-1, 9.5, -1], [-1, -1, -1]])
+            enhanced = cv2.filter2D(binary, -1, sharpen_kernel)
             
-            # NUEVO: Ecualización de histograma adaptativa para mejorar contraste
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(3, 3))
-            enhanced = clahe.apply(denoised)
-            
-            # NUEVO: Binarización adaptativa con parámetros optimizados para placas nocturnas
-            binary = cv2.adaptiveThreshold(
-                enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv2.THRESH_BINARY, 15, 4
-            )
-            
-            # NUEVO: Operaciones morfológicas para aclarar los caracteres
-            kernel = np.ones((1, 1), np.uint8)
-            morph = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-            
-            # NUEVO: Dilatar ligeramente para completar caracteres fragmentados
-            kernel_dilate = np.ones((2, 2), np.uint8)
-            morph = cv2.dilate(morph, kernel_dilate, iterations=1)
+            # Ecualización adicional para escenas nocturnas
+            enhanced = cv2.equalizeHist(enhanced)
         else:
-            # Para imágenes diurnas
-            denoised = cv2.bilateralFilter(gray, 5, 12, 12)
-            
-            # Equilibrar contraste con CLAHE
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(2, 2))
-            enhanced = clahe.apply(denoised)
-            
-            # NUEVO: Binarización con parámetros optimizados para placas diurnas
-            binary = cv2.adaptiveThreshold(
-                enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv2.THRESH_BINARY, 13, 2
-            )
-            
-            # Suavizar ruido mínimamente para preservar detalles
-            kernel = np.ones((2, 2), np.uint8)
-            morph = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-            
-            # Refinar bordes de caracteres
-            kernel_erode = np.ones((2, 1), np.uint8)
-            morph = cv2.erode(morph, kernel_erode, iterations=1)
+            enhanced = binary
         
-        # NUEVO: Mejorar separación entre caracteres
-        # Detectar componentes conectados y separar si están muy juntos
-        connectivity = 4
-        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
-            255 - morph, connectivity, cv2.CV_32S
-        )
+        # 4. RECONSTRUCCIÓN DE LA IMAGEN FINAL
+        # Para OCR usaremos la imagen binaria mejorada
+        ocr_ready = cv2.resize(enhanced, (target_width, target_height), interpolation=cv2.INTER_CUBIC)
         
-        # Crear máscara de caracteres optimizada
-        char_mask = np.zeros_like(morph)
-        min_area = 20  # Filtrar componentes pequeños como ruido
+        return ocr_ready
         
-        # Identificar componentes que probablemente sean caracteres
-        for i in range(1, num_labels):
-            if stats[i, cv2.CC_STAT_AREA] > min_area:
-                # Extraer solo componentes de tamaño adecuado - probables caracteres
-                component_mask = (labels == i).astype(np.uint8) * 255
-                char_mask = cv2.bitwise_or(char_mask, component_mask)
-        
-        # NUEVO: Crear imagen optimizada para OCR mezclando binaria y original
-        blend_ratio = 0.8 if is_night else 0.6
-        result = cv2.addWeighted(binary, blend_ratio, morph, 1.0 - blend_ratio, 0)
-        
-        # Umbralizar nuevamente para asegurar valores binarios
-        _, result = cv2.threshold(result, 127, 255, cv2.THRESH_BINARY)
-        
-        # Volver a convertir la imagen procesada para OCR
-        plate_img = result
-    
-    # Process the plate con la imagen pre-procesada
-    enhanced_plate = sr_processor.process_plate(plate_img, output_path)
-    
-    return enhanced_plate
+    except Exception as e:
+        print(f"Error en super-resolución de placa: {e}")
+        return plate_img  # Devolver imagen original en caso de error
 
 # Nuevas funciones auxiliares para mejorar la detección de placas
 
