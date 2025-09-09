@@ -1,0 +1,36 @@
+# === CORE DEPENDENCIES ===
+# Versiones específicas para COMPATIBILIDAD con PyInstaller
+numpy==1.26.4
+scipy==1.13.1
+torch==1.13.1
+torchvision==0.14.1
+scikit-learn==1.4.2
+
+# === COMPUTER VISION ===
+opencv-python==4.9.0.80
+pillow==9.3.0
+easyocr==1.7.0
+pytesseract==0.3.10
+ultralytics==8.1.47
+imutils==0.5.4
+
+# === UI COMPONENTS ===
+tkcalendar==1.6.1
+# tkinter viene incluido con Python en Windows
+
+# === DATA PROCESSING ===
+pandas==2.2.1
+openpyxl==3.1.2
+
+# === CLOUD & NETWORK ===
+requests==2.31.0
+firebase-admin==6.4.0
+google-cloud-storage==2.14.0
+google-cloud-firestore==2.21.0
+flask==3.0.2
+
+# === UTILITIES ===
+psutil==5.9.8
+
+# === BUILD TOOLS ===
+pyinstaller==6.4.0

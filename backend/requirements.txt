@@ -1,0 +1,6 @@
+flask
+firebase-admin
+requests
+google-cloud-storage
+google-cloud-firestore
+requests>=2.25.1
