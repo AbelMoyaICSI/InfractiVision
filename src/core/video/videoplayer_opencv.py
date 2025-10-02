@@ -1984,7 +1984,7 @@ class VideoPlayerOpenCV:
             
             self.conf_label = tk.Label(
                 self.text_frame,
-                text=f"Conf: {validated_conf:.2f}",
+                text=f"{self.classification} - Conf: {validated_conf:.2f}",
                 font=("Segoe UI", 10),
                 bg=self.text_frame['bg'],
                 fg=conf_color,
