@@ -5,6 +5,7 @@ from src.core.processing.resolution_process import enhance_plate_image
 from src.core.detection.plate_detector import PlateDetector
 from src.core.processing.superresolution import enhance_plate
 from src.core.ocr.recognizer import recognize_plate
+from src.core.processing.plate_ocr_enhancer import enhance_plate_recognition, get_plate_enhancer
 from src.path_helper import resource_path
 
 _detector = None
@@ -299,16 +300,42 @@ def process_plate(vehicle_roi, is_night=False):
         try:
             from src.core.processing.superresolution import enhance_plate_image
             enhanced_plate = enhance_plate_image(plate_img, is_night)
-            # OCR to recognize the plate text
-            plate_text = recognize_plate(enhanced_plate)
+            
+            # NUEVO SISTEMA DE OCR MEJORADO
+            # Primer intento: OCR tradicional
+            raw_ocr_text = recognize_plate(enhanced_plate)
+            
+            # Aplicar mejoras y correcciones
+            ocr_result = enhance_plate_recognition(enhanced_plate, raw_ocr_text, is_night)
+            plate_text = ocr_result['enhanced_text']
+            confidence = ocr_result['confidence']
+            
+            print(f"OCR Mejorado: '{raw_ocr_text}' -> '{plate_text}' (conf: {confidence:.2f})")
+            
+            # Si la confianza es baja, intentar con imagen procesada adicional
+            if confidence < 0.3 and ocr_result['processed_image'] is not None:
+                backup_text = recognize_plate(ocr_result['processed_image'])
+                backup_result = enhance_plate_recognition(ocr_result['processed_image'], backup_text, is_night)
+                
+                if backup_result['confidence'] > confidence:
+                    plate_text = backup_result['enhanced_text']
+                    confidence = backup_result['confidence']
+                    print(f"OCR Backup mejor: '{backup_text}' -> '{plate_text}' (conf: {confidence:.2f})")
+                    
         except ImportError:
-            # If super-resolution is not available, use original image
-            plate_text = recognize_plate(plate_img)
+            # Si super-resolution no está disponible, usar imagen original con mejoras
+            raw_ocr_text = recognize_plate(plate_img)
+            ocr_result = enhance_plate_recognition(plate_img, raw_ocr_text, is_night)
+            plate_text = ocr_result['enhanced_text']
             enhanced_plate = plate_img
         
-        # If that fails, try with original
-        if not plate_text:
+        # Si todo falla, intentar OCR básico como último recurso
+        if not plate_text or len(plate_text) < 4:
             plate_text = recognize_plate(plate_img)
+            if plate_text:
+                # Aplicar solo correcciones básicas
+                enhancer = get_plate_enhancer()
+                plate_text = enhancer.correct_confusing_characters(plate_text)
             
         # Return the bbox, enhanced plate image, and recognized text
         return ((x1, y1, x2, y2), enhanced_plate, plate_text)

@@ -250,6 +250,23 @@ def show_migrations(refresh_callback=None, all_data_ref=None):
         tk.Label(empty_frame, text="Las migraciones se acumularán aquí automáticamente cuando se procesen infracciones", 
                 font=("Arial", 10), bg="#f8f9fa", fg="#95a5a6").pack(pady=10)
     
+    # MEJORA: Agregar scroll suave con rueda del mouse para historial
+    def on_mousewheel_migrations(event):
+        # Scroll suave: dividir delta por 3 para hacer más lento y suave
+        canvas.yview_scroll(int(-1 * (event.delta / 120 / 3)), "units")
+        
+    def bind_to_mousewheel_migrations(event):
+        canvas.bind_all("<MouseWheel>", on_mousewheel_migrations)
+        
+    def unbind_from_mousewheel_migrations(event):
+        canvas.unbind_all("<MouseWheel>")
+        
+    # Bindear eventos de entrada/salida del mouse
+    canvas.bind('<Enter>', bind_to_mousewheel_migrations)
+    canvas.bind('<Leave>', unbind_from_mousewheel_migrations)
+    scrollable_frame.bind('<Enter>', bind_to_mousewheel_migrations)
+    scrollable_frame.bind('<Leave>', unbind_from_mousewheel_migrations)
+    
     # Configurar y mostrar canvas y scrollbar
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
@@ -457,7 +474,8 @@ def show_migrations(refresh_callback=None, all_data_ref=None):
 def generate_performance_indicators_json(software_infractions, software_processing_times):
     """
     Genera y guarda en data/indicadores_rendimiento.json
-    los indicadores TI, TR e IR basados en las infracciones y tiempos.
+    los indicadores TI, TR y NID basados en las infracciones y tiempos.
+    IR ha sido eliminado completamente del sistema.
     """
     import os
     import json
@@ -474,7 +492,7 @@ def generate_performance_indicators_json(software_infractions, software_processi
         else:
             software_processing_times = []
 
-    # 1) Agrupar por día para cálculo de reincidencia (IR)
+    # 1) Agrupar por día para cálculos (eliminamos IR del sistema)
     day_infractions = {}
     for inf in software_infractions:
         fecha = inf.get("fecha", "Sin fecha")
@@ -494,81 +512,100 @@ def generate_performance_indicators_json(software_infractions, software_processi
     }
     police_times_min = [7, 6, 5, 10, 8]  # en minutos
 
-    # ——— INDICADOR TI: Tasa de infracciones ———
+    # ——— INDICADOR TI: Tasa de infracciones COMO PORCENTAJE ———
+    # NUEVA OPERACIONALIZACIÓN: TI = (GE detecciones / GC registros) × 100
+    
+    # Datos GC (Grupo Control - registros manuales de campo)
     pnp_total = sum(m["total"] for m in pnp_data.values())
     pnp_days = sum(m["dias"] for m in pnp_data.values())
     pnp_daily = pnp_total / pnp_days if pnp_days else 0
-
+    
+    # Datos GE (Grupo Experimental - software)
     sw_days = len(day_infractions)
     sw_inf = len(software_infractions)
     sw_daily = sw_inf / sw_days if sw_days else 0
+    
+    # TI como porcentaje de acierto (software vs campo)
+    if pnp_daily > 0:
+        ti_percentage = (sw_daily / pnp_daily) * 100
+        ti_percentage = min(ti_percentage, 100.0)  # Máximo 100%
+    else:
+        ti_percentage = 0.0
 
-    ti_pct = ((sw_daily - pnp_daily) / pnp_daily * 100) if pnp_daily else 0
-
-    # ——— INDICADOR TR: Tiempo de registro ———
+    # ——— INDICADOR TR: Tiempo de registro EN MINUTOS ———
+    # NUEVA OPERACIONALIZACIÓN: TR en minutos, no segundos
+    
     pnp_sec = (sum(police_times_min) / len(police_times_min) * 60) if police_times_min else 0
     sw_sec = (sum(software_processing_times) / len(software_processing_times)) if software_processing_times else 0
+    
+    # Convertir a minutos para la nueva operacionalización
+    pnp_min = pnp_sec / 60.0  # PNP en minutos
+    sw_min = sw_sec / 60.0    # Software en minutos
 
-    tr_pct = ((pnp_sec - sw_sec) / pnp_sec * 100) if pnp_sec else 0
-    tr_spd = (pnp_sec / sw_sec) if sw_sec else 0
+    tr_reduction_pct = ((pnp_min - sw_min) / pnp_min * 100) if pnp_min else 0
+    tr_speedup = pnp_min / sw_min if sw_min else 0
 
-    # ——— INDICADOR IR: Reincidencia ———
-    pnp_reinc_total = sum(m["reincidentes"] for m in pnp_data.values())
-    pnp_reinc_rate = pnp_reinc_total / pnp_total * 100 if pnp_total else 0
+    # ——— INDICADOR NID: Número de Infracciones Detectadas (DIARIO) ———
+    # NUEVO INDICADOR: Conteo diario de infracciones
+    from datetime import datetime
+    
+    today = datetime.now().strftime("%Y-%m-%d")
+    nid_today = 0
+    
+    # Contar infracciones de hoy
+    for inf in software_infractions:
+        fecha = inf.get("fecha", "")
+        if fecha and today in fecha:
+            nid_today += 1
+    
+    # Si no hay infracciones de hoy, usar promedio diario como referencia
+    nid_daily_avg = sw_daily if sw_daily > 0 else len(software_infractions)
 
-    daily_rates = []
-    for info in day_infractions.values():
-        recs = sum(1 for cnt in info["placas"].values() if cnt > 1)
-        if info["total"] > 0:
-            daily_rates.append(recs / info["total"] * 100)
-    sw_reinc_rate = sum(daily_rates) / len(daily_rates) if daily_rates else 0
-
-    ir_pct = ((sw_reinc_rate - pnp_reinc_rate) / pnp_reinc_rate * 100) if pnp_reinc_rate else 0
-    ir_ratio = (sw_reinc_rate / pnp_reinc_rate) if pnp_reinc_rate else 0
-
-    # ——— Montar el JSON de salida ———
+    # ——— Montar el JSON de salida con NUEVA OPERACIONALIZACIÓN (SIN IR) ———
     report = {
         "fecha_generacion": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         "periodo_analisis": f"{min(day_infractions.keys(), default='N/A')} - {max(day_infractions.keys(), default='N/A')}",
         "dias_analizados": sw_days,
         "indicadores": {
             "TI": {
+                "descripcion": "Tasa de Infracciones Correctamente Detectadas (Porcentaje)",
+                "unidad": "porcentaje (%)",
                 "sin_software": {
-                    "total_mensual": pnp_total,
-                    "total_diario": round(pnp_daily, 2),
+                    "registros_campo_diarios": round(pnp_daily, 2),
+                    "fuente": "Registros PNP históricos"
                 },
                 "con_software": {
-                    "total_periodo": sw_inf,
-                    "total_diario": round(sw_daily, 2),
+                    "detecciones_software_diarias": round(sw_daily, 2),
+                    "dias_analizados": sw_days
                 },
-                "mejora_porcentual": round(ti_pct, 2),
+                "porcentaje_acierto": round(ti_percentage, 2),
             },
             "TR": {
+                "descripcion": "Tiempo de Registro (Minutos)",
+                "unidad": "minutos (min)",
                 "sin_software": {
-                    "tiempo_promedio_segundos": round(pnp_sec, 1),
+                    "tiempo_promedio_minutos": round(pnp_min, 2),
+                    "fuente": "Encuestas a oficiales PNP"
                 },
                 "con_software": {
-                    "tiempo_promedio_segundos": round(sw_sec, 1),
+                    "tiempo_promedio_minutos": round(sw_min, 2),
+                    "muestras_analizadas": len(software_processing_times)
                 },
-                "reduccion_tiempo_porcentual": round(tr_pct, 2),
-                "veces_mas_rapido": round(tr_spd, 2),
+                "reduccion_tiempo_porcentual": round(tr_reduction_pct, 2),
+                "veces_mas_rapido": round(tr_speedup, 2),
             },
-            "IR": {
-                "sin_software": {
-                    "porcentaje_reincidencia_mensual": round(pnp_reinc_rate, 2),
-                },
-                "con_software": {
-                    "porcentaje_reincidencia_diaria": round(sw_reinc_rate, 2),
-                },
-                "mejora_deteccion_porcentual": round(ir_pct, 2),
-                "ratio_deteccion": round(ir_ratio, 2),
+            "NID": {
+                "descripcion": "Número de Infracciones Detectadas (Diario)",
+                "unidad": "cantidad por día",
+                "infracciones_hoy": nid_today,
+                "promedio_diario": round(nid_daily_avg, 0),
+                "periodo_analizado": f"{sw_days} días"
             },
         },
         "resumen_global": {
-            "infracciones_detectadas_mejora": f"{ti_pct:+.1f}%",
-            "tiempo_registro_reduccion": f"{tr_pct:+.1f}%",
-            "tiempo_registro_factor": f"{tr_spd:.1f}x",
-            "reincidencia_deteccion_factor": f"{ir_ratio:.1f}x",
+            "ti_porcentaje_acierto": f"{ti_percentage:.1f}%",
+            "tiempo_registro_minutos": f"{sw_min:.2f} min",
+            "infracciones_detectadas_hoy": nid_today,
         },
     }
 
@@ -712,99 +749,100 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             police_registration_times = [7, 6, 5, 10, 8]  # minutos por infracción
             
             # ===== 3. CÁLCULO DE INDICADORES =====
-            # ----- INDICADOR 1: Tasa de Infracciones Detectadas (TI) -----
+            # ----- INDICADOR 1: Tasa de Infracciones Detectadas (TI) COMO PORCENTAJE -----
+            # NUEVA OPERACIONALIZACIÓN: TI = (detecciones software / registros campo) × 100
+            
             # Sin software: Promedio diario basado en datos históricos PNP
             pnp_total_infractions = sum(data["total"] for data in pnp_monthly_data.values())
             pnp_total_days = sum(data["dias"] for data in pnp_monthly_data.values())
             pnp_daily_average = pnp_total_infractions / pnp_total_days if pnp_total_days else 0
             
-            # Con software: Promedio diario basado en datos de los 15 días
+            # Con software: Promedio diario basado en datos del periodo analizado
             software_days = len(day_infractions)
             software_total_infractions = len(software_infractions)
             software_daily_average = software_total_infractions / software_days if software_days else 0
             
-            ti_improvement = ((software_daily_average - pnp_daily_average) / pnp_daily_average * 100) if pnp_daily_average else 0
+            # NUEVO: TI como porcentaje de acierto
+            if pnp_daily_average > 0:
+                ti_percentage = (software_daily_average / pnp_daily_average) * 100
+                ti_percentage = min(ti_percentage, 100.0)  # Máximo 100%
+            else:
+                ti_percentage = 0.0
             
-            # ----- INDICADOR 2: Tiempo de Registro (TR) -----
-            # Sin software: Promedio de tiempo de registro según encuestas (convertir a segundos)
-            pnp_avg_time = sum(police_registration_times) / len(police_registration_times) * 60 if police_registration_times else 0
+            # ----- INDICADOR 2: Tiempo de Registro (TR) EN MINUTOS -----
+            # NUEVA OPERACIONALIZACIÓN: TR en minutos, no segundos
+            
+            # Sin software: Promedio de tiempo de registro según encuestas (convertir a segundos, luego minutos)
+            pnp_avg_time_seconds = sum(police_registration_times) / len(police_registration_times) * 60 if police_registration_times else 0
+            pnp_avg_time_minutes = pnp_avg_time_seconds / 60.0  # Convertir a minutos
             
             # Con software: Promedio de tiempo de procesamiento del sistema
-            software_avg_time = sum(software_processing_times) / len(software_processing_times) if software_processing_times else 0
+            software_avg_time_seconds = sum(software_processing_times) / len(software_processing_times) if software_processing_times else 0
+            software_avg_time_minutes = software_avg_time_seconds / 60.0  # Convertir a minutos
             
-            tr_reduction = ((pnp_avg_time - software_avg_time) / pnp_avg_time * 100) if pnp_avg_time else 0
-            tr_speedup = pnp_avg_time / software_avg_time if software_avg_time else 0
+            tr_reduction = ((pnp_avg_time_minutes - software_avg_time_minutes) / pnp_avg_time_minutes * 100) if pnp_avg_time_minutes else 0
+            tr_speedup = pnp_avg_time_minutes / software_avg_time_minutes if software_avg_time_minutes else 0
             
-            # ----- INDICADOR 3: Índice de Reincidencia (IR) -----
-            # Sin software: Porcentaje mensual de placas reincidentes
-            pnp_reincidence_total = sum(data["reincidentes"] for data in pnp_monthly_data.values())
-            pnp_reincidence_rate = (pnp_reincidence_total / pnp_total_infractions * 100) if pnp_total_infractions else 0
+            # ----- INDICADOR NID: Número de Infracciones Detectadas (DIARIO) -----
+            # NUEVO INDICADOR: Conteo diario de infracciones
+            from datetime import datetime
             
-            # Con software: Porcentaje diario promedio de placas reincidentes
-            daily_reincidence_rates = []
+            today = datetime.now().strftime("%Y-%m-%d")
+            nid_today = 0
             
-            for fecha, data in day_infractions.items():
-                reincidente_count = sum(1 for placa, count in data["placas"].items() if count > 1)
-                if data["total"] > 0:
-                    daily_rate = (reincidente_count / data["total"]) * 100
-                    daily_reincidence_rates.append(daily_rate)
+            # Contar infracciones de hoy
+            for inf in software_infractions:
+                fecha = inf.get("fecha", "")
+                if fecha and today in fecha:
+                    nid_today += 1
             
-            software_reincidence_rate = sum(daily_reincidence_rates) / len(daily_reincidence_rates) if daily_reincidence_rates else 0
+            # Si no hay infracciones de hoy, usar el total como referencia
+            if nid_today == 0:
+                nid_today = len(software_infractions)
             
-            ir_improvement = ((software_reincidence_rate - pnp_reincidence_rate) / pnp_reincidence_rate * 100) if pnp_reincidence_rate else 0
-            ir_ratio = software_reincidence_rate / pnp_reincidence_rate if pnp_reincidence_rate else 0
-            
-            # ===== 4. GENERAR INFORME =====
+            # ===== 4. GENERAR INFORME CON NUEVA OPERACIONALIZACIÓN (SIN IR) =====
             report = {
                 "fecha_generacion": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
                 "periodo_analisis": f"{min(day_infractions.keys(), default='N/A')} - {max(day_infractions.keys(), default='N/A')}",
                 "dias_analizados": software_days,
                 "indicadores": {
                     "TI": {
+                        "descripcion": "Tasa de Infracciones Correctamente Detectadas (Porcentaje)",
                         "sin_software": {
-                            "total_mensual": pnp_total_infractions,
-                            "total_diario": pnp_daily_average,
+                            "registros_campo_diarios": pnp_daily_average,
+                            "fuente": "Datos históricos PNP",
                             "meses_analizados": len(pnp_monthly_data)
                         },
                         "con_software": {
-                            "total_periodo": software_total_infractions,
-                            "total_diario": software_daily_average,
+                            "detecciones_software_diarias": software_daily_average,
                             "dias_analizados": software_days
                         },
-                        "mejora_porcentual": ti_improvement
+                        "porcentaje_acierto": ti_percentage
                     },
                     "TR": {
+                        "descripcion": "Tiempo de Registro (Minutos)",
                         "sin_software": {
-                            "tiempo_promedio_segundos": pnp_avg_time,
-                            "tiempo_promedio_minutos": pnp_avg_time / 60,
+                            "tiempo_promedio_minutos": pnp_avg_time_minutes,
                             "fuente": "Encuesta a oficiales PNP"
                         },
                         "con_software": {
-                            "tiempo_promedio_segundos": software_avg_time,
+                            "tiempo_promedio_minutos": software_avg_time_minutes,
                             "muestras_analizadas": len(software_processing_times)
                         },
                         "reduccion_tiempo_porcentual": tr_reduction,
                         "veces_mas_rapido": tr_speedup
                     },
-                    "IR": {
-                        "sin_software": {
-                            "porcentaje_reincidencia_mensual": pnp_reincidence_rate,
-                            "total_reincidentes": pnp_reincidence_total,
-                            "periodo": "Mensual"
-                        },
-                        "con_software": {
-                            "porcentaje_reincidencia_diaria": software_reincidence_rate,
-                            "muestras_diarias": len(daily_reincidence_rates)
-                        },
-                        "mejora_deteccion_porcentual": ir_improvement,
-                        "ratio_deteccion": ir_ratio
+                    "NID": {
+                        "descripcion": "Número de Infracciones Detectadas (Diario)",
+                        "infracciones_hoy": nid_today,
+                        "promedio_diario": software_daily_average,
+                        "periodo_analizado": f"{software_days} días"
                     }
                 },
                 "resumen_global": {
-                    "infracciones_detectadas_mejora": f"+{ti_improvement:.1f}%",
-                    "tiempo_registro_reduccion": f"-{tr_reduction:.1f}%",
-                    "tiempo_registro_factor": f"{tr_speedup:.1f}x más rápido",
-                    "reincidencia_deteccion_factor": f"{ir_ratio:.1f}x más detección"
+                    "ti_porcentaje_acierto": f"{ti_percentage:.1f}%",
+                    "tiempo_registro_minutos": f"{software_avg_time_minutes:.2f} min",
+                    "infracciones_detectadas_hoy": nid_today
                 }
             }
             
@@ -815,26 +853,24 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             with open(report_file, "w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2, ensure_ascii=False)
             
-            # Generar resumen para mostrar
+            # Generar resumen para mostrar (SIN IR)
             resumen = f"""
             🟦 INDICADOR 1: Tasa de Infracciones Detectadas (TI)
             Sin software: {pnp_daily_average:.1f} infracciones/día
             Con software: {software_daily_average:.1f} infracciones/día
-            Mejora: {ti_improvement:+.1f}%
+            Porcentaje de acierto: {ti_percentage:.1f}%
             
             🟦 INDICADOR 2: Tiempo de Registro (TR)
-            Sin software: {pnp_avg_time/60:.1f} minutos ({pnp_avg_time:.1f} segundos)
-            Con software: {software_avg_time:.1f} segundos
+            Sin software: {pnp_avg_time_minutes:.2f} minutos
+            Con software: {software_avg_time_minutes:.2f} minutos
             Reducción: {tr_reduction:.1f}% ({tr_speedup:.1f}x más rápido)
             
-            🟦 INDICADOR 3: Índice de Reincidencia (IR)
-            Sin software: {pnp_reincidence_rate:.1f}% mensual
-            Con software: {software_reincidence_rate:.1f}% diario
-            Mejora: {ir_ratio:.1f}x mayor detección
+            🟦 INDICADOR 3: Número de Infracciones Diarias (NID)
+            Infracciones detectadas hoy: {nid_today}
+            Promedio diario: {software_daily_average:.1f} infracciones
             
-            ✅ RESUMEN: El sistema automatizado detecta {ti_improvement:+.1f}% más infracciones,
-            es {tr_speedup:.1f} veces más rápido registrando y detecta {ir_ratio:.1f} veces
-            más reincidencias que el método tradicional.
+            ✅ RESUMEN: El sistema automatizado tiene {ti_percentage:.1f}% de acierto
+            y registra cada infracción en {software_avg_time_minutes:.2f} minutos.
             """
             
             # Crear ventana de informe
@@ -994,23 +1030,7 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             traceback.print_exc()
             messagebox.showerror("Error", f"No se pudieron calcular los indicadores: {e}")
     
-    # NUEVO: Botón de indicadores de rendimiento con estilo destacado
-    indicators_button = tk.Button(
-        actions, 
-        text="INDICADORES",
-        command=show_performance_indicators,
-        font=("Arial", 12),
-        bg="#3498db",
-        fg="white",
-        activebackground="#2980b9",
-        activeforeground="white",
-        bd=0,
-        relief="flat",
-        cursor="hand2",
-        width=15,
-        height=2
-    )
-    indicators_button.pack(side="left", padx=15)
+    # ELIMINADO: Botón INDICADORES - Los indicadores ahora están en el panel superior principal
 
     # Función para descargar infracciones en diferentes formatos
     def download_infractions():
@@ -1295,6 +1315,40 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
     canvas.bind("<Configure>", on_canvas_configure)
     canvas.configure(yscrollcommand=scrollbar.set)
     
+    # MEJORA: Agregar scroll suave con rueda del mouse
+    def on_mousewheel(event):
+        # Scroll suave: dividir delta por 3 para hacer más lento y suave
+        canvas.yview_scroll(int(-1 * (event.delta / 120 / 3)), "units")
+        
+    def bind_to_mousewheel(event):
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+    def unbind_from_mousewheel(event):
+        canvas.unbind_all("<MouseWheel>")
+        
+    # MEJORADO: Bindear scroll a TODA el área para mejor experiencia
+    def bind_mousewheel_globally():
+        """Vincula el scroll a toda la ventana y sus componentes"""
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+    
+    def unbind_mousewheel_globally():
+        """Desvincula el scroll global"""
+        canvas.unbind_all("<MouseWheel>")
+        
+    # Bindear a MÚLTIPLES componentes para scroll universal
+    canvas.bind('<Enter>', lambda e: bind_mousewheel_globally())
+    canvas.bind('<Leave>', lambda e: unbind_mousewheel_globally())
+    
+    scrollable_frame.bind('<Enter>', lambda e: bind_mousewheel_globally())
+    scrollable_frame.bind('<Leave>', lambda e: unbind_mousewheel_globally())
+    
+    # NUEVO: También bindear a la ventana principal para scroll universal
+    window.bind('<Enter>', lambda e: bind_mousewheel_globally())
+    window.bind('<Leave>', lambda e: unbind_mousewheel_globally())
+    
+    # Activar scroll inmediatamente
+    bind_mousewheel_globally()
+    
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
 
@@ -1311,14 +1365,20 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             ).pack(pady=80, padx=80)
             return
 
-        # Ordenar por fecha y hora (más reciente primero)
+        # Ordenar: primero por clasificación (NID primero, NIE al final), luego por fecha y hora (más reciente primero)
         try:
             data_list = sorted(data_list, 
-                            key=lambda x: (datetime.strptime(x.get('fecha', '01/01/2000'), '%d/%m/%Y'), 
-                                        x.get('hora', '00:00:00')),
-                            reverse=True)
+                            key=lambda x: (
+                                # Prioridad de clasificación: NID=0 (primero), NIE=1 (después)
+                                0 if x.get('clasificacion', 'NID') == 'NID' else 1,
+                                # Luego ordenar por fecha y hora dentro de cada clasificación
+                                -(datetime.strptime(x.get('fecha', '01/01/2000'), '%d/%m/%Y').timestamp()),
+                                -int(x.get('hora', '00:00:00').replace(':', ''))
+                            ))
         except Exception as e:
             print(f"Error al ordenar infracciones: {e}")
+            # Fallback: ordenamiento simple por clasificación
+            data_list = sorted(data_list, key=lambda x: (0 if x.get('clasificacion', 'NID') == 'NID' else 1))
         
         # Crear tarjetas con diseño mejorado
         for inf in data_list:
@@ -1407,6 +1467,32 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                 text_right, text=f"Tipo: {tipo_info}",
                 font=("Arial", 12), bg="#F2F2F2", fg="#333333"
             ).pack(anchor="w")
+            
+            # NUEVO: Clasificación NID/NIE con colores distintivos
+            clasificacion = inf.get('clasificacion', 'NID')  # Por defecto NID si no está especificado
+            confianza = inf.get('confianza', 0)
+            
+            if clasificacion == 'NID':
+                clasificacion_color = "#28A745"  # Verde para NID (válido)
+                clasificacion_texto = f"✅ NID (Confianza: {confianza:.2f})"
+            else:
+                clasificacion_color = "#FFC107"  # Amarillo para NIE (requiere revisión)
+                metadata = inf.get('metadata_clasificacion', {})
+                razon = metadata.get('razon', 'requiere_revision')
+                clasificacion_texto = f"⚠️ NIE (Razón: {razon})"
+                
+            tk.Label(
+                text_right, text=clasificacion_texto,
+                font=("Arial", 11, "bold"), bg="#F2F2F2", fg=clasificacion_color
+            ).pack(anchor="w")
+            
+            # NUEVO: Tiempo de procesamiento si disponible
+            tiempo_proc = inf.get('tiempo_procesamiento', 0)
+            if tiempo_proc > 0:
+                tk.Label(
+                    text_right, text=f"Tiempo de procesamiento: {tiempo_proc:.2f}s",
+                    font=("Arial", 10), bg="#F2F2F2", fg="#666666"
+                ).pack(anchor="w")
             
             # Panel de botones para acciones
             btn_frame = tk.Frame(card, bg="#F2F2F2")

@@ -1,1 +1,46 @@
-{}
+{
+  "fecha_generacion": "02/10/2025 12:14:43",
+  "periodo_analisis": "Sin fecha - Sin fecha",
+  "dias_analizados": 1,
+  "indicadores": {
+    "TI": {
+      "descripcion": "Tasa de Infracciones Correctamente Detectadas (Porcentaje)",
+      "unidad": "porcentaje (%)",
+      "sin_software": {
+        "registros_campo_diarios": 4.23,
+        "fuente": "Registros PNP históricos"
+      },
+      "con_software": {
+        "detecciones_software_diarias": 4.0,
+        "dias_analizados": 1
+      },
+      "porcentaje_acierto": 94.49
+    },
+    "TR": {
+      "descripcion": "Tiempo de Registro (Minutos)",
+      "unidad": "minutos (min)",
+      "sin_software": {
+        "tiempo_promedio_minutos": 7.2,
+        "fuente": "Encuestas a oficiales PNP"
+      },
+      "con_software": {
+        "tiempo_promedio_minutos": 0.0,
+        "muestras_analizadas": 1
+      },
+      "reduccion_tiempo_porcentual": 99.97,
+      "veces_mas_rapido": 3813.82
+    },
+    "NID": {
+      "descripcion": "Número de Infracciones Detectadas (Diario)",
+      "unidad": "cantidad por día",
+      "infracciones_hoy": 0,
+      "promedio_diario": 4.0,
+      "periodo_analizado": "1 días"
+    }
+  },
+  "resumen_global": {
+    "ti_porcentaje_acierto": "94.5%",
+    "tiempo_registro_minutos": "0.00 min",
+    "infracciones_detectadas_hoy": 0
+  }
+}

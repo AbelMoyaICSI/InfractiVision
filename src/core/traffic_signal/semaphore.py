@@ -66,9 +66,21 @@ class Semaforo:
 
     def deactivate_semaphore(self):
         """Desactiva el semáforo cuando no hay video"""
+        print("🚦 DEACTIVATING SEMAPHORE - Cancelando todos los timers")
         self.active = False
+        
+        # CANCELAR TODOS LOS TIMERS PENDIENTES del frame
+        try:
+            # Intentar cancelar cualquier after pendiente
+            # Nota: Tkinter no tiene un método directo para cancelar todos los after
+            # pero al establecer active=False, los métodos update_countdown no se ejecutarán más
+            pass
+        except Exception as e:
+            print(f"Error cancelando timers: {e}")
+        
         self.show_inactive_state()
-        self.info_label.config(text="Semáforo inactivo")
+        self.info_label.config(text="🚦 Semáforo PAUSADO - Procesamiento completado")
+        print("🚦 SEMÁFORO COMPLETAMENTE PAUSADO")
 
     def show_inactive_state(self):
         """Muestra el semáforo en estado inactivo (todas las luces grises)"""
@@ -104,7 +116,9 @@ class Semaforo:
         self.info_label.config(
             text=f"{ts}\nEstado: {self.current_state.upper()} – Quedan {secs}s {ms}ms"
         )
-        self.frame.after(50, self.update_countdown)
+        # SOLO programar siguiente actualización si el semáforo está activo
+        if self.active:
+            self.frame.after(50, self.update_countdown)
 
     # --------------------
     # Gestión de presets
@@ -365,7 +379,11 @@ class Semaforo:
         self.target_time = time.time() + self.cycle_durations[self.current_state]
         self.show_state()
 
-    def update_countdown(self):
+    def update_countdown_legacy(self):
+        """MÉTODO DUPLICADO - CORREGIDO PARA VERIFICAR ESTADO ACTIVO"""
+        if not self.active:
+            return
+            
         now = time.time()
         diff = self.target_time - now
         if diff <= 0:
@@ -377,7 +395,9 @@ class Semaforo:
         self.info_label.config(
             text=f"{ts}\nEstado: {self.current_state.upper()} – Quedan {secs}s {ms}ms"
         )
-        self.frame.after(50, self.update_countdown)
+        # SOLO programar siguiente actualización si el semáforo está activo
+        if self.active:
+            self.frame.after(50, self.update_countdown_legacy)
 
     def get_current_state(self):
         return self.current_state

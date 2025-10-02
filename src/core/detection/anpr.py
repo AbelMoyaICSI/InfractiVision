@@ -61,13 +61,7 @@ class ANPR:
             for path in model_paths:
                 if os.path.exists(path):
                     print(f"Loading license plate detector from: {path}")
-                    # Optimizar rendimiento del modelo YOLO
                     self.model = YOLO(path)
-                    
-                    # Configuraciones para optimizar inferencia
-                    if hasattr(self.model, 'predictor'):
-                        self.model.predictor.args.verbose = False  # Desactivar salida detallada
-                    
                     model_loaded = True
                     print("ANPR: License plate detector loaded successfully")
                     break
