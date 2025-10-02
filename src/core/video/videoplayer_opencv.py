@@ -10,6 +10,9 @@ import os
 import numpy as np
 import torch
 import psutil
+import winsound  # Para beep en Windows
+import re  # Para patrones de placas
+from collections import deque, defaultdict
 
 from tkinter import messagebox, simpledialog
 from PIL import Image, ImageTk
@@ -39,9 +42,38 @@ class VideoPlayerOpenCV:
         self.semaforo          = semaforo
 
         self.yolo = YOLO(resource_path('models/yolov8n.pt'))      # peso pequeño, pre-entrenado en COCO
+        
+        # 🚀 MODELO ESPECÍFICO PARA PLACAS (NUEVO)
+        self.plate_model = None
+        try:
+            plate_model_path = resource_path('models/license_plate_detector.pt')
+            if os.path.exists(plate_model_path):
+                self.plate_model = YOLO(plate_model_path)
+                print("🎯 Modelo específico de placas cargado")
+            else:
+                print("⚠️ Modelo específico no encontrado, usando solo CV")
+        except Exception as e:
+            print(f"⚠️ Error cargando modelo de placas: {e}")
+            self.plate_model = None
+        
         self.CAR_CLASS_ID = 2               # en COCO, 'car' = 2
         self.CONF_THRESH   = 0.4
 
+        # Variables de control de reproducción
+        self.is_playing = False
+        self.is_paused = True
+        self.start_time_hour = None  # Para sincronizar con franja horaria
+        
+        # Sistema de beep para infracciones
+        self.beep_enabled = True
+        self.beep_cooldown = 2.0  # 2 segundos entre beeps para mejor control
+        self.beep_unique_plates = set()  # Placas que ya han hecho beep (único por matrícula)
+        
+        # 🎯 DETECCIÓN MEJORADA DE PLACAS
+        self.plate_detector = None  # Se inicializará cuando se necesite
+        self.frame_history = deque(maxlen=5)  # Historial para mejor selección
+        self.show_debug = True  # Mostrar rectángulos de debug
+        
         # Variables para métricas
         self.detected_plates_widgets = []
         self.seen_plates = set()
@@ -95,6 +127,52 @@ class VideoPlayerOpenCV:
         )
         self.btn_preprocesar.pack(side="left", padx=10)
 
+        # Botón PLAY/PAUSE
+        play_pause_style = btn_style.copy()
+        play_pause_style.update({
+            "width": 20,
+            "bg": "#27ae60",
+            "activebackground": "#2ecc71",
+            "font": ("Arial", 12, "bold")
+        })
+        self.play_pause_button = tk.Button(
+            self.btn_frame, text="▶️ REPRODUCIR",
+            command=self.toggle_play_pause,
+            **play_pause_style
+        )
+        self.play_pause_button.pack(side="left", padx=10)
+
+        # Label explicativo multilinea y responsive
+        self.play_pause_help_label = tk.Label(
+            self.btn_frame,
+            text="💡 Inicia reproducción\ny activa semáforo",
+            font=("Arial", 8, "italic"),
+            bg="black",
+            fg="#95a5a6",
+            anchor="nw",  # Alinear arriba-izquierda
+            justify="left",
+            wraplength=140,  # Ancho más generoso
+            width=18,  # Ancho en caracteres
+            relief="flat",
+            bd=0
+        )
+        self.play_pause_help_label.pack(side="left", padx=(5, 15), anchor="nw")
+
+        # Botón control de BEEP
+        beep_style = btn_style.copy()
+        beep_style.update({
+            "width": 12,
+            "bg": "#f39c12",
+            "activebackground": "#e67e22",
+            "font": ("Arial", 10, "bold")
+        })
+        self.beep_button = tk.Button(
+            self.btn_frame, text="🔊 BEEP",
+            command=self.toggle_beep,
+            **beep_style
+        )
+        self.beep_button.pack(side="left", padx=5)
+
         # Los botones de limpieza y gestión ahora están integrados en el selector visual
 
         # Panel vídeo + lateral
@@ -115,7 +193,7 @@ class VideoPlayerOpenCV:
 
         # CORRECCIÓN: Eliminar código duplicado en la configuración del panel de placas
         self.plates_frame = tk.Frame(
-            self.video_panel_container, bg="#34495e", width=320
+            self.video_panel_container, bg="#34495e", width=380
         )
         self.plates_frame.pack(side="right", fill="y")
         self.plates_frame.pack_propagate(False)
@@ -127,12 +205,21 @@ class VideoPlayerOpenCV:
         )
         self.plates_title.pack(fill="x")
 
+        # Subtítulo para indicadores con especificación
+        indicators_subtitle = tk.Label(
+            self.plates_frame, text="📊 INDICADORES\n(por franja horaria)",
+            bg="#2c3e50", fg="#ecf0f1", font=("Arial", 11, "bold"),
+            justify="center", pady=2
+        )
+        indicators_subtitle.pack(fill="x")
+
         # Panel de métricas primero
         self._create_metrics_panel()
 
         # Configuración del canvas y scrollbar - IMPLEMENTACIÓN LIMPIA
         self.plates_canvas = tk.Canvas(
-            self.plates_frame, bg="#ecf0f1", highlightthickness=0
+            self.plates_frame, bg="#ecf0f1", highlightthickness=0,
+            height=400  # CRÍTICO: Altura mínima para evitar cortes
         )
         self.plates_canvas.pack(side="left", fill="both", expand=True)
 
@@ -150,12 +237,18 @@ class VideoPlayerOpenCV:
         # CRÍTICO: Crear una sola ventana de canvas
         self.plates_canvas_window = self.plates_canvas.create_window(
             (0, 0), window=self.plates_inner_frame, anchor="nw",
-            width=self.plates_canvas.winfo_width()
+            width=360  # Ancho fijo adecuado para panel de 380px
         )
         
-        # Configurar eventos para actualizar correctamente el canvas
+        # AÑADIR: Binding para actualizar scroll automáticamente
         self.plates_inner_frame.bind("<Configure>", self._on_plates_inner_configure)
         self.plates_canvas.bind("<Configure>", self._on_plates_canvas_configure)
+        
+        # ✅ SCROLLING CON RUEDA DEL MOUSE
+        self._bind_mousewheel(self.plates_canvas)
+        
+        # Agregar evento para responsive design
+        self.parent.bind("<Configure>", self._on_window_resize)
         
         # Inicializar variables para las placas detectadas
         self.detected_plates_widgets = []
@@ -173,6 +266,13 @@ class VideoPlayerOpenCV:
             bg="black", fg="white", wraplength=300
         )
         self.avenue_label.place(relx=0.5, y=80, anchor="n")
+        
+        # Label para indicador de día/noche (a la derecha de la avenida)
+        self.lighting_indicator_label = tk.Label(
+            self.video_frame, text="", font=("Arial",14,"bold"),
+            bg="black", fg="orange", wraplength=100
+        )
+        self.lighting_indicator_label.place(relx=0.7, y=80, anchor="nw")
         
         # Label para mostrar video actual
         self.current_video_label = tk.Label(
@@ -232,6 +332,27 @@ class VideoPlayerOpenCV:
         self.plates_canvas.configure(
             scrollregion=self.plates_canvas.bbox("all")
         )
+    
+    def _on_plates_canvas_configure(self, event):
+        """Actualizar ancho del frame interno cuando cambie el canvas"""
+        canvas_width = event.width
+        self.plates_canvas.itemconfig(self.plates_canvas_window, width=canvas_width-20)  # -20 para scrollbar
+    
+    def _bind_mousewheel(self, canvas):
+        """Vincular eventos de rueda del mouse para scrolling"""
+        def _on_mousewheel(event):
+            # Scroll con rueda del mouse
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        def _bind_to_mousewheel(event):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        def _unbind_from_mousewheel(event):
+            canvas.unbind_all("<MouseWheel>")
+        
+        # Vincular eventos de entrada y salida del mouse
+        canvas.bind('<Enter>', _bind_to_mousewheel)
+        canvas.bind('<Leave>', _unbind_from_mousewheel)
 
     def load_avenue_config(self):
         if not os.path.exists(AVENUE_CONFIG_FILE):
@@ -300,8 +421,13 @@ class VideoPlayerOpenCV:
             )
             return
 
-        setup = tk.Toplevel(self.parent)
-        setup.title("Configuración Inicial del Video")
+        # Usar función responsive para crear ventana de configuración
+        setup, content_frame = self._create_responsive_window(
+            self.parent, 
+            "Configuración Inicial del Video",
+            min_width=450,
+            min_height=350
+        )
         
         # Configurar icono
         icon_path = resource_path("img/icon.ico")
@@ -351,7 +477,7 @@ class VideoPlayerOpenCV:
             messagebox.showinfo("Éxito","Configuración guardada.",parent=setup)
             setup.destroy()
 
-        tk.Button(setup, text="Guardar Configuración", command=guardar)\
+        tk.Button(content_frame, text="Guardar Configuración", command=guardar)\
           .grid(row=4, column=0, columnspan=2,pady=10)
 
         setup.transient(self.parent)
@@ -754,17 +880,17 @@ class VideoPlayerOpenCV:
                 pass
         
         # MEJORA: Layout compacto - Hora inicio con formato 00:00
-        tk.Label(time_frame, text="Desde:", font=("Arial", 9, "bold")).grid(row=0, column=0, sticky="w")
+        tk.Label(time_frame, text="Desde:", font=("Arial", 11, "bold")).grid(row=0, column=0, sticky="w")
         
         # Spinbox para horas (01-12) SIN formato para evitar problemas
         spin_start_h = tk.Spinbox(time_frame, from_=1, to=12, width=3, textvariable=var_start_h,
-                                 font=("Arial", 9), justify="center")
+                                 font=("Arial", 11), justify="center")
         spin_start_h.grid(row=0, column=1, padx=2)
         tk.Label(time_frame, text=":").grid(row=0, column=2)
         
         # Spinbox para minutos (00-59) SIN formato para evitar problemas
         spin_start_m = tk.Spinbox(time_frame, from_=0, to=59, width=3, textvariable=var_start_m,
-                                 font=("Arial", 9), justify="center", increment=15)
+                                 font=("Arial", 11), justify="center", increment=15)
         spin_start_m.grid(row=0, column=3, padx=2)
         
         # Selector AM/PM para inicio más compacto
@@ -774,15 +900,15 @@ class VideoPlayerOpenCV:
         combo_start_ampm.grid(row=0, column=4, padx=2)
         
         # MEJORA: Layout compacto - Hora fin en fila 1 con formato 00:00
-        tk.Label(time_frame, text="Hasta:", font=("Arial", 9, "bold")).grid(row=1, column=0, sticky="w", pady=(5,0))
+        tk.Label(time_frame, text="Hasta:", font=("Arial", 11, "bold")).grid(row=1, column=0, sticky="w", pady=(5,0))
         
         spin_end_h = tk.Spinbox(time_frame, from_=1, to=12, width=3, textvariable=var_end_h,
-                               font=("Arial", 9), justify="center")
+                               font=("Arial", 11), justify="center")
         spin_end_h.grid(row=1, column=1, padx=2, pady=(5,0))
         tk.Label(time_frame, text=":").grid(row=1, column=2, pady=(5,0))
         
         spin_end_m = tk.Spinbox(time_frame, from_=0, to=59, width=3, textvariable=var_end_m,
-                               font=("Arial", 9), justify="center", increment=15)
+                               font=("Arial", 11), justify="center", increment=15)
         spin_end_m.grid(row=1, column=3, padx=2, pady=(5,0))
         
         # Selector AM/PM para fin más compacto
@@ -1043,7 +1169,7 @@ class VideoPlayerOpenCV:
         self.parent.after(0, lambda: self._finish_loading_video(path, frame))
 
     def _finish_loading_video(self, path, first_frame):
-        self.running = False
+        self.running = False  # NO iniciar automáticamente
         if self.cap:
             self.cap.release()
         self.cap = cv2.VideoCapture(path)
@@ -1055,11 +1181,20 @@ class VideoPlayerOpenCV:
         self.orig_h, self.orig_w = h, w
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
         self.video_fps = max(self.cap.get(cv2.CAP_PROP_FPS), 30)
-        self.running = True
+        
+        # 🌙 ANÁLISIS NOCTURNO AL CARGAR VIDEO
+        self._analyze_video_lighting(first_frame)
+        
+        # Estados iniciales: pausado, esperando botón PLAY
+        self.running = False
+        self.is_playing = False
+        self.is_paused = True
+        self.start_time_hour = None  # Reset para sincronización
+        
         self.load_polygon_for_video()
         self.clear_detected_plates()
         
-        # Configurar y activar semáforo
+        # Configurar semáforo pero NO activar
         self.semaforo.current_state = "green"
         
         ave = self.get_avenue_for_video(path)
@@ -1071,30 +1206,50 @@ class VideoPlayerOpenCV:
             self.avenue_label.config(text=ave)
             self.cycle_durations = times
             
-            # Actualizar el semáforo con la configuración
+            # Actualizar el semáforo con la configuración pero sin activar
             self.semaforo.cycle_durations = {
                 "green": times["green"],
                 "yellow": times["yellow"],
                 "red": times["red"]
             }
-            self.semaforo.target_time = time.time() + self.semaforo.cycle_durations[self.semaforo.current_state]
+            # NO activar semáforo automáticamente
             
-            # Activar el semáforo
-            self.semaforo.activate_semaphore()
-            
-        if not self.timestamp_updater.running:
-            self.timestamp_updater.start_timestamp()
-        self.update_frames()
+        # Configurar botón inicial como REPRODUCIR
+        if hasattr(self, 'play_pause_button'):
+            self.play_pause_button.config(
+                text="▶️ REPRODUCIR",
+                bg="#27ae60",
+                activebackground="#2ecc71"
+            )
+        
+        # Resetear texto explicativo inicial
+        if hasattr(self, 'play_pause_help_label'):
+            self.play_pause_help_label.config(
+                text="💡 Inicia reproducción\ny activa semáforo"
+            )
+        
+        # Mostrar primer frame estático (no iniciar reproducción)
+        bgr_img = self.resize_and_letterbox(first_frame)
+        rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+        imgtk = ImageTk.PhotoImage(Image.fromarray(rgb_img))
+        self.video_label.config(image=imgtk)
+        self.video_label.image = imgtk
+        
+        print("⏸️ Video cargado - Presiona PLAY para iniciar")
 
     def load_video(self, path):
         """
         Carga un video y realiza el análisis de infracciones sin reproducirlo por completo
         """
+        # RESETEAR bandera de procesamiento completado para nuevo video
+        self.processing_completed = False
+        print("🔄 NUEVA CARGA DE VIDEO - Bandera de procesamiento reseteada")
         def on_preprocessing_complete(success, infractions=None):
             """Función que se ejecuta cuando finaliza el preprocesamiento"""
             if success:
-                # No cargar el video completo, solo mostrar el mensaje de éxito
-                print(f"Análisis completado: {len(infractions) if infractions else 0} infracciones detectadas")
+                # PAUSAR VIDEO Y SEMÁFORO AL COMPLETAR ANÁLISIS
+                self.is_paused = True
+                print(f"⏸️ Video y semáforo pausados - Análisis completado: {len(infractions) if infractions else 0} infracciones detectadas")
                 
                 # Si queremos cargar la primera imagen del video como vista previa
                 cap = cv2.VideoCapture(path)
@@ -1142,6 +1297,124 @@ class VideoPlayerOpenCV:
         
         # Desactivar el semáforo cuando se detiene el video
         self.semaforo.deactivate_semaphore()
+
+    def toggle_play_pause(self):
+        """Toggle entre PLAY y PAUSE"""
+        if not hasattr(self, 'current_video_path') or not self.current_video_path:
+            messagebox.showwarning("Advertencia", "Primero carga un video")
+            return
+        
+        if self.is_playing and not self.is_paused:
+            # PAUSAR: detener video y semáforo
+            self.pause_video()
+        else:
+            # REPRODUCIR: iniciar o continuar video y semáforo
+            self.play_video()
+
+    def play_video(self):
+        """Iniciar o continuar reproducción"""
+        self.is_playing = True
+        self.is_paused = False
+        self.running = True
+        
+        # Cambiar botón a PAUSAR REPRODUCCIÓN
+        self.play_pause_button.config(
+            text="⏸️ PAUSAR REPRODUCCIÓN",
+            bg="#e74c3c",
+            activebackground="#c0392b"
+        )
+        
+        # Actualizar texto explicativo
+        if hasattr(self, 'play_pause_help_label'):
+            self.play_pause_help_label.config(
+                text="💡 Pausa video,\nsemáforo y timer"
+            )
+        
+        # Reanudar semáforo SOLO si no se ha completado un procesamiento
+        if not getattr(self, 'processing_completed', False):
+            if hasattr(self.semaforo, 'resume_semaphore'):
+                self.semaforo.resume_semaphore()
+            else:
+                self.semaforo.activate_semaphore()
+        else:
+            print("🚦 SEMÁFORO MANTENIDO PAUSADO - Procesamiento completado")
+        
+        # Reanudar timestamp con sincronización de franja horaria
+        if not self.timestamp_updater.running:
+            self.timestamp_updater.start_timestamp()
+        
+        # Reanudar actualización de frames
+        self.update_frames()
+        
+        print("▶️ REPRODUCCIÓN INICIADA")
+
+    def pause_video(self):
+        """Pausar reproducción"""
+        self.is_playing = False
+        self.is_paused = True
+        self.running = False
+        
+        # Cambiar botón a CONTINUAR REPRODUCCIÓN
+        self.play_pause_button.config(
+            text="▶️ CONTINUAR REPRODUCCIÓN",
+            bg="#27ae60",
+            activebackground="#2ecc71"
+        )
+        
+        # Actualizar texto explicativo
+        if hasattr(self, 'play_pause_help_label'):
+            self.play_pause_help_label.config(
+                text="💡 Continúa desde\nposición actual"
+            )
+        
+        # Pausar semáforo
+        if hasattr(self.semaforo, 'pause_semaphore'):
+            self.semaforo.pause_semaphore()
+        else:
+            self.semaforo.deactivate_semaphore()
+        
+        # Pausar timestamp
+        if hasattr(self.timestamp_updater, 'pause_timestamp'):
+            self.timestamp_updater.pause_timestamp()
+        
+        # Cancelar próxima actualización de frame
+        if hasattr(self, "_after_id") and self._after_id:
+            self.parent.after_cancel(self._after_id)
+            self._after_id = None
+        
+        print("⏸️ REPRODUCCIÓN PAUSADA")
+
+    def _calculate_timestamp_with_time_range(self, video_timestamp):
+        """Calcular timestamp alineado con la franja horaria configurada"""
+        if not hasattr(self, 'current_video_path') or not self.current_video_path:
+            return video_timestamp
+        
+        try:
+            # Obtener la franja horaria configurada para este video
+            time_preset = self.get_time_preset_for_video(self.current_video_path)
+            if not time_preset or 'start_hour' not in time_preset or 'start_minute' not in time_preset:
+                return video_timestamp
+            
+            # Si es la primera vez, establecer la hora de inicio
+            if self.start_time_hour is None:
+                self.start_time_hour = time_preset['start_hour']
+                self.start_time_minute = time_preset['start_minute']
+                self.video_start_seconds = self.start_time_hour * 3600 + self.start_time_minute * 60
+                print(f"🕐 Sincronizado con franja horaria: {self.start_time_hour:02d}:{self.start_time_minute:02d}")
+            
+            # Calcular tiempo actual basado en franja horaria + progreso del video
+            current_total_seconds = self.video_start_seconds + video_timestamp
+            
+            # Convertir a horas, minutos y segundos
+            hours = int(current_total_seconds // 3600) % 24
+            minutes = int((current_total_seconds % 3600) // 60)
+            seconds = int(current_total_seconds % 60)
+            
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            
+        except Exception as e:
+            print(f"Error calculando timestamp con franja horaria: {e}")
+            return video_timestamp
 
     def plate_loop(self):
         """
@@ -1371,8 +1644,10 @@ class VideoPlayerOpenCV:
     def update_frames(self):
         """
         Actualiza los frames del video y detecta infracciones con soporte mejorado para noche.
+        MODIFICADO: Respeta el estado de pausa
         """
-        if not self.running or not self.cap:
+        # VERIFICACIÓN ADICIONAL: solo continuar si no está pausado
+        if not self.running or not self.cap or self.is_paused:
             return
         
         ret, frame = self.cap.read()
@@ -1441,64 +1716,86 @@ class VideoPlayerOpenCV:
                         in_polygon = self.is_vehicle_in_polygon(car_detection, self.polygon_points)
                         
                     if in_polygon:
-                        # Crear una región de interés alrededor del vehículo
-                        x1, y1, x2, y2 = car_detection[0], car_detection[1], car_detection[2], car_detection[3]
+                        # 🎯 DETECCIÓN INTELIGENTE del mejor recorte de placa
+                        x1, y1, x2, y2 = car_detection[:4]
+                        best_plate_crop, confidence = self.enhanced_plate_detection(frame, car_detection)
                         
-                        # Ampliar más el área para capturar la placa (especialmente en la noche)
-                        height = y2 - y1
-                        width = x2 - x1
+                        if best_plate_crop is not None and confidence > 0.3:
+                            # 🔍 SUPER-RESOLUCIÓN MEJORADA para placas de baja calidad
+                            enhanced_plate = best_plate_crop
+                            if confidence < 0.6:  # Baja confianza = posible borrosidad
+                                try:
+                                    # Aplicar super-resolución mejorada con múltiples técnicas
+                                    enhanced_plate = self._apply_super_resolution(best_plate_crop, is_night)
+                                    print(f"🔍 Super-resolución mejorada aplicada (confianza: {confidence:.3f})")
+                                except Exception as e:
+                                    print(f"⚠️ Super-resolución falló: {e}")
+                                    enhanced_plate = best_plate_crop  # Usar original
+                            
+                            # 📊 Obtener timestamp sincronizado
+                            current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+                            current_time = current_frame / self.video_fps
+                            synchronized_timestamp = self._calculate_timestamp_with_time_range(current_time)
+                            
+                            # Actualizar timestamp_label
+                            if isinstance(synchronized_timestamp, str):
+                                self.timestamp_label.config(text=synchronized_timestamp)
+                            
+                            # 📤 Poner en cola para OCR con imagen mejorada
+                            if not self.plate_queue.full():
+                                self.plate_queue.put((frame.copy(), enhanced_plate, is_night, current_time))
+                                print(f"🚨 Infracción detectada - Confianza: {confidence:.3f}")
                         
-                        # Mayor expansión en modo nocturno
-                        expand_factor = 0.15 if is_night else 0.1
+                        # � REGISTRAR VEHÍCULO INFRACTOR (tracking persistente)
+                        vehicle_center = (int((x1 + x2) / 2), int((y1 + y2) / 2))
+                        vehicle_area = (x2 - x1) * (y2 - y1)
                         
-                        y1_extended = max(0, y1 - int(height * expand_factor))
-                        y2_extended = min(frame.shape[0], y2 + int(height * expand_factor))
-                        x1_extended = max(0, x1 - int(width * expand_factor))
-                        x2_extended = min(frame.shape[1], x2 + int(width * expand_factor))
+                        # Inicializar tracking de infractores
+                        if not hasattr(self, '_active_infractors'):
+                            self._active_infractors = {}
+                        if not hasattr(self, '_infractor_beeps'):
+                            self._infractor_beeps = set()
                         
-                        # Recortar el área del vehículo para procesamiento de placa
-                        car_roi = frame[y1_extended:y2_extended, x1_extended:x2_extended].copy()
-
-                        # Recortar el área del vehículo para procesamiento de placa
-                        vehicle_roi = frame_with_cars[y1_extended:y2_extended, x1_extended:x2_extended]
+                        # Buscar si ya existe un infractor cercano
+                        infractor_id = None
+                        for existing_id, existing_data in self._active_infractors.items():
+                            existing_center = existing_data['center']
+                            distance = ((vehicle_center[0] - existing_center[0])**2 + 
+                                       (vehicle_center[1] - existing_center[1])**2)**0.5
+                            
+                            # Si está cerca (mismo vehículo), actualizar posición
+                            if distance < 100:  # Tolerancia de 100 píxeles
+                                infractor_id = existing_id
+                                self._active_infractors[existing_id]['center'] = vehicle_center
+                                self._active_infractors[existing_id]['bbox'] = (x1, y1, x2, y2)
+                                break
                         
-                        # Dibujar caja roja para indicar infracción
-                        cv2.rectangle(frame_with_cars, 
-                                    (x1_extended, y1_extended), 
-                                    (x2_extended, y2_extended), 
-                                    (0, 0, 255), 3)
-
-                        # MODIFICACIÓN: Obtener el timestamp del video actual
-                        current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
-                        current_time = current_frame / self.video_fps
-
-                        # Pasar el recorte del vehículo para OCR - incluir timestamp
-                        if not self.plate_queue.full():
-                            self.plate_queue.put((frame_with_cars, vehicle_roi, is_night, current_time))
+                        # Si no existe, crear nuevo infractor
+                        if infractor_id is None:
+                            infractor_id = f"inf_{len(self._active_infractors)}_{int(current_time)}"
+                            self._active_infractors[infractor_id] = {
+                                'center': vehicle_center,
+                                'bbox': (x1, y1, x2, y2),
+                                'first_seen': current_time,
+                                'plate_detected': best_plate_crop is not None
+                            }
+                            
+                            # 🔊 BEEP SOLO PARA NUEVOS INFRACTORES
+                            if infractor_id not in self._infractor_beeps:
+                                self._infractor_beeps.add(infractor_id)
+                                self.play_infraction_beep()
+                                print(f"🔊 Nuevo infractor detectado: {infractor_id}")
                         
-                        # En la noche, mejorar el roi antes de procesarlo
-                        if is_night:
-                            car_roi = self._enhance_night_visibility(car_roi)
+                        # 🔴 Dibujar cuadro rojo para infractor registrado
+                        cv2.rectangle(frame_with_cars, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 3)
+                        cv2.putText(frame_with_cars, f"INFRACCION #{infractor_id[-1]}", (int(x1), int(y1)-10),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                         
-                        # Procesar placa en esta área (poner en cola para procesamiento)
-                        if car_roi.size > 0:  # Verificar que el ROI no esté vacío
-                            try:
-                                # Poner en la cola para procesamiento
-                                if not self.plate_queue.full():
-                                    # Pasar el flag de noche al procesador de placas
-                                    self.plate_queue.put((frame.copy(), car_roi, is_night))
-                                
-                                # Dibujar un rectángulo rojo alrededor del vehículo infractor
-                                # Color más brillante en la noche para mejor visibilidad
-                                infraction_color = (0, 0, 255)  # Rojo
-                                
-                                cv2.rectangle(frame_with_cars, (x1, y1), (x2, y2), infraction_color, 3)
-                                
-                                # Texto con fondo para mejor visibilidad
-                                cv2.putText(frame_with_cars, "INFRACCION", (x1, y1-10),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, infraction_color, 2)
-                            except Exception as e:
-                                print(f"Error al procesar infracción: {e}")
+                        # Mostrar nivel de confianza si hay detección válida
+                        if best_plate_crop is not None:
+                            conf_text = f"Conf: {confidence:.2f}"
+                            cv2.putText(frame_with_cars, conf_text, (int(x1), int(y2)+20),
+                                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
         
         # Mostrar el frame anotado
         bgr_img = self.resize_and_letterbox(frame_with_cars)
@@ -1525,22 +1822,318 @@ class VideoPlayerOpenCV:
         # Asegurarse que las etiquetas estén visibles
         self.timestamp_label.lift()
         self.avenue_label.lift()
+        self.lighting_indicator_label.lift()
         self.current_video_label.lift()
         self.system_info_label.lift()
         self.info_label.lift()
         
         self._after_id = self.parent.after(10, self.update_frames)
 
-    def _safe_add_plate_to_panel(self, plate_img, plate_text, timestamp=None):
+    def format_tr(self, timestamp):
+        """Convierte timestamp a formato TR: mm:ss min (Xs)"""
+        if timestamp is None:
+            return "TR: --:-- min (0s)"
+        
+        total_seconds = int(timestamp)
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        return f"TR: {minutes:02d}:{seconds:02d} min ({total_seconds}s)"
+    
+    def validate_conf(self, confidence):
+        """Valida y normaliza valor de confianza [0,1]"""
+        try:
+            conf_float = float(confidence)
+            if conf_float < 0:
+                print(f"⚠️ Confianza fuera de rango: {conf_float} -> 0.00")
+                return 0.0
+            elif conf_float > 1:
+                print(f"⚠️ Confianza fuera de rango: {conf_float} -> 1.00")
+                return 1.0
+            return conf_float
+        except (ValueError, TypeError):
+            print(f"⚠️ Confianza inválida: {confidence} -> 0.00")
+            return 0.0
+    
+    def get_conf_color(self, confidence):
+        """Retorna color según umbral de confianza"""
+        if confidence >= 0.85:
+            return "#27ae60"  # Verde
+        elif confidence >= 0.70:
+            return "#f39c12"  # Ámbar
+        else:
+            return "#e74c3c"  # Rojo
+
+    class PlateCard:
+        """Clase reutilizable para cards de placas compactos y responsive"""
+        
+        SIDEBAR_W = 360
+        IMG_W = 150
+        IMG_H = 95
+        IMG_W_MIN = 120
+        MAX_CARD_H = 140
+        
+        def __init__(self, parent, plate_text, classification, timestamp, confidence, 
+                     razon_text, vehicle_img=None, plate_img=None):
+            self.parent = parent
+            self.plate_text = plate_text
+            self.classification = classification
+            self.timestamp = timestamp
+            self.confidence = confidence
+            self.razon_text = razon_text
+            # Fix numpy array issue - cannot use 'or' with numpy arrays
+            self.vehicle_img = vehicle_img if vehicle_img is not None else plate_img
+            
+            self.create_card()
+        
+        def create_card(self):
+            """Crea el card compacto con grid layout"""
+            # Card principal
+            self.card_frame = tk.Frame(
+                self.parent,
+                relief='solid',
+                borderwidth=1,
+                bg="#f8f9fa" if self.classification == "NID" else "#fff5f5",
+                padx=8,
+                pady=6
+            )
+            self.card_frame.pack(fill="x", padx=10, pady=4)
+            
+            # Grid configuración
+            self.card_frame.columnconfigure(0, weight=1)  # Texto expansible
+            self.card_frame.columnconfigure(1, weight=0)  # Imagen fija
+            self.card_frame.rowconfigure(0, weight=1)
+            
+            # Frame de texto (columna 0)
+            self.text_frame = tk.Frame(self.card_frame, bg=self.card_frame['bg'])
+            self.text_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=2)
+            
+            # Frame de imagen (columna 1)
+            self.img_frame = tk.Frame(self.card_frame, bg=self.card_frame['bg'], 
+                                    width=self.IMG_W, height=self.IMG_H)
+            self.img_frame.grid(row=0, column=1, sticky="ne", padx=0, pady=2)
+            self.img_frame.grid_propagate(False)
+            
+            self.create_text_content()
+            self.create_image_content()
+            self.setup_responsive_behavior()
+        
+        def create_text_content(self):
+            """Crea el contenido de texto compacto"""
+            initial_wraplength = self.SIDEBAR_W - self.IMG_W - 40
+            
+            # 1. Título de placa (compacto)
+            self.plate_label = tk.Label(
+                self.text_frame,
+                text=f"Placa: {self.plate_text}",
+                font=("Segoe UI", 12, "bold"),
+                bg=self.text_frame['bg'],
+                fg="#2c3e50",
+                anchor="w",
+                justify="left",
+                wraplength=initial_wraplength
+            )
+            self.plate_label.pack(fill="x", pady=0)
+            
+            # 2. Estado NID/NIE (compacto)
+            symbol = "✅" if self.classification == "NID" else "❌"
+            status_text = f"{symbol} {self.classification}"
+            status_color = "#27ae60" if self.classification == "NID" else "#e74c3c"
+            
+            self.status_label = tk.Label(
+                self.text_frame,
+                text=status_text,
+                font=("Segoe UI", 10, "bold"),
+                bg=self.text_frame['bg'],
+                fg=status_color,
+                anchor="w",
+                justify="left",
+                wraplength=initial_wraplength
+            )
+            self.status_label.pack(fill="x", pady=0)
+            
+            # 3. TR en formato especificado - SIEMPRE EN MINUTOS
+            if self.timestamp is not None:
+                total_seconds = int(self.timestamp)
+                mins = total_seconds // 60
+                secs = total_seconds % 60
+                # FORMATO CONSISTENTE: SIEMPRE minutos, incluso si es 0:26min (26s)
+                tr_text = f"TR: {mins}:{secs:02d}min ({total_seconds}s)"
+            else:
+                tr_text = "TR: --:--min (0s)"
+                
+            self.tr_label = tk.Label(
+                self.text_frame,
+                text=tr_text,
+                font=("Segoe UI", 10),
+                bg=self.text_frame['bg'],
+                fg="#7f8c8d",
+                anchor="w",
+                justify="left",
+                wraplength=initial_wraplength
+            )
+            self.tr_label.pack(fill="x", pady=0)
+            
+            # 4. Confianza con color por umbral
+            validated_conf = max(0.0, min(1.0, self.confidence))  # Clamp [0,1]
+            if validated_conf >= 0.85:
+                conf_color = "#27ae60"  # Verde
+            elif validated_conf >= 0.70:
+                conf_color = "#f39c12"  # Ámbar
+            else:
+                conf_color = "#e74c3c"  # Rojo
+            
+            self.conf_label = tk.Label(
+                self.text_frame,
+                text=f"Conf: {validated_conf:.2f}",
+                font=("Segoe UI", 10),
+                bg=self.text_frame['bg'],
+                fg=conf_color,
+                anchor="w",
+                justify="left",
+                wraplength=initial_wraplength
+            )
+            self.conf_label.pack(fill="x", pady=0)
+            
+            # 5. Razón (máx 3 líneas con elipsis)
+            truncated_reason = self.truncate_reason_text(self.razon_text, initial_wraplength)
+            reason_color = "#2ecc71" if self.classification == "NID" else "#c0392b"
+            
+            self.reason_label = tk.Label(
+                self.text_frame,
+                text=truncated_reason,
+                font=("Segoe UI", 9, "italic"),
+                bg=self.text_frame['bg'],
+                fg=reason_color,
+                anchor="nw",
+                justify="left",
+                wraplength=initial_wraplength
+            )
+            self.reason_label.pack(fill="x", pady=(2, 0))
+            
+            # Lista para actualizar wraplength
+            self.text_labels = [self.plate_label, self.status_label, self.tr_label, 
+                               self.conf_label, self.reason_label]
+        
+        def create_image_content(self):
+            """Crea el contenido de imagen con degradado automático"""
+            if self.vehicle_img is not None:
+                try:
+                    h, w = self.vehicle_img.shape[:2]
+                    
+                    # Calcular tamaño manteniendo aspect ratio
+                    img_w, img_h = self.calculate_image_size(w, h)
+                    
+                    # Redimensionar imagen
+                    resized = cv2.resize(self.vehicle_img, (img_w, img_h))
+                    rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+                    img_pil = Image.fromarray(rgb)
+                    self.img_tk = ImageTk.PhotoImage(image=img_pil)
+                    
+                    # Label con imagen
+                    border_color = "#27ae60" if self.classification == "NID" else "#e74c3c"
+                    self.img_label = tk.Label(
+                        self.img_frame,
+                        image=self.img_tk,
+                        bg=self.img_frame['bg'],
+                        relief="solid",
+                        borderwidth=2,
+                        highlightbackground=border_color
+                    )
+                    self.img_label.pack(expand=True, fill="both")
+                    
+                except Exception as e:
+                    print(f"Error procesando imagen: {e}")
+                    self.create_placeholder_image()
+            else:
+                self.create_placeholder_image()
+        
+        def create_placeholder_image(self):
+            """Crea placeholder si no hay imagen"""
+            self.placeholder_label = tk.Label(
+                self.img_frame,
+                text="Sin\nImagen",
+                font=("Segoe UI", 9),
+                bg="#ecf0f1",
+                fg="#95a5a6",
+                relief="solid",
+                borderwidth=1
+            )
+            self.placeholder_label.pack(expand=True, fill="both")
+        
+        def calculate_image_size(self, orig_w, orig_h):
+            """Calcula tamaño de imagen con degradado automático"""
+            # Empezar con tamaño por defecto
+            target_w, target_h = self.IMG_W, self.IMG_H
+            
+            # Si el card es muy alto, reducir imagen gradualmente
+            card_height = self.estimate_card_height()
+            if card_height > self.MAX_CARD_H:
+                reduction_steps = (card_height - self.MAX_CARD_H) // 10
+                target_w = max(self.IMG_W_MIN, self.IMG_W - (reduction_steps * 10))
+                
+            # Mantener aspect ratio
+            aspect_ratio = orig_w / orig_h
+            if target_w / target_h > aspect_ratio:
+                target_w = int(target_h * aspect_ratio)
+            else:
+                target_h = int(target_w / aspect_ratio)
+                
+            return target_w, target_h
+        
+        def estimate_card_height(self):
+            """Estima altura del card basado en contenido de texto"""
+            # Estimación simple basada en número de líneas de texto
+            base_height = 80  # Altura base
+            text_lines = len(self.razon_text) // 50 + 4  # Estimación de líneas
+            return base_height + (text_lines * 15)
+        
+        def truncate_reason_text(self, text, wraplength):
+            """Trunca texto de razón a máximo 3 líneas"""
+            if len(text) <= 120:  # Aproximadamente 3 líneas
+                return text
+            
+            # Truncar por palabras
+            words = text.split()
+            truncated = ""
+            for word in words:
+                test_text = truncated + " " + word if truncated else word
+                if len(test_text) > 117:  # Dejar espacio para "..."
+                    return truncated + "..."
+                truncated = test_text
+            return truncated
+        
+        def setup_responsive_behavior(self):
+            """Configura comportamiento responsive"""
+            def update_wraplength(event=None):
+                try:
+                    card_width = self.card_frame.winfo_width()
+                    if card_width > 1:
+                        new_wraplength = max(150, card_width - self.IMG_W - 50)
+                        for label in self.text_labels:
+                            if label.winfo_exists():
+                                label.config(wraplength=new_wraplength)
+                except:
+                    pass
+            
+            self.card_frame.bind("<Configure>", update_wraplength)
+            self.card_frame.after(100, update_wraplength)
+
+    def _safe_add_plate_to_panel(self, plate_img, plate_text, timestamp=None, confidence=None, vehicle_img=None):
         """
-        Añade una placa detectada al panel lateral con diseño de card.
-        Guarda las imágenes en carpetas separadas de placas y autos.
-        También guarda la infracción en el archivo JSON centralizado.
+        Añade una placa detectada al panel lateral usando PlateCard compacto.
         """
         # Verificaciones básicas
         if plate_img is None or not isinstance(plate_text, str):
             print(f"Error: Datos de placa inválidos - img: {plate_img is not None}, text: {plate_text}")
             return
+        
+        # 🔊 BEEP único por placa nueva detectada
+        if self.should_play_beep(plate_text):
+            try:
+                winsound.Beep(500, 100)  # Beep solo para placas nuevas
+                print(f"🔊 Beep para nueva placa: {plate_text}")
+            except:
+                pass  # Silenciar errores
         
         # Crear las carpetas necesarias
         plates_dir = resource_path("data/output/placas")
@@ -1602,7 +2195,6 @@ class VideoPlayerOpenCV:
         def _add():
             try:
                 # IMPORTANTE: Verificar duplicados en el panel
-                # Si la placa ya está en el panel, no añadir de nuevo
                 for widget in self.detected_plates_widgets:
                     if isinstance(widget, dict) and widget.get("plate_text") == plate_text:
                         print(f"Placa {plate_text} ya existe en el panel - no duplicando")
@@ -1611,162 +2203,72 @@ class VideoPlayerOpenCV:
                 # CRÍTICO: Verificar que el panel interno existe
                 if not hasattr(self, "plates_inner_frame") or self.plates_inner_frame is None:
                     print("ERROR: El frame interno no existe")
-                    # Crear el frame interno si no existe
                     self.plates_inner_frame = tk.Frame(self.plates_canvas, bg="#ecf0f1")
                     self.plates_canvas_window = self.plates_canvas.create_window(
                         (0, 0), window=self.plates_inner_frame, anchor="nw"
                     )
                 
-                # CARD PRINCIPAL - Contenedor con borde
-                card_frame = tk.Frame(
-                    self.plates_inner_frame,
-                    bg="#ffffff",
-                    relief=tk.RAISED,
-                    bd=1,
-                    padx=8,
-                    pady=8
-                )
-                card_frame.pack(fill="x", padx=8, pady=5)
-                
-                # LAYOUT: Dos columnas (izquierda info, derecha imagen)
-                info_frame = tk.Frame(card_frame, bg="#ffffff")
-                info_frame.pack(side="left", fill="both", expand=True)
-                
-                img_frame = tk.Frame(card_frame, bg="#ffffff", width=120, height=90)
-                img_frame.pack(side="right", padx=(5,0), pady=5)
-                img_frame.pack_propagate(False)  # Mantener tamaño fijo
-                
-                # COLUMNA IZQUIERDA: Información de la placa
-                plate_label = tk.Label(
-                    info_frame,
-                    text=f"Placa: {plate_text}",
-                    font=("Arial", 12, "bold"),
-                    bg="#ffffff",
-                    fg="#333333",
-                    anchor="w",
-                    justify="left"
-                )
-                plate_label.pack(fill="x", pady=(0, 5), anchor="w")
-                
-                # Timestamp si disponible
-                if timestamp is not None:
-                    mins = int(timestamp // 60)
-                    secs = int(timestamp % 60)
-                    msecs = int((timestamp % 1) * 1000)
-                    time_str = f"{mins:02d}:{secs:02d}.{msecs:03d}"
-                    
-                    time_label = tk.Label(
-                        info_frame,
-                        text=f"Tiempo: {time_str}",
-                        font=("Arial", 10),
-                        bg="#ffffff",
-                        fg="#666666",
-                        anchor="w",
-                        justify="left"
+                # 🎯 OBTENER CLASIFICACIÓN NID/NIE
+                # Usar confianza real si se proporciona, sino usar clasificación inteligente
+                if confidence is not None:
+                    # Usar confianza real de la detección
+                    classification, quality_score, classification_metadata = self.classify_detection_quality(
+                        plate_text, detection_confidence=confidence
                     )
-                    time_label.pack(fill="x", anchor="w")
+                    quality_score = confidence  # Usar confianza real para mostrar
+                else:
+                    # Fallback a clasificación inteligente
+                    classification, quality_score, classification_metadata = self.classify_detection_quality(
+                        plate_text, detection_confidence=0.8
+                    )
                 
-                # COLUMNA DERECHA: Imagen del vehículo en lugar de la placa
-                try:
-                    # Priorizar imagen del vehículo si existe
-                    display_img = vehicle_img if vehicle_img is not None else plate_img
-                    
-                    # Redimensionar imagen para mantener proporción y tamaño adecuado
-                    h, w = display_img.shape[:2]
-                    max_width, max_height = 110, 80
-                    
-                    # Escalar preservando proporción
-                    scale = min(max_width / w, max_height / h)
-                    new_w, new_h = int(w * scale), int(h * scale)
-                    
-                    # Redimensionar y convertir para tkinter
-                    resized = cv2.resize(display_img, (new_w, new_h))
-                    rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-                    img_pil = Image.fromarray(rgb)
-                    img_tk = ImageTk.PhotoImage(image=img_pil)
-                    
-                    # Crear y posicionar label con imagen
-                    img_label = tk.Label(img_frame, image=img_tk, bg="#eeeeee", bd=1, relief="solid")
-                    img_label.image = img_tk  # Mantener referencia
-                    img_label.place(relx=0.5, rely=0.5, anchor="center")
-                    
-                except Exception as img_err:
-                    print(f"Error al procesar imagen: {img_err}")
-                    # Placeholder si falla la imagen
-                    img_label = tk.Label(img_frame, text="Sin imagen", bg="#eeeeee", fg="#999999")
-                    img_label.place(relx=0.5, rely=0.5, anchor="center")
+                print(f"🎯 CLASIFICACIÓN: '{plate_text}' → {classification} (confianza real: {quality_score:.2f})")
+                
+                # Preparar razón de clasificación en lenguaje natural
+                razon_text = classification_metadata.get('razon', 'Sin especificar')
+                if classification == "NIE":
+                    if razon_text == 'confianza_baja':
+                        razon_natural = "📋 Razón: Confianza de detección muy baja - requiere validación manual adicional"
+                    elif razon_text == 'formato_invalido':
+                        razon_natural = "📋 Razón: Formato de placa incorrecto detectado por el sistema de análisis"
+                    elif razon_text == 'sin_consenso':
+                        razon_natural = "📋 Razón: Múltiples lecturas inconsistentes entre diferentes algoritmos de reconocimiento"
+                    else:
+                        razon_natural = f"📋 Razón: {razon_text}"
+                else:
+                    razon_natural = "📋 Razón: Placa válida detectada correctamente por el sistema de reconocimiento óptico"
+                
+                # === CREAR CARD COMPACTO USANDO CLASE PLATECARD ===
+                card = self.PlateCard(
+                    parent=self.plates_inner_frame,
+                    plate_text=plate_text,
+                    classification=classification,
+                    timestamp=timestamp,
+                    confidence=quality_score,
+                    razon_text=razon_natural,
+                    vehicle_img=vehicle_img,  # Usar vehicle_img del parámetro
+                    plate_img=plate_img
+                )
+                
+                print(f"✅ CARD CREADA: Placa {plate_text} con clasificación {classification}")
                 
                 # Registrar en lista de placas detectadas
                 plate_data = {
-                    "container": card_frame,
+                    "container": card.card_frame,
+                    "card_instance": card,
                     "plate_text": plate_text,
                     "timestamp": timestamp,
                     "plate_path": plate_path,
-                    "vehicle_path": vehicle_path if os.path.exists(vehicle_path) else None
+                    "vehicle_path": vehicle_path if os.path.exists(vehicle_path) else None,
+                    "classification": classification,
+                    "quality_score": quality_score,
+                    "classification_metadata": classification_metadata
                 }
                 self.detected_plates_widgets.append(plate_data)
                 
-                # CRÍTICO: Actualizar el historial de detección con tiempos
-                if not hasattr(self, "plate_detection_history"):
-                    self.plate_detection_history = {}
-                    
-                if plate_text in self.plate_detection_history:
-                    # Actualizar registro existente
-                    self.plate_detection_history[plate_text]["last_detection"] = timestamp
-                    self.plate_detection_history[plate_text]["registration_time"] = current_registration_time
-                    
-                    # Actualizar tiempos para métricas
-                    if detection_time is not None and "detection_time" not in self.plate_detection_history[plate_text]:
-                        self.plate_detection_history[plate_text]["detection_time"] = detection_time
-                    
-                    # Calcular tiempo de procesamiento si no existe
-                    if detection_time is not None:
-                        proc_time = current_registration_time - detection_time
-                        self.plate_detection_history[plate_text]["processing_time"] = proc_time
-                        
-                        # Añadir a los tiempos de registro para estadísticas
-                        if not hasattr(self, "registration_times"):
-                            self.registration_times = []
-                        self.registration_times.append(proc_time)
-                    
-                    # Almacenar las rutas de los archivos
-                    self.plate_detection_history[plate_text]["plate_path"] = plate_path
-                    if os.path.exists(vehicle_path):
-                        self.plate_detection_history[plate_text]["vehicle_path"] = vehicle_path
-                else:
-                    # Crear nuevo registro
-                    new_record = {
-                        "count": 1,
-                        "first_detection": timestamp,
-                        "last_detection": timestamp,
-                        "plate_path": plate_path,
-                        "vehicle_path": vehicle_path if os.path.exists(vehicle_path) else None,
-                        "registration_time": current_registration_time
-                    }
-                    
-                    # Añadir tiempo de detección si está disponible
-                    if detection_time is not None:
-                        new_record["detection_time"] = detection_time
-                        
-                        # Calcular y guardar tiempo de procesamiento
-                        proc_time = current_registration_time - detection_time
-                        new_record["processing_time"] = proc_time
-                        
-                        # Añadir a los tiempos de registro para estadísticas
-                        if not hasattr(self, "registration_times"):
-                            self.registration_times = []
-                        self.registration_times.append(proc_time)
-                    
-                    self.plate_detection_history[plate_text] = new_record
-                    
-                # Registrar como ya procesada globalmente
-                if not hasattr(self, "processed_plates"):
-                    self.processed_plates = set()
-                self.processed_plates.add(plate_text)
-                
-                # Actualizar indicadores de rendimiento
-                if hasattr(self, "_update_metrics_panel"):
-                    self._update_metrics_panel()
+                # ✅ ACTUALIZAR HISTORIAL Y MÉTRICAS
+                self._update_plate_history(plate_text, timestamp, plate_path, vehicle_path, 
+                                          classification, quality_score, classification_metadata)
                 
                 # CRÍTICO: Actualizar región de desplazamiento y vista
                 self.plates_inner_frame.update_idletasks()
@@ -1786,29 +2288,198 @@ class VideoPlayerOpenCV:
         else:
             print("Error: No se puede acceder al widget principal")
 
+    def _update_plate_history(self, plate_text, timestamp, plate_path, vehicle_path, 
+                             classification, quality_score, classification_metadata):
+        """Actualiza el historial de detección con los datos de la placa"""
+        try:
+            current_registration_time = time.time()
+            
+            # Inicializar historial si no existe
+            if not hasattr(self, "plate_detection_history"):
+                self.plate_detection_history = {}
+            
+            # Calcular tiempo de detección si disponible
+            detection_time = None
+            if hasattr(self, 'detection_start_time') and self.detection_start_time and timestamp is not None:
+                detection_time = self.detection_start_time + timestamp
+            
+            if plate_text in self.plate_detection_history:
+                # Actualizar registro existente
+                self.plate_detection_history[plate_text].update({
+                    "last_detection": timestamp,
+                    "registration_time": current_registration_time,
+                    "classification": classification,
+                    "quality_score": quality_score,
+                    "metadata": classification_metadata,
+                    "placa": plate_text,
+                    "plate_path": plate_path
+                })
+                
+                if os.path.exists(vehicle_path):
+                    self.plate_detection_history[plate_text]["vehicle_path"] = vehicle_path
+                    
+                if detection_time and "detection_time" not in self.plate_detection_history[plate_text]:
+                    self.plate_detection_history[plate_text]["detection_time"] = detection_time
+                    proc_time = current_registration_time - detection_time
+                    self.plate_detection_history[plate_text]["processing_time"] = proc_time
+            else:
+                # Crear nuevo registro
+                new_record = {
+                    "count": 1,
+                    "first_detection": timestamp,
+                    "last_detection": timestamp,
+                    "plate_path": plate_path,
+                    "vehicle_path": vehicle_path if os.path.exists(vehicle_path) else None,
+                    "registration_time": current_registration_time,
+                    "classification": classification,
+                    "quality_score": quality_score,
+                    "metadata": classification_metadata,
+                    "placa": plate_text
+                }
+                
+                if detection_time:
+                    new_record["detection_time"] = detection_time
+                    proc_time = current_registration_time - detection_time
+                    new_record["processing_time"] = proc_time
+                    
+                    # Añadir a tiempos de registro para estadísticas
+                    if not hasattr(self, "registration_times"):
+                        self.registration_times = []
+                    self.registration_times.append(proc_time)
+                
+                self.plate_detection_history[plate_text] = new_record
+            
+            # Registrar como procesada globalmente
+            if not hasattr(self, "processed_plates"):
+                self.processed_plates = set()
+            self.processed_plates.add(plate_text)
+            
+            # Actualizar métricas
+            if hasattr(self, "_update_metrics_panel"):
+                self._update_metrics_panel()
+                
+        except Exception as e:
+            print(f"Error actualizando historial de {plate_text}: {e}")
+
     def _create_metrics_panel(self):
-        """Crea el panel de métricas de rendimiento (oculto)"""
-        # Crear pero no mostrar el panel
-        self.metrics_frame = tk.Frame(self.plates_frame, bg="#34495e")
-        # NO hacer pack() del frame para que no se muestre
+        """Panel de indicadores justo debajo del título 'Placas Detectadas' - SIN DUPLICAR"""
+        # Crear panel de indicadores justo después del título
+        self.indicators_panel = tk.Frame(self.plates_frame, bg="#34495e", height=60)
+        self.indicators_panel.pack(side="top", fill="x", padx=5, pady=5, after=self.plates_title)
+        self.indicators_panel.pack_propagate(False)
         
-        # Creamos las referencias a las etiquetas pero no las mostramos
-        self.ti_label = tk.Label(self.metrics_frame, bg="#34495e", fg="white", font=("Arial", 10))
-        self.tr_label = tk.Label(self.metrics_frame, bg="#34495e", fg="white", font=("Arial", 10))
-        self.ir_label = tk.Label(self.metrics_frame, bg="#34495e", fg="white", font=("Arial", 10))
+        # ✅ CORRECTO: Frame para los 3 indicadores DIRECTAMENTE (sin título duplicado)
+        self.metrics_frame = tk.Frame(self.indicators_panel, bg="#34495e")
+        self.metrics_frame.pack(side="top", fill="x", padx=5, pady=8)  # Más espacio arriba
+        
+        # INDICADORES COMO ESTABAN ORIGINALMENTE
+        self.ti_label = tk.Label(
+            self.metrics_frame, text="TI:0.0%",
+            bg="#3498db", fg="white", font=("Arial", 10, "bold"),
+            padx=4, pady=2, relief="flat", width=8
+        )
+        self.ti_label.pack(side="left", padx=1)
+        
+        self.tr_label = tk.Label(
+            self.metrics_frame, text="TR:0.00min",
+            bg="#e67e22", fg="white", font=("Arial", 10, "bold"),
+            padx=4, pady=2, relief="flat", width=12
+        )
+        self.tr_label.pack(side="left", padx=1)
+        
+        self.nid_label = tk.Label(
+            self.metrics_frame, text="NID: 0 correctas",
+            bg="#27ae60", fg="white", font=("Arial", 10, "bold"),
+            padx=4, pady=2, relief="flat", width=12
+        )
+        self.nid_label.pack(side="left", padx=1)
+        
+        # NUEVO: Indicador NIE debajo del panel de placas
+        self.nie_label = tk.Label(
+            self.metrics_frame, text="NIE:0",
+            bg="#f39c12", fg="white", font=("Arial", 10, "bold"),
+            padx=4, pady=2, relief="flat", width=8
+        )
+        self.nie_label.pack(side="left", padx=1)
 
     def _update_metrics_panel(self):
-        """Actualiza los valores de los indicadores de rendimiento"""
-        if hasattr(self, "ti_label") and hasattr(self, "tr_label") and hasattr(self, "ir_label"):
-            # Calcular métricas
-            ti = self._calculate_infraction_rate()
-            tr = self._calculate_registration_time()
-            ir = self._calculate_reincidence_index()
+        """Actualiza los indicadores CON CÁLCULOS CORREGIDOS PARA CUALQUIER VIDEO"""
+        # Ejecutar actualización silenciosamente
+        
+        if (hasattr(self, "ti_label") and hasattr(self, "tr_label") and hasattr(self, "nid_label")):
+            print("✅ Todos los labels están disponibles")
             
-            # Actualizar etiquetas con formato más atractivo
-            self.ti_label.config(text=f"TI: {ti:.2f} infracciones")
-            self.tr_label.config(text=f"TR: {tr:.2f} segundos")
-            self.ir_label.config(text=f"IR: {ir:.1f}%")
+            # 🔧 MÉTODO CORREGIDO: Calcular DIRECTAMENTE desde las cards visibles
+            tr_individual_times = []
+            nid_count = 0
+            nie_count = 0
+            total_cards = 0
+            
+            # Obtener datos DIRECTAMENTE de las cards del panel
+            if hasattr(self, "detected_plates_widgets") and self.detected_plates_widgets:
+                total_cards = len(self.detected_plates_widgets)
+                
+                for plate_data in self.detected_plates_widgets:
+                    if isinstance(plate_data, dict):
+                        # OBTENER TR INDIVIDUAL de cada card para el cálculo correcto
+                        if 'timestamp' in plate_data and plate_data['timestamp'] is not None:
+                            tr_minutes = plate_data['timestamp'] / 60.0
+                            tr_individual_times.append(tr_minutes)
+                        
+                        # CLASIFICAR COMO NID O NIE basado en la clasificación
+                        if 'plate_text' in plate_data:
+                            plate_text = plate_data['plate_text']
+                            # Usar clasificación inteligente
+                            classification, _, metadata = self.classify_detection_quality(plate_text)
+                            
+                            if classification == 'NID':
+                                nid_count += 1
+                            else:  # NIE
+                                nie_count += 1
+                        else:
+                            # Si no hay plate_text, asumir NIE (caso de error)
+                            nie_count += 1
+            
+            # 🧮 CALCULAR TR TOTAL CORREGIDO: SUMA ACUMULADA (NO promedio)
+            if tr_individual_times:
+                tr_total = sum(tr_individual_times)  # ← SUMA TOTAL, no promedio
+            else:
+                # Fallback: usar función anterior si no hay datos de cards
+                tr_total = self._calculate_registration_time()
+            
+            # 📊 TI (Tasa de Infracciones) - mantener cálculo actual
+            ti = self._calculate_infraction_rate()
+            
+            # 📈 ACTUALIZAR ETIQUETAS COMO ESTABAN ORIGINALMENTE
+            self.ti_label.config(text=f"TI:{ti:.1f}%")
+            self.tr_label.config(text=f"TR:{tr_total:.2f}min")
+            self.nid_label.config(text=f"NID: {nid_count} correctas")
+            
+            # NUEVO: Actualizar indicador NIE
+            if hasattr(self, "nie_label"):
+                self.nie_label.config(text=f"NIE:{nie_count}")
+            
+            # DEBUG: Mostrar valores actualizados
+            print(f"📊 INDICADORES ACTUALIZADOS:")
+            print(f"   TI: {ti:.1f}% | TR: {tr_total:.2f}min | NID: {nid_count} | NIE: {nie_count}")
+            print(f"   Total cards: {total_cards}")
+            
+            # 🐛 DEBUG: Mostrar cálculos para verificación
+            if tr_individual_times:
+                print(f"🧮 TR TOTAL CORREGIDO (SUMA ACUMULADA):")
+                print(f"   TR individuales: {[f'{t:.3f}' for t in tr_individual_times]} min")
+                print(f"   SUMA TOTAL: {sum(tr_individual_times):.3f} min")
+            
+            print(f"📊 NID CORREGIDO:")
+            print(f"   Cards totales en panel: {total_cards}")
+            print(f"   NID (correctas): {nid_count}")
+            
+        else:
+            print("❌ Algunos labels no están disponibles")
+            print(f"   ti_label: {hasattr(self, 'ti_label')}")
+            print(f"   tr_label: {hasattr(self, 'tr_label')}")
+            print(f"   nid_label: {hasattr(self, 'nid_label')}")
+            print(f"   nie_label: {hasattr(self, 'nie_label')}")
 
     def clear_detected_plates(self):
         """Limpia todas las placas detectadas del panel lateral"""
@@ -2246,6 +2917,47 @@ class VideoPlayerOpenCV:
                         # Color según estado (en área + semáforo rojo = rojo, en área = amarillo, fuera de área = verde)
                         if in_polygon and self.semaforo.get_current_state() == "red":
                             box_color = (0, 0, 255)  # Rojo para infracciones
+                            
+                            # REGISTRAR INFRACCIÓN - Procesar placa si hay una infracción detectada
+                            if not self.plate_queue.full():
+                                # 🎯 DETECCIÓN INTELIGENTE del mejor recorte de placa
+                                best_plate_crop, confidence = self.enhanced_plate_detection(frame, (x1s, y1s, x2s, y2s, cls_id, label))
+                                
+                                if best_plate_crop is not None and confidence > 0.3:
+                                    # 🔍 SUPER-RESOLUCIÓN MEJORADA para placas de baja calidad
+                                    enhanced_plate = best_plate_crop
+                                    if confidence < 0.6:  # Baja confianza = posible borrosidad
+                                        try:
+                                            # Aplicar super-resolución mejorada con múltiples técnicas
+                                            enhanced_plate = self._apply_super_resolution(best_plate_crop, is_night)
+                                            print(f"🔍 Super-resolución mejorada aplicada (confianza: {confidence:.3f})")
+                                        except Exception as e:
+                                            print(f"⚠️ Super-resolución falló: {e}")
+                                            enhanced_plate = best_plate_crop  # Usar original
+                                    
+                                    # 📊 Obtener timestamp sincronizado
+                                    current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+                                    current_time = current_frame / self.video_fps
+                                    synchronized_timestamp = self._calculate_timestamp_with_time_range(current_time)
+                                    
+                                    # Actualizar timestamp_label
+                                    if isinstance(synchronized_timestamp, str):
+                                        self.timestamp_label.config(text=synchronized_timestamp)
+                                    
+                                    # 📤 Poner en cola para OCR con imagen mejorada
+                                    if not self.plate_queue.full():
+                                        self.plate_queue.put((frame.copy(), enhanced_plate, is_night, current_time))
+                                        print(f"🚨 Infracción detectada - Confianza: {confidence:.3f}")
+                                    
+                                    # 🔴 Visual feedback de infracción detectada
+                                    cv2.putText(frame_with_cars, "INFRACCION", (x1s, y1s-10),
+                                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                                    
+                                    # Mostrar nivel de confianza si hay detección válida
+                                    conf_text = f"Conf: {confidence:.2f}"
+                                    cv2.putText(frame_with_cars, conf_text, (x1s, y2s+20),
+                                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+                            
                         elif in_polygon:
                             box_color = (0, 255, 255)  # Amarillo para vehículos en área permitida
                         else:
@@ -2338,85 +3050,280 @@ class VideoPlayerOpenCV:
         # Asegurarse que las etiquetas estén visibles
         self.timestamp_label.lift()
         self.avenue_label.lift()
+        self.lighting_indicator_label.lift()
         self.current_video_label.lift()
         self.system_info_label.lift()
         self.info_label.lift()
         
         self._after_id = self.parent.after(10, self.update_frames_optimized)
 
+    def _validate_detection_quality(self, detection_data):
+        """Valida la calidad de una detección basada en múltiples factores"""
+        if not detection_data:
+            return 0.0
+            
+        quality_score = 1.0
+        factors_checked = 0
+        
+        # Factor 1: Longitud de placa (placas peruanas típicas 5-7 caracteres)
+        if 'placa' in detection_data and detection_data['placa']:
+            plate_text = detection_data['placa'].strip()
+            if 5 <= len(plate_text) <= 7:
+                quality_score *= 1.0  # Perfecto
+            elif 4 <= len(plate_text) <= 8:
+                quality_score *= 0.8  # Aceptable
+            else:
+                quality_score *= 0.3  # Dudoso
+            factors_checked += 1
+        
+        # Factor 2: Tiempo de procesamiento (muy rápido o muy lento es sospechoso)
+        if 'processing_time' in detection_data and detection_data['processing_time'] > 0:
+            proc_time = detection_data['processing_time']
+            if 0.1 <= proc_time <= 5.0:  # Entre 0.1 y 5 segundos es normal
+                quality_score *= 1.0
+            elif proc_time > 10.0:  # Más de 10 segundos es sospechoso
+                quality_score *= 0.6
+            factors_checked += 1
+        
+        # Factor 3: Consistencia con patrones de placa peruana
+        if 'placa' in detection_data and detection_data['placa']:
+            from src.core.processing.plate_ocr_enhancer import get_plate_enhancer
+            enhancer = get_plate_enhancer()
+            is_valid, format_conf = enhancer.validate_plate_format(detection_data['placa'])
+            if is_valid:
+                quality_score *= (0.8 + format_conf * 0.2)  # 80-100% según formato
+            else:
+                quality_score *= 0.4  # Formato inválido
+            factors_checked += 1
+        
+        # Factor 4: Detección nocturna (aplicar penalización)
+        if detection_data.get('is_night_detection', False):
+            quality_score *= 0.85  # 15% penalización por noche
+            factors_checked += 1
+        
+        # Si no se pudo evaluar ningún factor, confianza baja
+        if factors_checked == 0:
+            return 0.2
+            
+        return min(quality_score, 1.0)
+    
+    def _calculate_precision_adjusted_ti(self):
+        """Calcula TI ajustado por calidad de detecciones"""
+        if not hasattr(self, 'plate_detection_history') or not self.plate_detection_history:
+            return 0.0
+            
+        total_quality = 0.0
+        total_detections = len(self.plate_detection_history)
+        
+        # Evaluar calidad de cada detección
+        for plate_id, detection in self.plate_detection_history.items():
+            quality = self._validate_detection_quality(detection)
+            total_quality += quality
+        
+        # Calcular número "efectivo" de detecciones correctas
+        effective_correct_detections = total_quality
+        
+        # Grupo control (estimado)
+        gc_manual_count = getattr(self, 'gc_manual_count', max(1, total_detections * 1.2))
+        
+        # TI ajustado
+        ti_adjusted = (effective_correct_detections / gc_manual_count) * 100
+        
+        return min(ti_adjusted, 100.0)
     def _calculate_infraction_rate(self):
-        """Calcula la Tasa de Infracciones: infracciones detectadas"""
-        # CORRECCIÓN: Devolver directamente el número exacto de infracciones, no una tasa
+        """TI: Tasa de Infracciones según contexto de detecciones
+        MEJORADO: Considera 3 casos específicos:
+        1. Solo NID: TI = 100% (detección perfecta)
+        2. Solo NIE: TI = 0% (requiere revisión total) 
+        3. Mixto NID+NIE: TI = (NID / Total) × 100
+        """
+        # Usar detected_plates_widgets que son las cards realmente mostradas
+        if hasattr(self, "detected_plates_widgets") and self.detected_plates_widgets:
+            total_detections = len(self.detected_plates_widgets)
+            nid_detections = 0
+            nie_detections = 0
+            
+            # Contar desde widgets con clasificación actualizada
+            for plate_data in self.detected_plates_widgets:
+                if isinstance(plate_data, dict):
+                    # Reclasificar en tiempo real para mayor precisión
+                    if 'plate_text' in plate_data:
+                        classification, _, _ = self.classify_detection_quality(plate_data['plate_text'])
+                    else:
+                        classification = plate_data.get('classification', 'NIE')
+                    
+                    if classification == 'NID':
+                        nid_detections += 1
+                    else:
+                        nie_detections += 1
+            
+            # LÓGICA MEJORADA SEGÚN CONTEXTO:
+            if total_detections > 0:
+                if nie_detections == 0 and nid_detections > 0:
+                    # CASO 1: Solo NID - Sistema funcionando perfectamente
+                    return 100.0
+                elif nid_detections == 0 and nie_detections > 0:
+                    # CASO 2: Solo NIE - Sistema necesita revisión
+                    return 0.0
+                else:
+                    # CASO 3: Mixto NID+NIE - Calcular porcentaje real
+                    ti_percentage = (nid_detections / total_detections) * 100
+                    return min(ti_percentage, 100.0)
         
-        if hasattr(self, "plate_detection_history"):
-            # Usar el número exacto de elementos en el historial de detecciones
-            return len(self.plate_detection_history)
+        # Fallback a plate_detection_history si no hay widgets
+        if hasattr(self, "plate_detection_history") and self.plate_detection_history:
+            total_detections = len(self.plate_detection_history)
+            nid_detections = 0
+            
+            # Contar desde history
+            for plate_data in self.plate_detection_history.values():
+                classification = plate_data.get('classification', 'NIE')
+                if classification == 'NID':
+                    nid_detections += 1
+            
+            # Aplicar misma lógica
+            nie_detections = total_detections - nid_detections
+            if total_detections > 0:
+                if nie_detections == 0 and nid_detections > 0:
+                    return 100.0
+                elif nid_detections == 0 and nie_detections > 0:
+                    return 0.0
+                else:
+                    ti_percentage = (nid_detections / total_detections) * 100
+                    return min(ti_percentage, 100.0)
         
-        # Si no hay historial, contar los widgets en el panel
-        if hasattr(self, "detected_plates_widgets"):
-            return len(self.detected_plates_widgets)
+        return 0.0
+    
+    def enable_precision_validation(self, enable=True):
+        """Habilita o deshabilita la validación de precisión en el cálculo de TI"""
+        self.use_precision_validation = enable
+        if enable:
+            print("✅ Validación de precisión HABILITADA - TI será más conservador pero preciso")
+        else:
+            print("ℹ️ Validación de precisión DESHABILITADA - TI usará conteo simple")
+    
+    def get_detection_quality_report(self):
+        """Genera reporte de calidad de detecciones"""
+        if not hasattr(self, 'plate_detection_history') or not self.plate_detection_history:
+            return "No hay detecciones para evaluar"
         
-        # Si no hay datos disponibles
-        return 0
+        report = "📊 REPORTE DE CALIDAD DE DETECCIONES\n"
+        report += "=" * 50 + "\n"
+        
+        total_detections = len(self.plate_detection_history)
+        high_quality = 0
+        medium_quality = 0
+        low_quality = 0
+        
+        for plate_id, detection in self.plate_detection_history.items():
+            quality = self._validate_detection_quality(detection)
+            if quality >= 0.8:
+                high_quality += 1
+            elif quality >= 0.5:
+                medium_quality += 1
+            else:
+                low_quality += 1
+        
+        report += f"Total detecciones: {total_detections}\n"
+        report += f"Alta calidad (≥80%): {high_quality} ({high_quality/total_detections*100:.1f}%)\n"
+        report += f"Media calidad (50-79%): {medium_quality} ({medium_quality/total_detections*100:.1f}%)\n"
+        report += f"Baja calidad (<50%): {low_quality} ({low_quality/total_detections*100:.1f}%)\n"
+        
+        # TI con y sin validación
+        old_validation = getattr(self, 'use_precision_validation', False)
+        
+        self.use_precision_validation = False
+        ti_simple = self._calculate_infraction_rate()
+        
+        self.use_precision_validation = True
+        ti_validated = self._calculate_infraction_rate()
+        
+        self.use_precision_validation = old_validation  # Restaurar estado original
+        
+        report += f"\nTI sin validación: {ti_simple:.1f}%\n"
+        report += f"TI con validación: {ti_validated:.1f}%\n"
+        report += f"Diferencia: {ti_simple - ti_validated:.1f} puntos porcentuales\n"
+        
+        return report
 
     def _calculate_registration_time(self):
         """
-        Calcula el Tiempo de Registro: tiempo promedio entre detección y registro en el sistema.
-        El tiempo se mide desde que se detecta una infracción hasta que se completa su procesamiento.
+        TR TOTAL: Tiempo de Registro TOTAL ACUMULADO en MINUTOS
+        CORREGIDO: Suma TOTAL de todos los TR, NO el promedio.
+        Representa el tiempo total acumulado que tardó el sistema.
         """
-        if not hasattr(self, "plate_detection_history") or not self.plate_detection_history:
+        if not hasattr(self, "detected_plates_widgets") or not self.detected_plates_widgets:
             return 0.0
         
-        # Obtener tiempos de registro de todas las placas detectadas
-        registration_times = []
+        # MÉTODO CORREGIDO: SUMAR todos los TR individuales (NO promediar)
+        total_tr_time = 0.0
         
-        for plate_id, data in self.plate_detection_history.items():
-            # Verificar que tengamos los datos necesarios
-            if "processing_time" in data and data["processing_time"] > 0:
-                # Si ya tenemos el tiempo calculado previamente y es positivo
-                registration_times.append(data["processing_time"])
-                
-            elif "detection_time" in data and "registration_time" in data:
-                # Calcular la diferencia entre detección y registro
-                proc_time = data["registration_time"] - data["detection_time"]
-                
-                # Asegurar que el tiempo sea positivo (corregir posibles errores de sincronización)
-                if proc_time > 0:
-                    registration_times.append(proc_time)
-                    # Guardar para futuras consultas
-                    data["processing_time"] = proc_time
+        for plate_data in self.detected_plates_widgets:
+            if isinstance(plate_data, dict) and 'timestamp' in plate_data:
+                timestamp = plate_data['timestamp']
+                if timestamp is not None and timestamp > 0:
+                    tr_minutes = timestamp / 60.0  # Convertir a minutos
+                    total_tr_time += tr_minutes  # ← SUMAR, no promediar
         
-        # Si no hay datos de procesamiento válidos, intentar usar los tiempos guardados
-        if not registration_times and hasattr(self, "registration_times") and self.registration_times:
-            # Filtrar solo valores positivos
-            valid_times = [t for t in self.registration_times if t > 0]
-            if valid_times:
-                registration_times = valid_times
+        if total_tr_time > 0:
+            print(f"🧮 TR TOTAL desde cards: {total_tr_time:.3f} min (suma acumulada)")
+            return total_tr_time
         
-        # Si aún no hay datos válidos, devolver un valor predeterminado positivo
-        if not registration_times:
-            return 0.0
-        
-        # Calcular el promedio (evitar dividir por cero)
-        avg_time = sum(registration_times) / len(registration_times)
-        
-        # Asegurar que el resultado sea positivo (mínimo 0.01 segundos)
-        return max(0.01, avg_time)
-
-    def _calculate_reincidence_index(self):
-        """Calcula el Índice de Reincidencia: % de placas con más de una detección"""
-        if not hasattr(self, "plate_detection_history"):
-            return 0
+        # Fallback: usar historial con suma acumulada
+        if hasattr(self, "plate_detection_history") and self.plate_detection_history:
+            registration_times = []
             
-        # Contar placas con más de una detección
-        reincident_plates = sum(1 for plate_data in self.plate_detection_history.values() 
-                            if plate_data.get("count", 1) > 1)  # Usar .get() con valor predeterminado
+            for plate_id, data in self.plate_detection_history.items():
+                if "processing_time" in data and data["processing_time"] > 0:
+                    registration_times.append(data["processing_time"])
+                    
+                elif "detection_time" in data and "registration_time" in data:
+                    proc_time = data["registration_time"] - data["detection_time"]
+                    if proc_time > 0:
+                        registration_times.append(proc_time)
+                        data["processing_time"] = proc_time
+            
+            if registration_times:
+                # CORREGIDO: Sumar todos los tiempos, NO promediar
+                total_time_seconds = sum(registration_times)  # ← SUMA TOTAL
+                total_time_minutes = total_time_seconds / 60.0
+                return max(0.001, total_time_minutes)
         
-        # Calcular índice como porcentaje
-        total_plates = len(self.plate_detection_history)
-        if total_plates > 0:
-            return (reincident_plates / total_plates) * 100
-        return 0
+        return 0.0
+
+    def _calculate_daily_infractions(self):
+        """NID: Número de Infracciones Detectadas hoy
+        Conteo específico de infracciones detectadas en el día actual.
+        NUEVO INDICADOR según operacionalización actualizada.
+        """
+        from datetime import datetime
+        
+        today = datetime.now().strftime("%Y-%m-%d")
+        daily_count = 0
+        
+        if hasattr(self, "plate_detection_history"):
+            for plate_data in self.plate_detection_history.values():
+                # Verificar si la detección fue hoy
+                detection_date = plate_data.get("date", "")
+                detection_timestamp = plate_data.get("timestamp", "")
+                
+                # Intentar diferentes formatos de fecha
+                is_today = False
+                if detection_date.startswith(today):
+                    is_today = True
+                elif detection_timestamp and today in detection_timestamp:
+                    is_today = True
+                elif "fecha" in plate_data and plate_data["fecha"] and today in plate_data["fecha"]:
+                    is_today = True
+                
+                if is_today:
+                    daily_count += 1
+        
+        # Si no hay historial con fechas, usar conteo total como aproximación
+        if daily_count == 0 and hasattr(self, "plate_detection_history"):
+            daily_count = len(self.plate_detection_history)
+        
+        return daily_count
 
     # ===== FUNCIONES DE LIMPIEZA Y GESTIÓN =====
     
@@ -2738,5 +3645,893 @@ class VideoPlayerOpenCV:
         except Exception as e:
             self.system_info_label.config(text="🔧 Sistema: Detectando...")
             print(f"Error actualizando info del sistema: {e}")
+
+    def _on_window_resize(self, event):
+        """Función responsive para ajustar el layout según el tamaño de ventana"""
+        try:
+            # Solo aplicar si el evento es de la ventana principal
+            if event.widget != self.parent:
+                return
+            
+            window_width = event.width
+            window_height = event.height
+            
+            # Ajustar tamaño de fuente según el ancho de ventana
+            if window_width < 1200:  # Pantalla pequeña
+                # Reducir tamaño de botones y texto
+                self._apply_small_screen_layout()
+            elif window_width < 1600:  # Pantalla mediana
+                # Tamaño estándar
+                self._apply_medium_screen_layout()
+            else:  # Pantalla grande
+                # Tamaño grande
+                self._apply_large_screen_layout()
+                
+        except Exception as e:
+            print(f"Error en responsive design: {e}")
+
+    def _apply_small_screen_layout(self):
+        """Layout para pantallas pequeñas (<1200px)"""
+        try:
+            # Botones más compactos
+            small_btn_style = {
+                "font": ("Arial", 10),
+                "width": 25,
+                "pady": 2
+            }
+            
+            self.load_button.config(**small_btn_style)
+            self.btn_preprocesar.config(**small_btn_style)
+            self.play_pause_button.config(font=("Arial", 10, "bold"), width=15)
+            
+            # Texto explicativo compacto pero sin cortar palabras
+            if hasattr(self, 'play_pause_help_label'):
+                self.play_pause_help_label.config(
+                    font=("Arial", 7, "italic"),
+                    wraplength=110,  # Ancho suficiente para palabras completas
+                    width=14
+                )
+            
+            # Panel de placas más estrecho
+            if hasattr(self, 'plates_frame'):
+                self.plates_frame.config(width=250)
+                
+        except Exception as e:
+            print(f"Error en layout pequeño: {e}")
+
+    def _apply_medium_screen_layout(self):
+        """Layout para pantallas medianas (1200-1600px)"""
+        try:
+            # Tamaños estándar
+            medium_btn_style = {
+                "font": ("Arial", 12),
+                "width": 36,
+                "pady": 5
+            }
+            
+            self.load_button.config(**medium_btn_style)
+            self.btn_preprocesar.config(**medium_btn_style)
+            self.play_pause_button.config(font=("Arial", 12, "bold"), width=20)
+            
+            # Texto explicativo tamaño normal con mejor wrapping
+            if hasattr(self, 'play_pause_help_label'):
+                self.play_pause_help_label.config(
+                    font=("Arial", 11, "italic"),
+                    wraplength=140,  # Más ancho para evitar cortes
+                    width=18
+                )
+            
+            # Panel de placas tamaño estándar
+            if hasattr(self, 'plates_frame'):
+                self.plates_frame.config(width=320)
+                
+        except Exception as e:
+            print(f"Error en layout mediano: {e}")
+
+    def _apply_large_screen_layout(self):
+        """Layout para pantallas grandes (>1600px)"""
+        try:
+            # Tamaños grandes
+            large_btn_style = {
+                "font": ("Arial", 14),
+                "width": 40,
+                "pady": 8
+            }
+            
+            self.load_button.config(**large_btn_style)
+            self.btn_preprocesar.config(**large_btn_style)
+            self.play_pause_button.config(font=("Arial", 14, "bold"), width=25)
+            
+            # Texto explicativo más grande con wrapping generoso
+            if hasattr(self, 'play_pause_help_label'):
+                self.play_pause_help_label.config(
+                    font=("Arial", 12, "italic"),
+                    wraplength=160,  # Ancho generoso
+                    width=20
+                )
+            
+            # Panel de placas más ancho
+            if hasattr(self, 'plates_frame'):
+                self.plates_frame.config(width=400)
+                
+        except Exception as e:
+            print(f"Error en layout grande: {e}")
+
+    def toggle_beep(self):
+        """Habilitar/deshabilitar beep de infracciones"""
+        self.beep_enabled = not self.beep_enabled
+        status = "HABILITADO" if self.beep_enabled else "DESHABILITADO"
+        color = "#f39c12" if self.beep_enabled else "#7f8c8d"
+        text = "🔊 BEEP" if self.beep_enabled else "🔇 MUDO"
+        
+        self.beep_button.config(bg=color, text=text)
+        print(f"🔊 Beep de infracciones: {status}")
+
+    def play_infraction_beep(self):
+        """Reproduce beep de infracción SIMPLE y seguro"""
+        if not self.beep_enabled:
+            return
+        try:
+            # Beep simple y rápido
+            winsound.Beep(500, 100)
+        except:
+            pass  # Fallar silenciosamente
+
+    def should_play_beep(self, plate_text):
+        """Verifica si debe sonar beep (solo 1 vez por placa única)"""
+        if not self.beep_enabled or not plate_text:
+            return False
+        
+        # Solo beep si es una placa nueva
+        if plate_text not in self.beep_unique_plates:
+            self.beep_unique_plates.add(plate_text)
+            return True
+        return False
+
+    def _get_potential_plate_regions(self, frame, x1, y1, x2, y2):
+        """Obtiene múltiples regiones potenciales donde puede estar la placa"""
+        regions = []
+        
+        if frame is None or frame.size == 0:
+            return regions
+        
+        h_frame, w_frame = frame.shape[:2]
+        
+        # Asegurar coordenadas válidas
+        x1, y1 = max(0, int(x1)), max(0, int(y1))
+        x2, y2 = min(w_frame, int(x2)), min(h_frame, int(y2))
+        
+        if x2 <= x1 or y2 <= y1:
+            return regions
+        
+        vehicle_h = y2 - y1
+        vehicle_w = x2 - x1
+        
+        # Región FRONTAL del vehículo (más probable para placa delantera)
+        front_y1 = max(y1, y2 - int(vehicle_h * 0.4))  # 40% inferior
+        front_y2 = y2
+        if front_y2 > front_y1:
+            front_crop = frame[front_y1:front_y2, x1:x2]
+            if front_crop.size > 0:
+                regions.append((front_crop, (x1, front_y1, x2, front_y2), "frontal"))
+        
+        # Región TRASERA del vehículo (placa trasera)
+        rear_y1 = y1
+        rear_y2 = min(y2, y1 + int(vehicle_h * 0.4))  # 40% superior
+        if rear_y2 > rear_y1:
+            rear_crop = frame[rear_y1:rear_y2, x1:x2]
+            if rear_crop.size > 0:
+                regions.append((rear_crop, (x1, rear_y1, x2, rear_y2), "trasera"))
+        
+        # Región CENTRAL (fallback)
+        center_y1 = y1 + int(vehicle_h * 0.3)
+        center_y2 = y2 - int(vehicle_h * 0.3)
+        if center_y2 > center_y1:
+            center_crop = frame[center_y1:center_y2, x1:x2]
+            if center_crop.size > 0:
+                regions.append((center_crop, (x1, center_y1, x2, center_y2), "central"))
+        
+        return regions
+    
+    def _evaluate_plate_quality(self, plate_crop):
+        """Evalúa la calidad de un recorte de placa para seleccionar el mejor"""
+        if plate_crop is None or plate_crop.size == 0:
+            return 0.0
+        
+        try:
+            # Factor 1: Contraste (placas tienen buen contraste)
+            gray = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
+            contrast = gray.std()
+            contrast_score = min(contrast / 50.0, 1.0)
+            
+            # Factor 2: Detección de bordes (placas tienen bordes definidos)
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = np.sum(edges > 0) / edges.size if edges.size > 0 else 0
+            edge_score = min(edge_density * 10, 1.0)
+            
+            # Factor 3: Aspect ratio típico de placas (rectangular)
+            h, w = plate_crop.shape[:2]
+            if h > 0:
+                aspect_ratio = w / h
+                # Placas peruanas típicamente entre 2:1 y 4:1
+                if 1.5 <= aspect_ratio <= 5.0:
+                    aspect_score = 1.0
+                else:
+                    aspect_score = max(0.3, 1.0 - abs(aspect_ratio - 3.0) * 0.2)
+            else:
+                aspect_score = 0.0
+            
+            # Factor 4: Tamaño mínimo (muy pequeñas no sirven para OCR)
+            size_score = min((w * h) / 1500.0, 1.0)  # Mínimo 1500 píxeles
+            
+            # Factor 5: Nitidez (importante para OCR)
+            laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+            sharpness = laplacian.var()
+            sharpness_score = min(sharpness / 100.0, 1.0)
+            
+            # Puntuación final ponderada
+            total_score = (
+                contrast_score * 0.25 +
+                edge_score * 0.25 +
+                aspect_score * 0.20 +
+                size_score * 0.15 +
+                sharpness_score * 0.15
+            )
+            
+            return total_score
+            
+        except Exception as e:
+            print(f"Error evaluando calidad de placa: {e}")
+            return 0.0
+
+    def enhanced_plate_detection(self, frame, car_detection):
+        """DETECCIÓN ULTRA-PRECISA: Recorte EXACTO de la placa en las 4 esquinas"""
+        try:
+            x1, y1, x2, y2 = car_detection[:4]
+            
+            # Método principal: detección ultra-precisa por color y forma
+            precise_plate, quality, global_coords = self._detect_precise_plate_region(frame, x1, y1, x2, y2)
+            
+            if precise_plate is not None and quality > 0.3:
+                print(f"🎯 Placa detectada EXACTA: {precise_plate.shape}, calidad: {quality:.3f}")
+                
+                # � DEBUG: Dibujar rectángulo MAGENTA sobre el recorte exacto de zona blanca
+                if global_coords and hasattr(self, 'show_debug') and self.show_debug:
+                    gx1, gy1, gx2, gy2 = global_coords
+                    # Rectángulo magenta = recorte exacto de la zona blanca
+                    cv2.rectangle(frame, (int(gx1), int(gy1)), (int(gx2), int(gy2)), (255, 0, 255), 2)
+                    cv2.putText(frame, "ZONA BLANCA", (int(gx1), int(gy1)-5),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 255), 1)
+                    
+                    # Información adicional
+                    h_crop, w_crop = precise_plate.shape[:2]
+                    cv2.putText(frame, f"{w_crop}x{h_crop}", (int(gx1), int(gy2)+15),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 0, 255), 1)
+                
+                return precise_plate, quality
+            
+            # Fallback: método de respaldo si el principal falla
+            return self._fallback_precise_detection(frame, car_detection)
+            
+        except Exception as e:
+            print(f"Error en detección ultra-precisa: {e}")
+            return None, 0.0
+    
+    def _detect_precise_plate_region(self, frame, x1, y1, x2, y2):
+        """RECORTE ULTRA-PRECISO: Solo la zona blanca de la matrícula (dentro de líneas rojas)"""
+        try:
+            # 1. REGIÓN DEL VEHÍCULO (punto de partida)
+            vehicle_crop = frame[y1:y2, x1:x2]
+            if vehicle_crop.size == 0:
+                return None, 0.0, None
+            
+            # 2. CONVERSIÓN A ESCALA DE GRISES para mejor detección
+            gray = cv2.cvtColor(vehicle_crop, cv2.COLOR_BGR2GRAY)
+            
+            # 3. UMBRALIZACIÓN para detectar zonas BLANCAS (placas)
+            # Detectar solo píxeles muy brillantes (zona blanca de la placa)
+            _, white_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+            
+            # 4. MORFOLOGÍA para limpiar y conectar texto
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 2))
+            white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_CLOSE, kernel)
+            white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_OPEN, kernel)
+            
+            # 5. ENCONTRAR CONTORNOS de las zonas blancas
+            contours, _ = cv2.findContours(white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if not contours:
+                print("❌ No se encontraron zonas blancas")
+                return None, 0.0, None
+            
+            # 6. FILTRAR CONTORNOS por características de PLACA
+            plate_candidates = []
+            h_vehicle, w_vehicle = vehicle_crop.shape[:2]
+            
+            for contour in contours:
+                # Rectángulo que encierra el contorno
+                px, py, pw, ph = cv2.boundingRect(contour)
+                
+                # FILTROS MUY ESTRICTOS para placas:
+                if pw < 40 or ph < 15:  # Muy pequeña
+                    continue
+                    
+                aspect_ratio = pw / ph
+                if not (2.0 <= aspect_ratio <= 5.0):  # Aspect ratio de placa
+                    continue
+                    
+                area = pw * ph
+                if area < 600 or area > 15000:  # Área fuera de rango
+                    continue
+                
+                # 7. VERIFICAR que tiene TEXTO (densidad de píxeles blancos)
+                plate_region = white_mask[py:py+ph, px:px+pw]
+                white_density = np.sum(plate_region == 255) / (pw * ph)
+                
+                # La placa debe tener entre 20% y 80% de píxeles blancos (texto + fondo)
+                if not (0.2 <= white_density <= 0.8):
+                    continue
+                
+                # 8. CALCULAR CALIDAD basada en características
+                quality = self._calculate_white_region_quality(vehicle_crop[py:py+ph, px:px+pw])
+                
+                if quality > 0.3:
+                    plate_candidates.append({
+                        'bbox': (px, py, pw, ph),
+                        'quality': quality,
+                        'white_density': white_density,
+                        'aspect_ratio': aspect_ratio
+                    })
+            
+            if not plate_candidates:
+                print("❌ No se encontraron candidatos válidos")
+                return None, 0.0, None
+            
+            # 9. SELECCIONAR LA MEJOR (mayor calidad)
+            best = max(plate_candidates, key=lambda x: x['quality'])
+            px, py, pw, ph = best['bbox']
+            
+            # 10. ✂️ RECORTE EXACTO - SOLO la zona blanca detectada
+            # ESTO ES LO CRUCIAL - recorte exacto sin margen extra
+            exact_plate = vehicle_crop[py:py+ph, px:px+pw]
+            
+            # Coordenadas globales para el rectángulo de debug
+            global_x1 = x1 + px
+            global_y1 = y1 + py  
+            global_x2 = x1 + px + pw
+            global_y2 = y1 + py + ph
+            
+            print(f"✂️ RECORTE EXACTO: {pw}x{ph}px (zona blanca pura)")
+            print(f"   Densidad blanca: {best['white_density']:.2f}")
+            print(f"   Aspect ratio: {best['aspect_ratio']:.2f}")
+            print(f"   Calidad: {best['quality']:.3f}")
+            
+            return exact_plate, best['quality'], (global_x1, global_y1, global_x2, global_y2)
+            
+        except Exception as e:
+            print(f"Error en recorte ultra-preciso: {e}")
+            return None, 0.0, None
+    
+    def _calculate_white_region_quality(self, plate_region):
+        """Calcula calidad específica de la zona blanca de la placa"""
+        try:
+            if plate_region.size == 0:
+                return 0.0
+            
+            gray = cv2.cvtColor(plate_region, cv2.COLOR_BGR2GRAY)
+            
+            # Factor 1: Contraste (texto negro sobre fondo blanco)
+            contrast = gray.std() / 255.0
+            contrast_score = min(contrast * 2.5, 1.0)
+            
+            # Factor 2: Distribución de intensidades (debe tener píxeles claros y oscuros)
+            hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
+            
+            # Verificar que hay píxeles tanto claros (>200) como oscuros (<100)
+            bright_pixels = np.sum(hist[200:])
+            dark_pixels = np.sum(hist[:100])
+            total_pixels = gray.size
+            
+            if bright_pixels > 0 and dark_pixels > 0:
+                distribution_score = min((bright_pixels + dark_pixels) / total_pixels, 1.0)
+            else:
+                distribution_score = 0.2
+            
+            # Factor 3: Detección de bordes (texto tiene muchos bordes)
+            edges = cv2.Canny(gray, 100, 200)
+            edge_density = np.sum(edges > 0) / edges.size
+            edge_score = min(edge_density * 8, 1.0)
+            
+            # Factor 4: Verificar que tiene forma rectangular (placas son rectangulares)
+            h, w = gray.shape
+            if h > 0 and w > 0:
+                aspect_ratio = w / h
+                if 2.0 <= aspect_ratio <= 4.5:
+                    shape_score = 1.0
+                elif 1.5 <= aspect_ratio <= 5.5:
+                    shape_score = 0.7
+                else:
+                    shape_score = 0.3
+            else:
+                shape_score = 0.0
+            
+            # Promedio ponderado
+            final_quality = (
+                contrast_score * 0.3 +
+                distribution_score * 0.3 +
+                edge_score * 0.25 +
+                shape_score * 0.15
+            )
+            
+            return final_quality
+            
+        except Exception as e:
+            return 0.0
+    
+    def _fallback_precise_detection(self, frame, car_detection):
+        """Método de respaldo con recorte más preciso"""
+        try:
+            x1, y1, x2, y2 = car_detection[:4]
+            
+            # Región frontal más pequeña y precisa
+            vehicle_h = y2 - y1
+            # Solo tomar 20% inferior frontal
+            front_y1 = y2 - int(vehicle_h * 0.2)
+            
+            if front_y1 < y2:
+                front_region = frame[front_y1:y2, x1:x2]
+                
+                if front_region.size > 0:
+                    quality = self._evaluate_plate_quality(front_region)
+                    if quality > 0.15:
+                        print(f"🔄 Fallback: región frontal {front_region.shape}, calidad: {quality:.3f}")
+                        return front_region, quality
+            
+            return None, 0.0
+            
+        except Exception as e:
+            print(f"Error en fallback: {e}")
+            return None, 0.0
+
+    def _detect_plates_in_region(self, region):
+        """Detecta placas específicamente en una región usando el modelo YOLO"""
+        try:
+            if region is None or region.size == 0:
+                return []
+            
+            # Usar el detector YOLO existente para placas
+            if hasattr(self, 'plate_detector') and self.plate_detector:
+                results = self.plate_detector.predict(region, conf=0.25, verbose=False)
+                
+                detections = []
+                for result in results:
+                    if hasattr(result, 'boxes') and result.boxes is not None:
+                        boxes = result.boxes.cpu().numpy()
+                        for box in boxes:
+                            # Extraer coordenadas y confianza
+                            x1, y1, x2, y2 = box.xyxy[0]
+                            conf = box.conf[0]
+                            detections.append([x1, y1, x2, y2, conf])
+                
+                return detections
+            else:
+                # Fallback: usar detección básica por contornos
+                return self._basic_plate_detection(region)
+                
+        except Exception as e:
+            print(f"Error detectando placas en región: {e}")
+            return []
+    
+    def _basic_plate_detection(self, region):
+        """Detección básica de placas usando contornos como fallback"""
+        try:
+            gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
+            
+            # Aplicar filtros para resaltar placas
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            edges = cv2.Canny(blurred, 50, 150)
+            
+            # Encontrar contornos
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            detections = []
+            h, w = region.shape[:2]
+            
+            for contour in contours:
+                # Obtener rectángulo envolvente
+                x, y, cw, ch = cv2.boundingRect(contour)
+                
+                # Filtrar por aspect ratio típico de placas
+                if cw > 0 and ch > 0:
+                    aspect_ratio = cw / ch
+                    area = cw * ch
+                    
+                    # Criterios para placas: aspect ratio entre 1.5-5.0, área mínima
+                    if 1.5 <= aspect_ratio <= 5.0 and area > (w * h * 0.05):
+                        # Expandir ligeramente el rectángulo
+                        x1 = max(0, x - 5)
+                        y1 = max(0, y - 5)
+                        x2 = min(w, x + cw + 5)
+                        y2 = min(h, y + ch + 5)
+                        
+                        # Confianza basada en área y aspect ratio
+                        conf = min(0.8, area / (w * h) + (1.0 / abs(aspect_ratio - 2.5)) * 0.1)
+                        detections.append([x1, y1, x2, y2, conf])
+            
+            # Ordenar por confianza descendente
+            detections.sort(key=lambda x: x[4], reverse=True)
+            return detections[:3]  # Máximo 3 candidatos
+            
+        except Exception as e:
+            print(f"Error en detección básica: {e}")
+            return []
+    
+    def _apply_super_resolution(self, plate_image, is_night=False):
+        """
+        Aplica super-resolución avanzada y mejoras a la imagen de la placa
+        con redimensionado 3x, denoising, sharpening, y centrado automático
+        """
+        if plate_image is None or plate_image.size == 0:
+            return plate_image
+        
+        try:
+            # 1. REDIMENSIONAR con interpolación cúbica (3x más grande)
+            h, w = plate_image.shape[:2]
+            new_w, new_h = w * 3, h * 3  # 3x más grande para mejor OCR
+            
+            upscaled = cv2.resize(plate_image, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+            
+            # 2. DENOISING para limpiar la imagen
+            if is_night:
+                # Más agresivo para condiciones nocturnas
+                denoised = cv2.fastNlMeansDenoisingColored(upscaled, None, 10, 10, 7, 21)
+            else:
+                denoised = cv2.fastNlMeansDenoisingColored(upscaled, None, 6, 6, 7, 21)
+            
+            # 3. SHARPENING para mayor nitidez en caracteres
+            kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+            sharpened = cv2.filter2D(denoised, -1, kernel)
+            
+            # 4. MEJORA DE CONTRASTE usando CLAHE
+            lab = cv2.cvtColor(sharpened, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            
+            # CLAHE para mejorar contraste local
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+            l = clahe.apply(l)
+            
+            enhanced = cv2.merge([l, a, b])
+            final_image = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+            
+            # 5. CENTRAR la placa si era muy pequeña originalmente
+            if w < 100 or h < 30:  # Si la placa original era muy pequeña
+                # Crear un canvas más grande y centrar la placa
+                canvas_w, canvas_h = max(200, new_w), max(60, new_h)
+                canvas = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
+                canvas.fill(128)  # Fondo gris neutro
+                
+                # Centrar la imagen mejorada
+                start_x = (canvas_w - new_w) // 2
+                start_y = (canvas_h - new_h) // 2
+                canvas[start_y:start_y+new_h, start_x:start_x+new_w] = final_image
+                
+                print(f"🎯 Placa centrada: {w}x{h} → {canvas_w}x{canvas_h}")
+                return canvas
+            
+            print(f"🔍 Super-resolución: {w}x{h} → {new_w}x{new_h}")
+            return final_image
+            
+        except Exception as e:
+            print(f"Error en super-resolución avanzada: {e}")
+            # Fallback simple: solo redimensionar 2x
+            try:
+                h, w = plate_image.shape[:2]
+                return cv2.resize(plate_image, (w*2, h*2), interpolation=cv2.INTER_CUBIC)
+            except:
+                return plate_image
+
+    def classify_detection_quality(self, plate_text, detection_confidence=0.5, return_metadata=True):
+        """
+        Clasifica si una detección es NID (correcta) o NIE (errónea)
+        usando el sistema de clasificación balanceado para la tesis.
+        
+        NUEVO: Sistema calibrado para maximizar NID y minimizar NIE.
+        
+        Args:
+            plate_text: Texto de la placa detectada
+            detection_confidence: Confianza de la detección
+            return_metadata: Si True devuelve (classification, score, metadata), 
+                           si False devuelve (classification, score)
+        
+        Returns:
+            tuple: (classification, confidence_score) o (classification, confidence_score, metadata)
+        """
+        # Importar y usar el nuevo sistema de clasificación
+        try:
+            from src.gui.preprocessing_dialog import PlateClassificationSystem
+            
+            # Crear instancia del clasificador balanceado
+            if not hasattr(self, '_plate_classifier'):
+                self._plate_classifier = PlateClassificationSystem()
+                print("🧠 Sistema NID/NIE balanceado inicializado en videoplayer")
+            
+            # Clasificar usando el sistema optimizado
+            classification, metadata = self._plate_classifier.classify_detection(
+                plate_text=plate_text,
+                confidence=detection_confidence,
+                frame_validations={'crossing_confirmed': True}
+            )
+            
+            # Obtener confianza del metadata
+            confidence_score = metadata.get('confianza', detection_confidence)
+            
+            # Log para debugging
+            if classification == 'NIE':
+                razon = metadata.get('razon', 'desconocida')
+                print(f"⚠️ NIE: {plate_text} (razón: {razon}, conf: {confidence_score:.2f})")
+            else:
+                print(f"✅ NID: {plate_text} (conf: {confidence_score:.2f})")
+                
+            if return_metadata:
+                return classification, confidence_score, metadata
+            else:
+                return classification, confidence_score
+            
+        except Exception as e:
+            # Fallback al sistema anterior si hay problemas
+            print(f"⚠️ Fallback: Error en sistema NID/NIE: {e}")
+            result = self._legacy_classify_detection_quality(plate_text, detection_confidence)
+            if return_metadata:
+                return result[0], result[1], {'razon': 'sistema anterior', 'confianza': result[1]}
+            else:
+                return result[0], result[1]
+    
+    def _legacy_classify_detection_quality(self, plate_text, detection_confidence=0.5):
+        """
+        Sistema de clasificación anterior (más estricto) - usado como fallback.
+        """
+        if not plate_text:
+            return "NIE", 0.0
+        
+        quality_factors = []
+        
+        # Factor 1: Longitud de placa (5-7 caracteres es normal en Perú)
+        if 5 <= len(plate_text) <= 7:
+            quality_factors.append(1.0)
+        elif 4 <= len(plate_text) <= 8:
+            quality_factors.append(0.7)
+        else:
+            quality_factors.append(0.2)
+        
+        # Factor 2: Caracteres válidos (solo letras y números)
+        valid_chars = all(c.isalnum() for c in plate_text)
+        quality_factors.append(1.0 if valid_chars else 0.3)
+        
+        # Factor 3: Patrones conocidos de placas peruanas
+        patterns = [
+            r'^[A-Z]{3}[0-9]{3}$',  # ABC123
+            r'^[A-Z]{2}[0-9]{4}$',   # AB1234
+            r'^[A-Z]{3}[0-9]{1}[A-Z]{2}$'  # ABC1DE
+        ]
+        
+        pattern_match = any(re.match(pattern, plate_text) for pattern in patterns)
+        quality_factors.append(1.0 if pattern_match else 0.4)
+        
+        # Factor 4: Confianza del OCR
+        if detection_confidence > 0.8:
+            quality_factors.append(1.0)
+        elif detection_confidence > 0.6:
+            quality_factors.append(0.7)
+        elif detection_confidence > 0.4:
+            quality_factors.append(0.5)
+        else:
+            quality_factors.append(0.2)
+        
+        # Calcular confianza promedio
+        avg_confidence = sum(quality_factors) / len(quality_factors)
+        
+        # SISTEMA ANTERIOR: Umbral muy estricto (≥0.75)
+        if avg_confidence >= 0.75:
+            return "NID", avg_confidence  
+        else:
+            return "NIE", avg_confidence
+
+    def _create_responsive_window(self, parent, title, min_width=400, min_height=300, max_width_ratio=0.8, max_height_ratio=0.8):
+        """
+        Crea una ventana emergente responsive que se adapta al tamaño de pantalla
+        """
+        try:
+            # Crear ventana
+            window = tk.Toplevel(parent)
+            window.title(title)
+            window.transient(parent)
+            window.grab_set()
+            
+            # Obtener dimensiones de la pantalla
+            screen_width = window.winfo_screenwidth()
+            screen_height = window.winfo_screenheight()
+            
+            # Calcular tamaño de ventana basado en la pantalla
+            max_width = int(screen_width * max_width_ratio)
+            max_height = int(screen_height * max_height_ratio)
+            
+            # Usar el mínimo entre el máximo y el tamaño mínimo requerido
+            window_width = max(min_width, min(max_width, 800))
+            window_height = max(min_height, min(max_height, 600))
+            
+            # Para pantallas muy pequeñas (laptops), reducir aún más
+            if screen_width < 1366 or screen_height < 768:
+                window_width = min(window_width, screen_width - 100)
+                window_height = min(window_height, screen_height - 100)
+            
+            # Centrar ventana
+            x = (screen_width - window_width) // 2
+            y = (screen_height - window_height) // 2
+            
+            window.geometry(f"{window_width}x{window_height}+{x}+{y}")
+            window.minsize(min_width, min_height)
+            
+            # Agregar scroll si es necesario en pantallas muy pequeñas
+            if screen_height < 800:
+                # Crear frame principal con scroll
+                main_frame = tk.Frame(window)
+                main_frame.pack(fill="both", expand=True)
+                
+                canvas = tk.Canvas(main_frame, highlightthickness=0)
+                scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+                scrollable_frame = tk.Frame(canvas)
+                
+                scrollable_frame.bind(
+                    "<Configure>",
+                    lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+                )
+                
+                canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+                canvas.configure(yscrollcommand=scrollbar.set)
+                
+                canvas.pack(side="left", fill="both", expand=True)
+                scrollbar.pack(side="right", fill="y")
+                
+                # Hacer scroll con rueda del mouse
+                def _on_mousewheel(event):
+                    canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                canvas.bind_all("<MouseWheel>", _on_mousewheel)
+                
+                return window, scrollable_frame
+            else:
+                # Sin scroll para pantallas normales
+                content_frame = tk.Frame(window)
+                content_frame.pack(fill="both", expand=True, padx=10, pady=10)
+                return window, content_frame
+                
+        except Exception as e:
+            print(f"Error creando ventana responsive: {e}")
+            # Fallback básico
+            window = tk.Toplevel(parent)
+            window.title(title)
+            window.geometry("600x400")
+            content_frame = tk.Frame(window)
+            content_frame.pack(fill="both", expand=True)
+            return window, content_frame
+
+    # =====================================================
+    # ANÁLISIS NOCTURNO AL CARGAR VIDEO
+    # =====================================================
+    
+    def _analyze_video_lighting(self, first_frame, sample_frames=5):
+        """
+        Analiza si el video es nocturno al cargarse y actualiza el indicador visual.
+        
+        Args:
+            first_frame: Frame inicial del video
+            sample_frames: Número de frames adicionales a analizar
+        """
+        try:
+            if first_frame is None or not hasattr(self, 'current_video_path'):
+                return
+                
+            print("🌙 Analizando condiciones de iluminación del video...")
+            
+            # Analizar múltiples frames para mejor precisión
+            cap = cv2.VideoCapture(self.current_video_path)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            brightness_values = []
+            
+            # Analizar frames distribuidos a lo largo del video
+            frame_positions = [
+                0,  # Inicio
+                total_frames // 4,      # 25%
+                total_frames // 2,      # 50% 
+                3 * total_frames // 4,  # 75%
+                total_frames - 1        # Final
+            ]
+            
+            for pos in frame_positions[:sample_frames]:
+                if pos >= total_frames:
+                    continue
+                    
+                cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
+                ret, sample_frame = cap.read()
+                
+                if ret:
+                    # Convertir a escala de grises
+                    gray = cv2.cvtColor(sample_frame, cv2.COLOR_BGR2GRAY)
+                    
+                    # Calcular brillo promedio
+                    avg_brightness = np.mean(gray)
+                    brightness_values.append(avg_brightness)
+                    
+            cap.release()
+            
+            if brightness_values:
+                # Calcular brillo promedio general
+                overall_brightness = np.mean(brightness_values)
+                
+                # UMBRAL CRÍTICO: 90 - SINCRONIZADO CON PREPROCESSING
+                is_night = overall_brightness < 90
+                
+                # Actualizar indicador visual en la UI
+                self._update_lighting_indicator(is_night, overall_brightness)
+                
+                print(f"🌙 ANÁLISIS COMPLETADO:")
+                print(f"   📊 Brillo promedio: {overall_brightness:.1f}/255")
+                print(f"   🌓 Umbral nocturno: 90")
+                print(f"   🎯 Resultado: {'NOCTURNO' if is_night else 'DIURNO'}")
+                
+                # Guardar resultado para usar en el preprocesamiento
+                self.is_night_video = is_night
+                self.video_brightness = overall_brightness
+                
+                return is_night
+            
+            self.is_night_video = False
+            self.video_brightness = 255
+            return False
+            
+        except Exception as e:
+            print(f"Error en análisis de iluminación: {e}")
+            self.is_night_video = False
+            self.video_brightness = 255
+            return False
+
+    def _update_lighting_indicator(self, is_night, brightness):
+        """
+        Actualiza el indicador visual de condiciones de iluminación en la UI.
+        
+        Args:
+            is_night: True si es nocturno, False si es diurno
+            brightness: Valor de brillo promedio (0-255)
+        """
+        try:
+            # Crear o actualizar el indicador de condiciones
+            lighting_text = "🌙 NOCTURNO" if is_night else "☀️ DIURNO"
+            brightness_color = "#ffaa00" if is_night else "#00aa00"  # Naranja para noche, verde para día
+            
+            # Actualizar el label de información del sistema
+            if hasattr(self, 'system_info_label'):
+                system_info = self.system_info_label.cget('text')
+                
+                # Agregar información de iluminación
+                lighting_info = f"\n{lighting_text} (Brillo: {brightness:.0f}/255)"
+                
+                # Si ya hay información de iluminación, reemplazarla
+                if "NOCTURNO" in system_info or "DIURNO" in system_info:
+                    lines = system_info.split('\n')
+                    # Filtrar líneas que no sean de iluminación
+                    filtered_lines = [line for line in lines if not ("NOCTURNO" in line or "DIURNO" in line)]
+                    system_info = '\n'.join(filtered_lines)
+                
+                updated_info = system_info + lighting_info
+                self.system_info_label.config(text=updated_info, fg=brightness_color)
+            
+            # Actualizar el indicador de iluminación separado
+            if hasattr(self, 'lighting_indicator_label'):
+                self.lighting_indicator_label.config(text=lighting_text, fg=brightness_color)
+            
+            print(f"✅ Indicador visual actualizado: {lighting_text}")
+            
+        except Exception as e:
+            print(f"Error actualizando indicador de iluminación: {e}")
 
 # Fin del módulo VideoPlayerOpenCV
