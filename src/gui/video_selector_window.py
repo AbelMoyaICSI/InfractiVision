@@ -487,15 +487,24 @@ class VideoSelectorWindow:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             
-            # Calcular duración
+            # Calcular duración con soporte completo para H:MM:SS
             duration_seconds = frame_count / fps if fps > 0 else 0
-            minutes = int(duration_seconds // 60)
-            seconds = int(duration_seconds % 60)
+            
+            if duration_seconds >= 3600:  # ≥ 1 hora
+                hours = int(duration_seconds // 3600)
+                remaining = duration_seconds % 3600
+                minutes = int(remaining // 60)
+                seconds = int(remaining % 60)
+                duration_formatted = f"{hours}:{minutes:02d}:{seconds:02d}"
+            else:  # < 1 hora
+                minutes = int(duration_seconds // 60)
+                seconds = int(duration_seconds % 60)
+                duration_formatted = f"{minutes:02d}:{seconds:02d}"
             
             cap.release()
             
             return {
-                'duration': f"{minutes:02d}:{seconds:02d}",
+                'duration': duration_formatted,
                 'resolution': f"{width}x{height}",
                 'fps': f"{fps:.1f}" if fps > 0 else "N/A",
                 'frames': frame_count

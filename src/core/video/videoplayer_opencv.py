@@ -1951,12 +1951,13 @@ class VideoPlayerOpenCV:
             )
             self.status_label.pack(fill="x", pady=0)
             
-            # 3. TR en formato especificado - SIEMPRE EN MINUTOS
+            # 3. TR CORREGIDO - CONVERSIÓN DECIMAL A MM:SS CORRECTA
             if self.timestamp is not None:
-                total_seconds = int(self.timestamp)
+                # CORREGIR: self.timestamp puede ser decimal (ej: 29.53 segundos)
+                total_seconds = int(float(self.timestamp))  # Convertir decimal a entero
                 mins = total_seconds // 60
                 secs = total_seconds % 60
-                # FORMATO CONSISTENTE: SIEMPRE minutos, incluso si es 0:26min (26s)
+                # FORMATO CORRECTO: MM:SS con conversión matemática real
                 tr_text = f"TR: {mins}:{secs:02d}min ({total_seconds}s)"
             else:
                 tr_text = "TR: --:--min (0s)"

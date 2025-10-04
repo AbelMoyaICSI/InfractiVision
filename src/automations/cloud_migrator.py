@@ -8,8 +8,8 @@ from google.cloud import storage, firestore
 from google.oauth2 import service_account  # ⬅️ agregado
 
 # ————— Configuración —————
-PROJECT_ID   = "infractivision-461115"
-BUCKET_NAME  = "infractivision-2025"
+PROJECT_ID   = "infractivision-474103"
+BUCKET_NAME  = "infractivision-474103"
 # BASE_DIR apunta a la raíz del proyecto (dos niveles arriba)
 BASE_DIR     = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CONFIG_PATH  = os.path.join(BASE_DIR, "config", "infractivision_config.json")
@@ -17,7 +17,7 @@ INFRA_FILE   = os.path.join(BASE_DIR, "data", "infracciones.json")
 INDIC_PATH   = os.path.join(BASE_DIR, "data", "indicadores_rendimiento.json")
 
 # Ruta local a la llave (ajústala si cambias el nombre)
-LOCAL_KEY_PATH = os.path.join(BASE_DIR, "secrets", "infractivision-461115-010a42885008.json")
+LOCAL_KEY_PATH = os.path.join(BASE_DIR, "secrets", "infractivision-474103-0f907d0fbc62.json")
 
 def _make_clients():
     """Usa ADC si hay GOOGLE_APPLICATION_CREDENTIALS; si no, usa el JSON en /secrets; si nada, ADC por defecto."""
@@ -68,7 +68,8 @@ def upload_infracciones_automatically():
     # ——— 1) Infracciones ———
     if os.path.exists(INFRA_FILE):
         with open(INFRA_FILE, "r", encoding="utf-8") as f:
-            infracciones = json.load(f)
+            data = json.load(f)
+        infracciones = data.get("infracciones", [])  # Extraer el array de infracciones
         for inf in infracciones:
             placa = inf["placa"]
             ts    = inf["video_timestamp"].replace(":", "-")
@@ -87,8 +88,9 @@ def upload_infracciones_automatically():
             url_p = bucket.blob(p_dst).public_url
             url_v = bucket.blob(v_dst).public_url
 
-            # Registra en Firestore
+            # Registra en Firestore - TODOS LOS CAMPOS
             reg = {
+                # Campos básicos
                 "placa":           placa,
                 "fecha":           inf.get("fecha", datetime.now().strftime("%d/%m/%Y")),
                 "hora":            inf.get("hora",  datetime.now().strftime("%H:%M:%S")),
@@ -96,10 +98,26 @@ def upload_infracciones_automatically():
                 "ubicacion":       inf.get("ubicacion", ""),
                 "tipo":            inf.get("tipo", "Semáforo en rojo"),
                 "estado":          inf.get("estado", "Pendiente"),
+                
+                # Campos nuevos de la estructura actualizada
+                "tiempo_video":    inf.get("tiempo_video", ""),
+                "franja_horaria":  inf.get("franja_horaria", ""),
+                "clasificacion":   inf.get("clasificacion", ""),
+                "confianza":       inf.get("confianza", 0.0),
+                "tiempo_procesamiento": inf.get("tiempo_procesamiento", 0.0),
+                "sistema_version": inf.get("sistema_version", ""),
+                
+                # Metadata de clasificación (aplanado)
+                "metadata_placa_final": inf.get("metadata_clasificacion", {}).get("placa_final", ""),
+                "metadata_confianza": inf.get("metadata_clasificacion", {}).get("confianza", 0.0),
+                "metadata_calidad": inf.get("metadata_clasificacion", {}).get("calidad_deteccion", ""),
+                "metadata_justificacion": inf.get("metadata_clasificacion", {}).get("justificacion", ""),
+                
+                # Campos del sistema
                 "device_id":       device_id,
                 "user_id":         user_id,
-                "username":        ids["username"],   # 👈 agregado
-                "hostname":        ids["hostname"],   # 👈 agregado
+                "username":        ids["username"],
+                "hostname":        ids["hostname"],
                 "plate_url":       url_p,
                 "vehicle_url":     url_v,
                 "uploaded_at":     datetime.utcnow()

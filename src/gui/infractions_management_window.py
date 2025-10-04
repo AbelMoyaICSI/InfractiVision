@@ -74,7 +74,15 @@ def load_infractions_data():
     if os.path.exists(INF_FILE):
         try:
             with open(INF_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                # CORREGIR: Extraer array de infracciones si existe la clave
+                if isinstance(data, dict) and 'infracciones' in data:
+                    return data['infracciones']
+                elif isinstance(data, list):
+                    return data
+                else:
+                    print(f"⚠️ Formato inesperado en JSON: {type(data)}")
+                    return []
         except Exception as e:
             print(f"Error cargando infracciones: {e}")
             return []
@@ -568,8 +576,8 @@ def generate_performance_indicators_json(software_infractions, software_processi
         "dias_analizados": sw_days,
         "indicadores": {
             "TI": {
-                "descripcion": "Tasa de Infracciones Correctamente Detectadas (Porcentaje)",
-                "unidad": "porcentaje (%)",
+                "descripcion": "Tasa de Infracciones Detectadas (Nivel Diario Agregado)",
+                "unidad": "infracciones por día comparativo (%)",
                 "sin_software": {
                     "registros_campo_diarios": round(pnp_daily, 2),
                     "fuente": "Registros PNP históricos"
@@ -581,11 +589,11 @@ def generate_performance_indicators_json(software_infractions, software_processi
                 "porcentaje_acierto": round(ti_percentage, 2),
             },
             "TR": {
-                "descripcion": "Tiempo de Registro (Minutos)",
-                "unidad": "minutos (min)",
+                "descripcion": "Tiempo de Registro por Infracción Individual",
+                "unidad": "minutos por infracción (min)",
                 "sin_software": {
                     "tiempo_promedio_minutos": round(pnp_min, 2),
-                    "fuente": "Encuestas a oficiales PNP"
+                    "fuente": "Estimación basada en registros históricos de campo"
                 },
                 "con_software": {
                     "tiempo_promedio_minutos": round(sw_min, 2),
@@ -595,8 +603,8 @@ def generate_performance_indicators_json(software_infractions, software_processi
                 "veces_mas_rapido": round(tr_speedup, 2),
             },
             "NID": {
-                "descripcion": "Número de Infracciones Detectadas (Diario)",
-                "unidad": "cantidad por día",
+                "descripcion": "Número de Infracciones Detectadas Correctamente (Clasificación por Confianza)",
+                "unidad": "cantidad válida por día",
                 "infracciones_hoy": nid_today,
                 "promedio_diario": round(nid_daily_avg, 0),
                 "periodo_analizado": f"{sw_days} días"
@@ -1365,6 +1373,19 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             ).pack(pady=80, padx=80)
             return
 
+        # CORREGIR: Validar que data_list contenga diccionarios, no strings
+        # Filtrar solo elementos que sean diccionarios válidos
+        valid_data = []
+        for item in data_list:
+            if isinstance(item, dict):
+                valid_data.append(item)
+            elif isinstance(item, str):
+                print(f"⚠️ Elemento string ignorado en datos: {item}")
+            else:
+                print(f"⚠️ Elemento de tipo desconocido ignorado: {type(item)} - {item}")
+        
+        data_list = valid_data
+        
         # Ordenar: primero por clasificación (NID primero, NIE al final), luego por fecha y hora (más reciente primero)
         try:
             data_list = sorted(data_list, 
@@ -1377,8 +1398,9 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                             ))
         except Exception as e:
             print(f"Error al ordenar infracciones: {e}")
-            # Fallback: ordenamiento simple por clasificación
-            data_list = sorted(data_list, key=lambda x: (0 if x.get('clasificacion', 'NID') == 'NID' else 1))
+            # Fallback: ordenamiento simple por clasificación solo para diccionarios válidos
+            data_list = sorted([x for x in data_list if isinstance(x, dict)], 
+                             key=lambda x: (0 if x.get('clasificacion', 'NID') == 'NID' else 1))
         
         # Crear tarjetas con diseño mejorado
         for inf in data_list:
@@ -1386,6 +1408,19 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             card = tk.Frame(scrollable_frame, bg="#F2F2F2", 
                          bd=1, relief=tk.RAISED)
             card.pack(fill="x", padx=15, pady=10, expand=True)  # Añadido padding horizontal para separar del borde
+            
+            # MEJORADO: Agregar scroll a esta card específica y todos sus componentes
+            def add_scroll_to_card_and_children(widget):
+                """Agrega scroll a un widget y todos sus hijos recursivamente"""
+                try:
+                    widget.bind("<MouseWheel>", on_mousewheel)
+                    widget.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+                    widget.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
+                except:
+                    pass
+                # Recursivamente a todos los hijos
+                for child in widget.winfo_children():
+                    add_scroll_to_card_and_children(child)
             
             # Parte superior: información principal
             top_frame = tk.Frame(card, bg="#F2F2F2")
@@ -1437,9 +1472,7 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             timestamp_info = inf.get('video_timestamp','00:00')
             
             tiempo_str = f"Fecha: {fecha_info}   Hora: {hora_info}"
-            if timestamp_info and timestamp_info != "00:00":
-                tiempo_str += f"   Tiempo de video: {timestamp_info}"
-                
+            
             tk.Label(
                 text_left, text=tiempo_str,
                 font=("Arial", 12), bg="#F2F2F2", fg="#555555"
@@ -1468,31 +1501,184 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                 font=("Arial", 12), bg="#F2F2F2", fg="#333333"
             ).pack(anchor="w")
             
-            # NUEVO: Clasificación NID/NIE con colores distintivos
+            # MEJORADO: Clasificación NID/NIE con rangos de confianza más precisos
             clasificacion = inf.get('clasificacion', 'NID')  # Por defecto NID si no está especificado
-            confianza = inf.get('confianza', 0)
+            raw_confianza = inf.get('confianza', 0)
+            # CRÍTICO: Aplicar el mismo clamp que PlateCard para valores inválidos
+            confianza = max(0.0, min(1.0, raw_confianza))  # Clamp [0,1]
+            
+            # RANGOS DE CONFIANZA MEJORADOS
+            NID_THRESHOLD_EXCELLENT = 0.85  # Excelente
+            NID_THRESHOLD_GOOD = 0.65       # Bueno (mínimo aceptable)
             
             if clasificacion == 'NID':
-                clasificacion_color = "#28A745"  # Verde para NID (válido)
-                clasificacion_texto = f"✅ NID (Confianza: {confianza:.2f})"
+                if confianza >= NID_THRESHOLD_EXCELLENT:
+                    clasificacion_color = "#27ae60"  # Verde fuerte - Excelente
+                    clasificacion_texto = f"✅ NID - Excelente (Confianza: {confianza:.2f})"
+                elif confianza >= NID_THRESHOLD_GOOD:
+                    clasificacion_color = "#2ecc71"  # Verde - Bueno
+                    clasificacion_texto = f"✅ NID - Bueno (Confianza: {confianza:.2f})"
+                else:
+                    # Debería ser NIE si está por debajo del umbral
+                    clasificacion_color = "#f39c12"  # Naranja - Revisión necesaria
+                    clasificacion_texto = f"⚠️ NIE - Confianza baja ({confianza:.2f})"
             else:
-                clasificacion_color = "#FFC107"  # Amarillo para NIE (requiere revisión)
+                clasificacion_color = "#e74c3c"  # Rojo - Error/NIE
                 metadata = inf.get('metadata_clasificacion', {})
-                razon = metadata.get('razon', 'requiere_revision')
-                clasificacion_texto = f"⚠️ NIE (Razón: {razon})"
+                razon = metadata.get('razon', 'confianza_insuficiente')
+                clasificacion_texto = f"❌ NIE - {razon} ({confianza:.2f})"
                 
             tk.Label(
                 text_right, text=clasificacion_texto,
                 font=("Arial", 11, "bold"), bg="#F2F2F2", fg=clasificacion_color
             ).pack(anchor="w")
             
-            # NUEVO: Tiempo de procesamiento si disponible
-            tiempo_proc = inf.get('tiempo_procesamiento', 0)
-            if tiempo_proc > 0:
+            # CORREGIDO: Tiempo de procesamiento (TR) - FORMATO EXACTO COMO PANEL DE PLACAS
+            # Buscar tiempo de procesamiento en diferentes campos posibles
+            timestamp_value = None
+            
+            # 1. Intentar obtener de campos específicos de procesamiento
+            for field in ['tiempo_procesamiento', 'tr_seconds', 'processing_time', 'video_timestamp']:
+                value = inf.get(field)
+                if value and value != '00:00':
+                    # Si es string formato MM:SS, convertir a segundos
+                    if isinstance(value, str) and ':' in value:
+                        try:
+                            mins_part, secs_part = map(int, value.split(':'))
+                            timestamp_value = mins_part * 60 + secs_part
+                            break
+                        except:
+                            continue
+                    # Si es número, usar directamente
+                    elif isinstance(value, (int, float)) and value > 0:
+                        timestamp_value = int(value)
+                        break
+            
+            # 2. Si no encontró valor específico, usar tiempo_video como fallback
+            if timestamp_value is None or timestamp_value <= 0:
+                tiempo_video = inf.get('tiempo_video', '00:00')
+                if tiempo_video and tiempo_video != '00:00' and ':' in tiempo_video:
+                    try:
+                        mins_vid, secs_vid = map(int, tiempo_video.split(':'))
+                        timestamp_value = mins_vid * 60 + secs_vid
+                    except:
+                        timestamp_value = None
+            
+            # CORREGIDO: Solo UN campo TR (tiempo de procesamiento)
+            if timestamp_value is not None and timestamp_value > 0:
+                # CORREGIR: timestamp_value puede ser decimal (ej: 29.53 segundos)
+                total_seconds = int(float(timestamp_value))  # Convertir decimal a entero
+                mins = total_seconds // 60
+                secs = total_seconds % 60
+                # FORMATO SIMPLIFICADO: Solo TR (sin redundancia)
+                tr_text = f"TR: {mins}:{secs:02d}min ({total_seconds}s)"
                 tk.Label(
-                    text_right, text=f"Tiempo de procesamiento: {tiempo_proc:.2f}s",
-                    font=("Arial", 10), bg="#F2F2F2", fg="#666666"
+                    text_right, text=tr_text,
+                    font=("Arial", 10), bg="#F2F2F2", fg="#7f8c8d"
                 ).pack(anchor="w")
+            else:
+                # Mostrar formato de fallback
+                tr_text = "TR: --:--min (0s)"
+                tk.Label(
+                    text_right, text=tr_text,
+                    font=("Arial", 10), bg="#F2F2F2", fg="#7f8c8d"
+                ).pack(anchor="w")
+            
+            # NUEVO: Duración del video (tiempo nativo - formato completo para cualquier longitud)
+            duracion_video = inf.get('tiempo_video', inf.get('video_timestamp', 'N/A'))
+            if duracion_video != 'N/A' and duracion_video and duracion_video != '00:00':
+                def format_video_duration_complete(duration_str):
+                    """
+                    Formatea duración de video para cualquier longitud:
+                    - Videos <60s: "45s"
+                    - Videos 60s-3599s: "5:30min"
+                    - Videos ≥3600s: "1:25:30h"
+                    Soporta entrada en formatos H:MM:SS, MM:SS, SS
+                    """
+                    try:
+                        if isinstance(duration_str, str) and ':' in duration_str:
+                            time_parts = duration_str.split(':')
+                            
+                            if len(time_parts) == 2:  # MM:SS format
+                                mins, secs = int(time_parts[0]), int(time_parts[1])
+                                total_seconds = mins * 60 + secs
+                                
+                            elif len(time_parts) == 3:  # H:MM:SS format
+                                hours, mins, secs = int(time_parts[0]), int(time_parts[1]), int(time_parts[2])
+                                total_seconds = hours * 3600 + mins * 60 + secs
+                                
+                            else:
+                                return f"Duración del video: {duration_str}"
+                        
+                        elif isinstance(duration_str, (int, float)):
+                            total_seconds = int(duration_str)
+                        
+                        elif isinstance(duration_str, str) and duration_str.isdigit():
+                            total_seconds = int(duration_str)
+                        
+                        else:
+                            return f"Duración del video: {duration_str}"
+                        
+                        # Formatear según longitud total
+                        if total_seconds < 60:
+                            # Videos cortos: solo segundos
+                            return f"Duración del video: {total_seconds}s"
+                        
+                        elif total_seconds < 3600:  # < 1 hora
+                            # Videos medianos: minutos y segundos
+                            mins = total_seconds // 60
+                            secs = total_seconds % 60
+                            return f"Duración del video: {mins}:{secs:02d}min"
+                        
+                        else:  # ≥ 1 hora
+                            # Videos largos: horas, minutos y segundos
+                            hours = total_seconds // 3600
+                            remaining = total_seconds % 3600
+                            mins = remaining // 60
+                            secs = remaining % 60
+                            return f"Duración del video: {hours}:{mins:02d}:{secs:02d}h"
+                    
+                    except (ValueError, IndexError):
+                        return f"Duración del video: {duration_str}"
+                
+                duracion_text = format_video_duration_complete(duracion_video)
+                    
+                tk.Label(
+                    text_right, text=duracion_text,
+                    font=("Arial", 9), bg="#F2F2F2", fg="#95a5a6"
+                ).pack(anchor="w")
+            
+            # NUEVO: Información de configuración del video
+            config_frame = tk.Frame(text_right, bg="#F2F2F2")
+            config_frame.pack(anchor="w", fill="x", pady=(5, 0))
+            
+            # Franja horaria configurada
+            franja_horaria = inf.get('franja_horaria', inf.get('horario_configurado', inf.get('time_range', 'No especificada')))
+            if franja_horaria and franja_horaria != 'No especificada':
+                tk.Label(
+                    config_frame, text=f"⏰ Franja horaria: {franja_horaria}",
+                    font=("Arial", 9), bg="#F2F2F2", fg="#8e44ad"
+                ).pack(anchor="w")
+            
+            # Tiempos de semáforo configurados
+            tiempo_rojo = inf.get('tiempo_rojo', inf.get('semaforo_rojo_seg', inf.get('red_time', 'N/A')))
+            tiempo_verde = inf.get('tiempo_verde', inf.get('semaforo_verde_seg', inf.get('green_time', 'N/A')))
+            tiempo_amarillo = inf.get('tiempo_amarillo', inf.get('semaforo_amarillo_seg', inf.get('yellow_time', 'N/A')))
+            
+            if any(str(t) != 'N/A' and str(t).strip() for t in [tiempo_rojo, tiempo_verde, tiempo_amarillo]):
+                semaforo_text = f"🚦 Semáforo: R:{tiempo_rojo}s V:{tiempo_verde}s A:{tiempo_amarillo}s"
+                tk.Label(
+                    config_frame, text=semaforo_text,
+                    font=("Arial", 9), bg="#F2F2F2", fg="#e67e22"
+                ).pack(anchor="w")
+            
+            # NUEVO: Campo de razón descriptiva
+            razon_infraccion = inf.get('razon', 'Vehículo detectado en infracción de semáforo en rojo')
+            tk.Label(
+                text_right, text=f"📋 Razón: {razon_infraccion}",
+                font=("Arial", 9, "italic"), bg="#F2F2F2", fg="#2ecc71" if clasificacion == "NID" else "#c0392b",
+                wraplength=250, justify="left"
+            ).pack(anchor="w", pady=(2, 0))
             
             # Panel de botones para acciones
             btn_frame = tk.Frame(card, bg="#F2F2F2")
@@ -1653,6 +1839,9 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                 bg="#5D6D7E", fg="white",
                 cursor="hand2"
             ).pack(side="right", padx=5)
+            
+            # APLICAR SCROLL AL FINAL: Después de crear todos los elementos de la card
+            add_scroll_to_card_and_children(card)
 
     # Inicializar la vista con todos los datos
     populate_cards(all_data)

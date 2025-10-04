@@ -1,90 +1,96 @@
-[
-  {
-    "placa": "A-77619",
-    "fecha": "02/10/2025",
-    "hora": "12:14:43",
-    "video_timestamp": "00:26",
-    "ubicacion": "Av.Grau 123",
-    "franja_horaria": "07:00 - 08:00",
-    "tipo": "Semáforo en rojo",
-    "estado": "Pendiente",
-    "plate_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\placas\\plate_A-77619.jpg",
-    "vehicle_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\autos\\vehicle_A-77619.jpg",
-    "clasificacion": "NID",
-    "confianza": 2.0,
-    "tiempo_procesamiento": 28.59,
-    "metadata_clasificacion": {
-      "placa_final": "A-77619",
-      "confianza": 2.0,
-      "calidad_deteccion": "alta",
-      "justificacion": "Cumple criterios técnicos calibrados"
+{
+  "infracciones": [
+    {
+      "placa": "A-77619",
+      "fecha": "04/10/2025",
+      "hora": "17:49:36",
+      "video_timestamp": "00:26",
+      "tiempo_video": "00:30",
+      "ubicacion": "Av.Grau 123",
+      "franja_horaria": "07:00 - 08:00",
+      "tipo": "Semáforo en rojo",
+      "estado": "Pendiente",
+      "plate_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\placas\\plate_A-77619.jpg",
+      "vehicle_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\autos\\vehicle_A-77619.jpg",
+      "clasificacion": "NID",
+      "confianza": 1.0,
+      "tiempo_procesamiento": 26.24,
+      "metadata_clasificacion": {
+        "placa_final": "A-77619",
+        "confianza": 1.0,
+        "calidad_deteccion": "alta",
+        "justificacion": "Cumple criterios técnicos calibrados"
+      },
+      "sistema_version": "InfractiVision_v2.0_Optimized"
     },
-    "sistema_version": "InfractiVision_v2.0_Optimized"
-  },
-  {
-    "placa": "PH188",
-    "fecha": "02/10/2025",
-    "hora": "12:14:43",
-    "video_timestamp": "00:18",
-    "ubicacion": "Av.Grau 123",
-    "franja_horaria": "07:00 - 08:00",
-    "tipo": "Semáforo en rojo",
-    "estado": "Pendiente",
-    "plate_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\placas\\plate_PH188.jpg",
-    "vehicle_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\autos\\vehicle_PH188.jpg",
-    "clasificacion": "NID",
-    "confianza": 2.0,
-    "tiempo_procesamiento": 12.29,
-    "metadata_clasificacion": {
-      "placa_final": "PH188",
-      "confianza": 2.0,
-      "calidad_deteccion": "alta",
-      "justificacion": "Cumple criterios técnicos calibrados"
+    {
+      "placa": "PH188",
+      "fecha": "04/10/2025",
+      "hora": "17:49:36",
+      "video_timestamp": "00:18",
+      "tiempo_video": "00:30",
+      "ubicacion": "Av.Grau 123",
+      "franja_horaria": "07:00 - 08:00",
+      "tipo": "Semáforo en rojo",
+      "estado": "Pendiente",
+      "plate_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\placas\\plate_PH188.jpg",
+      "vehicle_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\autos\\vehicle_PH188.jpg",
+      "clasificacion": "NID",
+      "confianza": 1.0,
+      "tiempo_procesamiento": 18.88,
+      "metadata_clasificacion": {
+        "placa_final": "PH188",
+        "confianza": 1.0,
+        "calidad_deteccion": "alta",
+        "justificacion": "Cumple criterios técnicos calibrados"
+      },
+      "sistema_version": "InfractiVision_v2.0_Optimized"
     },
-    "sistema_version": "InfractiVision_v2.0_Optimized"
-  },
-  {
-    "placa": "A-96886",
-    "fecha": "02/10/2025",
-    "hora": "12:14:43",
-    "video_timestamp": "00:23",
-    "ubicacion": "Av.Grau 123",
-    "franja_horaria": "07:00 - 08:00",
-    "tipo": "Semáforo en rojo",
-    "estado": "Pendiente",
-    "plate_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\placas\\plate_A-96886.jpg",
-    "vehicle_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\autos\\vehicle_A-96886.jpg",
-    "clasificacion": "NID",
-    "confianza": 2.0,
-    "tiempo_procesamiento": 23.61,
-    "metadata_clasificacion": {
-      "placa_final": "A-96886",
-      "confianza": 2.0,
-      "calidad_deteccion": "alta",
-      "justificacion": "Cumple criterios técnicos calibrados"
+    {
+      "placa": "A-96886",
+      "fecha": "04/10/2025",
+      "hora": "17:49:36",
+      "video_timestamp": "00:23",
+      "tiempo_video": "00:30",
+      "ubicacion": "Av.Grau 123",
+      "franja_horaria": "07:00 - 08:00",
+      "tipo": "Semáforo en rojo",
+      "estado": "Pendiente",
+      "plate_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\placas\\plate_A-96886.jpg",
+      "vehicle_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\autos\\vehicle_A-96886.jpg",
+      "clasificacion": "NID",
+      "confianza": 1.0,
+      "tiempo_procesamiento": 23.04,
+      "metadata_clasificacion": {
+        "placa_final": "A-96886",
+        "confianza": 1.0,
+        "calidad_deteccion": "alta",
+        "justificacion": "Cumple criterios técnicos calibrados"
+      },
+      "sistema_version": "InfractiVision_v2.0_Optimized"
     },
-    "sistema_version": "InfractiVision_v2.0_Optimized"
-  },
-  {
-    "placa": "A-38961",
-    "fecha": "02/10/2025",
-    "hora": "12:14:43",
-    "video_timestamp": "00:22",
-    "ubicacion": "Av.Grau 123",
-    "franja_horaria": "07:00 - 08:00",
-    "tipo": "Semáforo en rojo",
-    "estado": "Pendiente",
-    "plate_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\placas\\plate_A-38961.jpg",
-    "vehicle_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\autos\\vehicle_A-38961.jpg",
-    "clasificacion": "NID",
-    "confianza": 2.0,
-    "tiempo_procesamiento": 19.56,
-    "metadata_clasificacion": {
-      "placa_final": "A-38961",
-      "confianza": 2.0,
-      "calidad_deteccion": "alta",
-      "justificacion": "Cumple criterios técnicos calibrados"
-    },
-    "sistema_version": "InfractiVision_v2.0_Optimized"
-  }
-]
+    {
+      "placa": "A-38961",
+      "fecha": "04/10/2025",
+      "hora": "17:49:36",
+      "video_timestamp": "00:22",
+      "tiempo_video": "00:30",
+      "ubicacion": "Av.Grau 123",
+      "franja_horaria": "07:00 - 08:00",
+      "tipo": "Semáforo en rojo",
+      "estado": "Pendiente",
+      "plate_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\placas\\plate_A-38961.jpg",
+      "vehicle_path": "C:\\Users\\Abel\\Desktop\\InfractiVision\\data\\output\\autos\\vehicle_A-38961.jpg",
+      "clasificacion": "NID",
+      "confianza": 1.0,
+      "tiempo_procesamiento": 22.08,
+      "metadata_clasificacion": {
+        "placa_final": "A-38961",
+        "confianza": 1.0,
+        "calidad_deteccion": "alta",
+        "justificacion": "Cumple criterios técnicos calibrados"
+      },
+      "sistema_version": "InfractiVision_v2.0_Optimized"
+    }
+  ]
+}

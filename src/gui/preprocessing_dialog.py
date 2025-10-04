@@ -4247,8 +4247,23 @@ class PreprocessingDialog:
                 # Clasificar placa para determinar tratamiento
                 classification, quality_score, _ = self.player.classify_detection_quality(plate)
                 
-                # Usar confianza real de la detección si está disponible
-                real_confidence = inf.get('confidence', quality_score)
+                # SINCRONIZACIÓN: Usar la misma lógica que el card para confianza
+                # Si confidence está presente en inf, usarla, sino usar quality_score
+                if 'confidence' in inf:
+                    # CRÍTICO: Clampear confianza como hace PlateCard
+                    raw_confidence = inf['confidence']
+                    clamped_confidence = max(0.0, min(1.0, raw_confidence))  # Clamp [0,1]
+                    
+                    # Recomputar quality_score usando la confianza corregida
+                    classification, card_confidence, _ = self.player.classify_detection_quality(
+                        plate, detection_confidence=clamped_confidence
+                    )
+                    # El card usará esta confidence clampada
+                    real_confidence = clamped_confidence  
+                else:
+                    # Usar quality_score calculado
+                    real_confidence = quality_score
+                    card_confidence = quality_score
                 
                 # CREAR CARD SIMPLIFICADA
                 print(f"📋 Creando card para: {plate}")
@@ -4417,7 +4432,15 @@ class PreprocessingDialog:
         if os.path.exists(infractions_file):
             try:
                 with open(infractions_file, "r", encoding="utf-8") as f:
-                    existing_infractions = json.load(f)
+                    data = json.load(f)
+                    # CORREGIR: Manejar diferentes estructuras JSON
+                    if isinstance(data, dict) and 'infracciones' in data:
+                        existing_infractions = data['infracciones']
+                    elif isinstance(data, list):
+                        existing_infractions = data
+                    else:
+                        print(f"⚠️ Estructura JSON inesperada: {type(data)}")
+                        existing_infractions = []
                 print(f"📋 Cargadas {len(existing_infractions)} infracciones existentes")
             except Exception as e:
                 print(f"⚠️ Error cargando infracciones existentes: {e}, iniciando lista vacía")
@@ -4447,14 +4470,85 @@ class PreprocessingDialog:
                 continue
 
             now = datetime.now()
-            mins, secs = divmod(int(inf.get("time", 0)), 60)
-            timestamp = f"{mins:02d}:{secs:02d}"
+            
+            # CORREGIR: Obtener tiempo real del video procesamiento
+            # Usar tiempo de procesamiento real en segundos, no el campo 'time' genérico
+            processing_time = inf.get("time", inf.get("processing_time", inf.get("timestamp", 0)))
+            
+            # Asegurar que tenemos un valor numérico válido
+            if isinstance(processing_time, (int, float)) and processing_time > 0:
+                total_seconds = int(processing_time)
+                mins, secs = divmod(total_seconds, 60)
+                timestamp = f"{mins:02d}:{secs:02d}"
+            else:
+                # Fallback: usar tiempo basado en frame si está disponible
+                frame_number = inf.get("frame", 0)
+                fps = getattr(self.player, 'fps', 30) or 30  # FPS por defecto
+                total_seconds = int(frame_number / fps) if frame_number > 0 else 0
+                mins, secs = divmod(total_seconds, 60)
+                timestamp = f"{mins:02d}:{secs:02d}"
 
+            # SINCRONIZACIÓN: Usar la MISMA lógica que se usó para crear el card
+            classification, quality_score, _ = self.player.classify_detection_quality(plate)
+            
+            # Si la infracción original tenía confianza específica, usar la misma lógica que el card
+            if 'confidence' in inf:
+                # CRÍTICO: Aplicar el mismo clamp que usa PlateCard para evitar valores inválidos
+                raw_confidence = inf['confidence']
+                clamped_confidence = max(0.0, min(1.0, raw_confidence))  # Clamp [0,1] como PlateCard
+                
+                # El card recomputó usando esta confidence, hacer lo mismo aquí
+                classification, card_confidence, _ = self.player.classify_detection_quality(
+                    plate, detection_confidence=clamped_confidence
+                )
+                real_confidence = clamped_confidence  # Usar valor corregido
+            else:
+                # Usar quality_score calculado (la misma que usó el card)
+                real_confidence = quality_score
+
+            # Crear metadata actualizado con confianza real (la MISMA que muestra el card)
+            metadata_clasificacion = {
+                "placa_final": plate,
+                "confianza": round(real_confidence, 3),
+                "calidad_deteccion": "alta" if real_confidence >= 0.7 else "media" if real_confidence >= 0.5 else "baja",
+                "justificacion": "Cumple criterios técnicos calibrados"
+            }
+
+            # CORREGIR: Obtener duración total del video del SELECTOR (como indicas)
+            total_duration = "N/A"
+            
+            # Método 1: Desde video_metadata si está disponible (viene del selector)
+            if hasattr(self.player, 'video_metadata') and self.player.video_metadata:
+                total_duration = self.player.video_metadata.get('duration', 'N/A')
+            
+            # Método 2: Calcular desde propiedades del video si no está disponible
+            elif hasattr(self.player, 'cap') and self.player.cap is not None:
+                try:
+                    frame_count = int(self.player.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    fps = self.player.cap.get(cv2.CAP_PROP_FPS) or 30
+                    total_seconds_video = int(frame_count / fps)
+                    mins_total, secs_total = divmod(total_seconds_video, 60)
+                    total_duration = f"{mins_total:02d}:{secs_total:02d}"
+                except Exception as e:
+                    print(f"⚠️ Error calculando duración del video: {e}")
+                    total_duration = "N/A"
+            
+            # Método 3: Desde cycle_durations si está disponible
+            elif hasattr(self, 'cycle_durations') and self.cycle_durations:
+                video_duration = self.cycle_durations.get('video_duration', self.cycle_durations.get('total_duration'))
+                if video_duration:
+                    if isinstance(video_duration, str) and ':' in video_duration:
+                        total_duration = video_duration
+                    elif isinstance(video_duration, (int, float)):
+                        mins_total, secs_total = divmod(int(video_duration), 60)
+                        total_duration = f"{mins_total:02d}:{secs_total:02d}"
+            
             entry = {
                 "placa":           plate,
                 "fecha":           now.strftime("%d/%m/%Y"),
                 "hora":            now.strftime("%H:%M:%S"),
                 "video_timestamp": timestamp,
+                "tiempo_video":    total_duration,  # Duración total del video
                 "ubicacion":       avenue_name,
                 "franja_horaria":  time_slot,
                 "tipo":            "Semáforo en rojo",
@@ -4463,9 +4557,9 @@ class PreprocessingDialog:
                 "vehicle_path":    os.path.join(resource_path("data/output/autos"), f"vehicle_{plate}.jpg"),
                 # NUEVOS CAMPOS PARA TESIS NID/NIE
                 "clasificacion":   inf.get("clasificacion", "NID"),  # Por defecto NID si no está especificado
-                "confianza":       round(inf.get("confidence", 0), 3),
-                "tiempo_procesamiento": round(inf.get("tiempo_procesamiento", 0), 2),
-                "metadata_clasificacion": inf.get("metadata_clasificacion", {}),
+                "confianza":       round(real_confidence, 3),
+                "tiempo_procesamiento": round(inf.get("timestamp", inf.get("time", inf.get("tiempo_procesamiento", 0))), 2),
+                "metadata_clasificacion": metadata_clasificacion,
                 "sistema_version": inf.get("sistema_version", "InfractiVision_v2.0")
             }
             if getattr(self, "is_night", False):
@@ -4476,9 +4570,12 @@ class PreprocessingDialog:
         # PASO 3: ACUMULAR como stack/pila (nuevas al principio)
         infracciones_finales = nuevas_infracciones + existing_infractions
         
+        # GUARDAR en formato consistente con estructura {"infracciones": [...]}
+        output_data = {"infracciones": infracciones_finales}
+        
         try:
             with open(infractions_file, "w", encoding="utf-8") as f:
-                json.dump(infracciones_finales, f, indent=2, ensure_ascii=False)
+                json.dump(output_data, f, indent=2, ensure_ascii=False)
             print(f"📝 ACUMULADAS: {len(nuevas_infracciones)} nuevas + {len(existing_infractions)} anteriores = {len(infracciones_finales)} totales")
             print(f"💾 Stack actualizado en '{infractions_file}'")
         except Exception as e:
@@ -4526,10 +4623,36 @@ class PreprocessingDialog:
                 }
                 report["detalle_clasificaciones"].append(detalle)
             
-            # Guardar reporte de métricas
-            metrics_file = resource_path("data/metricas_tesis.json")
+            # Guardar reporte de métricas (usar indicadores_rendimiento.json en lugar del eliminado metricas_tesis.json)
+            metrics_file = resource_path("data/indicadores_rendimiento.json")
+            
+            # Crear estructura compatible con indicadores_rendimiento.json
+            indicators_data = {
+                "fecha_generacion": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                "periodo_analisis": f"Procesamiento de {len(infractions)} infracciones",
+                "dias_analizados": 1,
+                "indicadores": {
+                    "TI": {
+                        "descripcion": "Tasa de Infracciones Válidas",
+                        "valor": metrics['TI']['tasa_infracciones_validas'],
+                        "unidad": "porcentaje"
+                    },
+                    "TR": {
+                        "descripcion": "Tiempo de Registro Promedio",
+                        "valor": metrics['TR']['tiempo_promedio_segundos'],
+                        "unidad": "segundos"
+                    },
+                    "NID": {
+                        "descripcion": "Número de Infracciones Detectadas",
+                        "valor": metrics['NID']['cantidad'],
+                        "porcentaje": metrics['NID']['porcentaje']
+                    }
+                },
+                "metricas_tesis": report  # Incluir datos completos como sub-objeto
+            }
+            
             with open(metrics_file, "w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2, ensure_ascii=False)
+                json.dump(indicators_data, f, indent=2, ensure_ascii=False)
                 
             # Log de resultados
             print(f"📈 MÉTRICAS DE TESIS GENERADAS:")

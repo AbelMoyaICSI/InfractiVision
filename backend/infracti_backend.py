@@ -8,12 +8,12 @@ from google.oauth2 import service_account  # ⬅️ agregado
 app = Flask(__name__)
 
 # ======== Credenciales (mínimo e inocuo) ========
-PROJECT_ID  = "infractivision-461115"
-BUCKET_NAME = "infractivision-2025"
+PROJECT_ID  = "infractivision-474103"
+BUCKET_NAME = "infractivision-474103"
 
 # Ruta local a la llave (ajústala si cambias el nombre)
 LOCAL_KEY_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "secrets", "infractivision-461115-010a42885008.json")
+    os.path.join(os.path.dirname(__file__), "..", "secrets", "infractivision-474103-0f907d0fbc62.json")
 )
 
 def _make_clients():
@@ -44,22 +44,99 @@ bucket = storage_client.bucket(BUCKET_NAME)
 # ======== fin credenciales ========
 
 # ————————————————
-# Detecta dinámicamente la raíz del proyecto (la carpeta que contiene 'data/')
-root = os.path.abspath(os.path.dirname(__file__))
-while True:
-    if os.path.isdir(os.path.join(root, "data")):
-        break
-    parent = os.path.dirname(root)
-    if parent == root:
-        raise RuntimeError("No se encontró la carpeta 'data/' en los niveles superiores.")
-    root = parent
-
-INDICADORES_PATH = os.path.join(root, "data", "indicadores_rendimiento.json")
+# En Cloud Run no necesitamos rutas locales, todo va a Firestore/Storage
 # ————————————————
 
 @app.route("/", methods=["GET"])
 def home():
-    return "✅ Backend de InfractiVision operativo", 200
+    return jsonify({
+        "status": "ok", 
+        "message": "InfractiVision Backend Operativo",
+        "version": "1.0.0",
+        "project": PROJECT_ID,
+        "bucket": BUCKET_NAME
+    }), 200
+
+@app.route("/health", methods=["GET"])
+def health():
+    """Endpoint de salud para verificar que el servicio funciona"""
+    try:
+        # Probar conexión a Firestore
+        db.collection("health").document("test").set({"timestamp": datetime.utcnow()})
+        return jsonify({"status": "healthy", "firestore": "ok", "storage": "ok"}), 200
+    except Exception as e:
+        return jsonify({"status": "unhealthy", "error": str(e)}), 500
+
+@app.route("/migrar-json", methods=["POST"])
+def migrar_json_completo():
+    """Migrar infracciones desde JSON local completo"""
+    try:
+        user_id = request.form.get("user_id", "usuario_local")
+        
+        # Recibir el JSON de infracciones
+        json_file = request.files.get("infracciones_json")
+        if not json_file:
+            return jsonify({"error": "Falta archivo infracciones.json"}), 400
+        
+        # Leer y parsear JSON
+        infracciones_data = json.loads(json_file.read().decode('utf-8'))
+        infracciones = infracciones_data.get("infracciones", [])
+        
+        migradas = 0
+        errores = []
+        
+        for infraccion in infracciones:
+            try:
+                placa = infraccion["placa"]
+                ts = infraccion["video_timestamp"].replace(":", "-")
+                doc_id = f"{placa}_{ts}"
+                
+                # Preparar datos completos para Firestore
+                reg = {
+                    # Campos básicos
+                    "placa": placa,
+                    "fecha": infraccion.get("fecha", ""),
+                    "hora": infraccion.get("hora", ""),
+                    "video_timestamp": infraccion["video_timestamp"],
+                    "ubicacion": infraccion.get("ubicacion", ""),
+                    "tipo": infraccion.get("tipo", "Semáforo en rojo"),
+                    "estado": infraccion.get("estado", "Pendiente"),
+                    
+                    # Campos nuevos
+                    "tiempo_video": infraccion.get("tiempo_video", ""),
+                    "franja_horaria": infraccion.get("franja_horaria", ""),
+                    "clasificacion": infraccion.get("clasificacion", ""),
+                    "confianza": infraccion.get("confianza", 0.0),
+                    "tiempo_procesamiento": infraccion.get("tiempo_procesamiento", 0.0),
+                    "sistema_version": infraccion.get("sistema_version", ""),
+                    
+                    # Metadata aplanado
+                    "metadata_placa_final": infraccion.get("metadata_clasificacion", {}).get("placa_final", ""),
+                    "metadata_confianza": infraccion.get("metadata_clasificacion", {}).get("confianza", 0.0),
+                    "metadata_calidad": infraccion.get("metadata_clasificacion", {}).get("calidad_deteccion", ""),
+                    "metadata_justificacion": infraccion.get("metadata_clasificacion", {}).get("justificacion", ""),
+                    
+                    # Sistema
+                    "user_id": user_id,
+                    "migrated_at": datetime.utcnow()
+                }
+                
+                # Guardar en Firestore
+                db.collection("usuarios").document(user_id).collection("infracciones").document(doc_id).set(reg)
+                migradas += 1
+                
+            except Exception as e:
+                errores.append(f"Error con {infraccion.get('placa', 'UNKNOWN')}: {str(e)}")
+        
+        return jsonify({
+            "status": "ok",
+            "migradas": migradas,
+            "total": len(infracciones),
+            "errores": errores
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/migrar", methods=["POST"])
 def migrar_datos():
@@ -109,22 +186,27 @@ def migrar_datos():
 @app.route("/indicadores/<user_id>", methods=["GET", "POST"])
 def indicadores(user_id):
     if request.method == "GET":
-        if not os.path.exists(INDICADORES_PATH):
-            return jsonify({"status": "error", "msg": "No hay indicadores disponibles"}), 404
-        return send_file(INDICADORES_PATH, mimetype="application/json")
+        # Obtener indicadores desde Firestore
+        try:
+            docs = db.collection("usuarios").document(user_id).collection("indicadores").get()
+            indicadores_list = [doc.to_dict() for doc in docs]
+            return jsonify({"indicadores": indicadores_list}), 200
+        except Exception as e:
+            return jsonify({"status": "error", "msg": str(e)}), 500
 
     try:
+        # Recibir datos JSON desde el cliente
+        metrics = request.get_json()
+        if not metrics:
+            return jsonify({"status": "error", "msg": "No se enviaron datos"}), 400
+
         # 1) Subir JSON completo de indicadores a Storage
         ts     = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
         folder = f"evidencias/{user_id}/indicadores"
         fname  = f"indicadores_{ts}.json"
         blob   = bucket.blob(f"{folder}/{fname}")
-        blob.upload_from_filename(INDICADORES_PATH, content_type="application/json")
+        blob.upload_from_string(json.dumps(metrics, ensure_ascii=False, indent=2), content_type="application/json")
         storage_url = blob.public_url
-
-        # 2) Leer localmente el JSON
-        with open(INDICADORES_PATH, "r", encoding="utf-8") as f:
-            metrics = json.load(f)
 
         # 3) Aplanar en dos niveles
         flat = {
