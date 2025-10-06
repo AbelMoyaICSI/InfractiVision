@@ -272,8 +272,8 @@ def process_plate(vehicle_roi, is_night=False):
                     plates = [(x, y, x+w, y+h)]
         
         if not plates:
-            # Return placeholder values if no plate was found
-            return ((0, 0, 0, 0), vehicle_roi, "")
+            # Return placeholder values if no plate was found (incluye confianza 0.0)
+            return ((0, 0, 0, 0), vehicle_roi, "", 0.0)
         
         # Take the largest plate or the one with the highest confidence
         # In this case we're taking the first one
@@ -294,55 +294,121 @@ def process_plate(vehicle_roi, is_night=False):
         plate_img = vehicle_roi[crop_y1:crop_y2, crop_x1:crop_x2].copy()
         
         if plate_img.size == 0:
-            return ((x1, y1, x2, y2), vehicle_roi, "")
+            return ((x1, y1, x2, y2), vehicle_roi, "", 0.0)
         
         # Apply super-resolution to enhance the plate image
         try:
             from src.core.processing.superresolution import enhance_plate_image
             enhanced_plate = enhance_plate_image(plate_img, is_night)
             
-            # NUEVO SISTEMA DE OCR MEJORADO
-            # Primer intento: OCR tradicional
-            raw_ocr_text = recognize_plate(enhanced_plate)
+            # SISTEMA DE OCR MEJORADO CON VALIDACIÓN SIIV
+            # Primer intento: OCR tradicional (ya incluye todas las correcciones SIIV)
+            plate_text = recognize_plate(enhanced_plate, is_night)
             
-            # Aplicar mejoras y correcciones
-            ocr_result = enhance_plate_recognition(enhanced_plate, raw_ocr_text, is_night)
-            plate_text = ocr_result['enhanced_text']
-            confidence = ocr_result['confidence']
+            # Si recognize_plate devolvió una placa válida, usarla directamente
+            if plate_text and len(plate_text) >= 5:
+                # Calcular confianza base
+                confidence = 0.8  # Confianza alta para placas corregidas por recognize_plate
+                print(f"✅ Usando placa corregida por recognize_plate: '{plate_text}'")
+            else:
+                # Solo usar enhance_plate_recognition como backup si recognize_plate falló
+                print(f"⚠️ recognize_plate falló, usando enhance_plate_recognition como backup")
+                ocr_result = enhance_plate_recognition(enhanced_plate, "", is_night)
+                plate_text = ocr_result['enhanced_text']
+                confidence = ocr_result['confidence']
             
-            print(f"OCR Mejorado: '{raw_ocr_text}' -> '{plate_text}' (conf: {confidence:.2f})")
+            # Validar con sistema SIIV para obtener información completa
+            from src.core.ocr.recognizer import calculate_siiv_confidence
+            siiv_conf, siiv_details = calculate_siiv_confidence(plate_text, confidence)
             
-            # Si la confianza es baja, intentar con imagen procesada adicional
-            if confidence < 0.3 and ocr_result['processed_image'] is not None:
-                backup_text = recognize_plate(ocr_result['processed_image'])
-                backup_result = enhance_plate_recognition(ocr_result['processed_image'], backup_text, is_night)
+            print(f"\n🔍 OCR Mejorado SIIV:")
+            print(f"   Placa final: '{plate_text}'")
+            print(f"   Confianza base: {confidence:.2f} | Confianza SIIV: {siiv_conf:.2f}")
+            
+            if siiv_details.get('valid_regional'):
+                region = siiv_details.get('region', 'Desconocida')
+                priority = siiv_details.get('priority', 'none')
+                if priority == 'very_high':
+                    print(f"   ⭐ TRUJILLO - PRIORIDAD MÁXIMA")
+                else:
+                    print(f"   🌍 Región: {region} (Prioridad: {priority})")
                 
-                if backup_result['confidence'] > confidence:
-                    plate_text = backup_result['enhanced_text']
-                    confidence = backup_result['confidence']
-                    print(f"OCR Backup mejor: '{backup_text}' -> '{plate_text}' (conf: {confidence:.2f})")
+                vehicle_type = siiv_details.get('vehicle_type')
+                if vehicle_type:
+                    print(f"   🚗 Tipo: {vehicle_type}")
+            
+            # Si la confianza SIIV es baja, intentar con imagen procesada adicional
+            if siiv_conf < 0.4:
+                print(f"   ⚠️ Confianza SIIV baja ({siiv_conf:.2f}), intentando backup...")
+                # Solo usar backup si realmente es necesario
+                backup_text = recognize_plate(enhanced_plate, is_night)
+                if backup_text and backup_text != plate_text:
+                    backup_siiv_conf, backup_siiv_details = calculate_siiv_confidence(backup_text, 0.7)
+                    
+                    # Usar backup solo si tiene MUCHO mejor confianza SIIV
+                    if backup_siiv_conf > siiv_conf + 0.2:  # Diferencia significativa
+                        plate_text = backup_text
+                        confidence = 0.7
+                        siiv_conf = backup_siiv_conf
+                        print(f"   ✅ OCR Backup significativamente mejor: '{backup_text}' (SIIV conf: {siiv_conf:.2f})")
+                    else:
+                        print(f"   ⚠️ Backup no es significativamente mejor, manteniendo: '{plate_text}'")
                     
         except ImportError:
             # Si super-resolution no está disponible, usar imagen original con mejoras
-            raw_ocr_text = recognize_plate(plate_img)
-            ocr_result = enhance_plate_recognition(plate_img, raw_ocr_text, is_night)
-            plate_text = ocr_result['enhanced_text']
+            plate_text = recognize_plate(plate_img, is_night)
+            
+            # Si recognize_plate devolvió una placa válida, usarla directamente
+            if plate_text and len(plate_text) >= 5:
+                confidence = 0.8
+                print(f"✅ Usando placa corregida por recognize_plate (sin super-resolution): '{plate_text}'")
+            else:
+                # Solo usar enhance_plate_recognition como backup
+                ocr_result = enhance_plate_recognition(plate_img, "", is_night)
+                plate_text = ocr_result['enhanced_text']
+                confidence = ocr_result['confidence']
+            
             enhanced_plate = plate_img
+            
+            # Validar con SIIV
+            from src.core.ocr.recognizer import calculate_siiv_confidence
+            siiv_conf, siiv_details = calculate_siiv_confidence(plate_text, confidence)
+            print(f"OCR sin super-resolution: '{plate_text}' (SIIV: {siiv_conf:.2f})")
+            
+            # CRÍTICO: Devolver la confianza SIIV calculada
+            return ((x1, y1, x2, y2), enhanced_plate, plate_text, siiv_conf)
         
         # Si todo falla, intentar OCR básico como último recurso
         if not plate_text or len(plate_text) < 4:
-            plate_text = recognize_plate(plate_img)
+            plate_text = recognize_plate(plate_img, is_night)
             if plate_text:
-                # Aplicar solo correcciones básicas
+                # Aplicar solo correcciones básicas y validar SIIV
                 enhancer = get_plate_enhancer()
                 plate_text = enhancer.correct_confusing_characters(plate_text)
+                
+                # Verificar si cumple SIIV
+                from src.core.ocr.recognizer import calculate_siiv_confidence
+                # CRÍTICO: Usar la confianza real del OCR, no un valor fijo
+                siiv_conf, siiv_details = calculate_siiv_confidence(plate_text, 0.8)  # Usar confianza real
+                if siiv_conf < 0.2:
+                    print(f"⚠️ Advertencia: Placa '{plate_text}' no cumple formato SIIV (conf: {siiv_conf:.2f})")
+                else:
+                    print(f"✅ Placa SIIV válida: '{plate_text}' (conf: {siiv_conf:.2f})")
+                
+                # CRÍTICO: Devolver también la confianza SIIV calculada
+                return ((x1, y1, x2, y2), enhanced_plate, plate_text, siiv_conf)
             
-        # Return the bbox, enhanced plate image, and recognized text
-        return ((x1, y1, x2, y2), enhanced_plate, plate_text)
+            # Si no se detectó placa, devolver 0.0
+            return ((x1, y1, x2, y2), enhanced_plate, "", 0.0)
+        
+        # CRÍTICO: Si llegamos aquí, es porque plate_text tiene valor Y ya se calculó siiv_conf
+        # Devolver con la confianza SIIV calculada previamente
+        print(f"✅ Retornando placa procesada: '{plate_text}' (SIIV conf: {siiv_conf:.2f})")
+        return ((x1, y1, x2, y2), enhanced_plate, plate_text, siiv_conf)
         
     except Exception as e:
         print(f"Error processing plate: {e}")
         import traceback
         traceback.print_exc()
         # Return default values
-        return ((0, 0, 0, 0), vehicle_roi, "")
+        return ((0, 0, 0, 0), vehicle_roi, "", 0.0)

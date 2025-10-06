@@ -48,19 +48,32 @@ class PlateOCREnhancer:
             'Y': ['V', 'Y'],
         }
         
-        # Patrones típicos de placas peruanas
+        # Patrones SIIV peruanos (Sistema Integral de Identificación Vehicular 2010)
+        # Priorizados según la normativa actual
         self.peru_patterns = [
-            # Formato antiguo: 3 letras + 3 números (ABC-123)
+            # FORMATO PRINCIPAL SIIV 2010: 3 letras + 3 números (ABC123)
             r'^[A-Z]{3}[0-9]{3}$',
-            # Formato nuevo: 3 letras + 1 número + 2 letras (ABC1DE)
-            r'^[A-Z]{3}[0-9][A-Z]{2}$',
-            # Formato taxi: 3 letras + 1 número + 1 letra (ABC1D)
-            r'^[A-Z]{3}[0-9][A-Z]$',
-            # Formato especial: 2 letras + 4 números (AB1234)
+            # FORMATO SECUNDARIO SIIV 2010: 2 letras + 4 números (AB1234) 
             r'^[A-Z]{2}[0-9]{4}$',
-            # Formato moto: 2 letras + 4 números
-            r'^[A-Z]{2}[0-9]{4}$',
+            # FORMATO MIXTO SIIV: letra + número + letra + números (A1B234)
+            r'^[A-Z][0-9][A-Z][0-9]{3}$',
+            # FORMATO CORTO: 2 letras + 2 números + letra (AB12C)
+            r'^[A-Z]{2}[0-9]{2}[A-Z]$',
+            # Formatos antiguos (pre-2010) - menor prioridad
+            r'^[A-Z]{3}[0-9][A-Z]{2}$',  # ABC1DE
+            r'^[A-Z]{3}[0-9][A-Z]$',     # ABC1D
         ]
+        
+        # Regiones SIIV válidas (primera letra) - EXCLUYE RESERVADAS
+        self.siiv_regions = {
+            'A', 'B', 'C', 'D', 'F',  # Lima/Callao (prioridad alta)
+            'T',  # La Libertad/TRUJILLO (PRIORIDAD MÁXIMA)
+            'H', 'L', 'M', 'K', 'P', 'S', 'U', 'V', 'W', 'X', 'Y', 'Z',  # Otras regiones activas
+            'E',  # Especial
+        }
+        
+        # Letras RESERVADAS (NO VÁLIDAS) - NO pueden aparecer como primera letra
+        self.reserved_letters = {'G', 'I', 'J', 'N', 'O', 'Q', 'R'}  # Uso futuro/no activo
         
         # Caracteres válidos para placas peruanas
         self.valid_letters = set('ABCDEFGHIJKLMNOPQRSTUVWXYZ')
@@ -125,44 +138,119 @@ class PlateOCREnhancer:
             print(f"Error en preprocesamiento: {e}")
             return plate_img, plate_img
     
-    def correct_confusing_characters(self, text, context_position=None):
-        """Corrige caracteres confusos basado en contexto de placa peruana"""
+    def correct_confusing_characters_siiv_aware(self, text, context_position=None):
+        """
+        Corrige caracteres confusos usando FORMATO SIIV peruano.
+        NO aplica correcciones si la placa ya es SIIV válida.
+        """
         if not text:
             return text
         
-        corrected = list(text.upper())
+        # PASO 1: Verificar si ya es una placa SIIV válida
+        clean = text.upper().replace("-", "").replace(" ", "")
+        is_valid, confidence = self.validate_plate_format(clean)
         
-        for i, char in enumerate(corrected):
-            if char in self.character_corrections:
-                # Determinar si debería ser letra o número según posición
-                if context_position:
-                    if i < 3:  # Primeras 3 posiciones suelen ser letras
-                        candidates = [c for c in self.character_corrections[char] if c.isalpha()]
-                    elif i == 3:  # Cuarta posición puede ser número
-                        candidates = [c for c in self.character_corrections[char] if c.isdigit()]
-                    else:  # Posiciones finales dependen del formato
-                        candidates = self.character_corrections[char]
-                else:
-                    candidates = self.character_corrections[char]
+        if is_valid and confidence > 0.5:
+            # Ya es válida, NO aplicar correcciones
+            return clean
+        
+        # PASO 2: Si NO es válida, aplicar correcciones conscientes del formato
+        corrected = list(clean)
+        
+        # Detectar formato probable
+        if len(clean) == 6:
+            # Formato ABC123 (3 letras + 3 números)
+            if clean[0] in self.siiv_regions or clean[0].isalpha():
+                # Posiciones 0-2: deben ser letras
+                for i in range(3):
+                    if corrected[i].isdigit():
+                        # Convertir número a letra
+                        if corrected[i] == '1':
+                            corrected[i] = 'I'
+                        elif corrected[i] == '0':
+                            corrected[i] = 'O'
+                        elif corrected[i] == '5':
+                            corrected[i] = 'S'
+                        elif corrected[i] == '7':
+                            corrected[i] = 'T'
+                        elif corrected[i] == '4':
+                            corrected[i] = 'A'
+                        elif corrected[i] == '8':
+                            corrected[i] = 'B'
                 
-                # Tomar el candidato más probable
-                if candidates:
-                    corrected[i] = candidates[0]
+                # Posiciones 3-5: deben ser números
+                for i in range(3, 6):
+                    if corrected[i].isalpha():
+                        # Convertir letra a número
+                        if corrected[i] == 'I':
+                            corrected[i] = '1'
+                        elif corrected[i] == 'O':
+                            corrected[i] = '0'
+                        elif corrected[i] == 'S':
+                            corrected[i] = '5'
+                        elif corrected[i] == 'T':
+                            corrected[i] = '7'
+                        elif corrected[i] == 'G':
+                            corrected[i] = '6'
+                        elif corrected[i] == 'B':
+                            corrected[i] = '8'
+                        elif corrected[i] == 'Z':
+                            corrected[i] = '2'
         
         return ''.join(corrected)
     
+    def correct_confusing_characters(self, text, context_position=None):
+        """
+        VERSIÓN ACTUALIZADA: Usa correcciones conscientes del formato SIIV.
+        Mantiene la firma original para compatibilidad.
+        """
+        return self.correct_confusing_characters_siiv_aware(text, context_position)
+    
     def validate_plate_format(self, text):
-        """Valida si el texto coincide con formatos peruanos"""
+        """
+        Valida si el texto coincide con formatos SIIV peruanos.
+        Retorna (is_valid, confidence_score)
+        """
         if not text:
-            return False, 0
+            return False, 0.0
         
         clean_text = re.sub(r'[^A-Z0-9]', '', text.upper())
         
+        # Longitud EXACTA de 6 caracteres para placas peruanas SIIV
+        if len(clean_text) != 6:
+            print(f"⚠️ ENHANCER: Longitud incorrecta: {len(clean_text)} caracteres (debe ser 6)")
+            return False, 0.0
+        
+        # Verificar si la primera letra es una región SIIV válida
+        first_letter = clean_text[0] if clean_text else None
+        is_valid_region = first_letter in self.siiv_regions
+        is_reserved = first_letter in self.reserved_letters
+        
+        # RECHAZAR placas con letras RESERVADAS
+        if is_reserved:
+            print(f"⚠️ ENHANCER: Letra '{first_letter}' es RESERVADA (no válida en Perú)")
+            return False, 0.05  # Confianza casi nula
+        
+        # Validar contra patrones SIIV
         for i, pattern in enumerate(self.peru_patterns):
             if re.match(pattern, clean_text):
-                return True, i + 1
+                # Calcular confianza según:
+                # - Prioridad del patrón (primeros son más comunes)
+                # - Si tiene región SIIV válida
+                base_confidence = 1.0 - (i * 0.1)  # Disminuye con patrones menos prioritarios
+                
+                if is_valid_region:
+                    # Bonus extra si es región de TRUJILLO
+                    if first_letter == 'T':
+                        confidence = min(1.0, base_confidence * 1.5)  # +50% para Trujillo
+                    else:
+                        confidence = min(1.0, base_confidence * 1.2)  # +20% para otras regiones
+                else:
+                    confidence = base_confidence * 0.7  # Penalización si no es región válida
+                
+                return True, confidence
         
-        return False, 0
+        return False, 0.0
     
     def suggest_corrections(self, text):
         """Sugiere correcciones para mejorar coincidencia con formatos"""
@@ -203,34 +291,84 @@ class PlateOCREnhancer:
         return suggestions[:5]  # Top 5 sugerencias
     
     def enhance_ocr_result(self, raw_text, plate_img=None, is_night=False):
-        """Mejora el resultado del OCR aplicando todas las correcciones"""
+        """
+        Mejora el resultado del OCR aplicando correcciones SIIV INTELIGENTES.
+        PRIORIDAD 1: Si ya es SIIV válida, NO aplicar correcciones.
+        PRIORIDAD 2: Solo corrige si realmente es necesario.
+        """
         if not raw_text:
             return raw_text, 0.0
         
         # Limpiar texto inicial
-        clean_text = re.sub(r'[^A-Za-z0-9]', '', raw_text).upper()
+        clean_text = re.sub(r'[^A-Za-z0-9-]', '', raw_text).upper()
         
-        if len(clean_text) < 4 or len(clean_text) > 8:
+        if len(clean_text) < 4 or len(clean_text) > 9:
             return clean_text, 0.0
         
-        # Aplicar correcciones básicas
-        corrected_text = self.correct_confusing_characters(clean_text, context_position=True)
+        print(f"🔍 ENHANCER: Texto bruto: '{raw_text}' -> Limpio: '{clean_text}'")
         
-        # Validar formato
+        # PASO 0: Corregir longitud y caracteres específicos (S→5, 2→7, eliminar 0s)
+        from src.core.ocr.recognizer import fix_plate_length_and_chars
+        clean_text = fix_plate_length_and_chars(clean_text)
+        print(f"   Después fix_length_and_chars: '{clean_text}'")
+        
+        # PASO 0.5: Corregir letras RESERVADAS (I, G) → T (Trujillo) si es probable
+        clean_no_dash = clean_text.replace('-', '')
+        if clean_no_dash and len(clean_no_dash) >= 3:
+            first_letter = clean_no_dash[0]
+            if first_letter in self.reserved_letters:
+                # Intentar con 'T' (Trujillo)
+                test_with_t = 'T' + clean_no_dash[1:]
+                is_t_valid, t_conf = self.validate_plate_format(test_with_t)
+                if is_t_valid and t_conf > 0.5:
+                    print(f"🔄 ENHANCER: Corrección geográfica: '{clean_text}' → '{test_with_t}' ({first_letter}→T)")
+                    clean_text = test_with_t
+        
+        # PASO 1: Verificar si YA es SIIV válida (SIN correcciones)
+        is_valid_raw, conf_raw = self.validate_plate_format(clean_text.replace('-', ''))
+        
+        if is_valid_raw and conf_raw > 0.5:
+            # Ya es válida, NO aplicar correcciones
+            print(f"✅ ENHANCER: Placa ya válida, NO corregir: '{clean_text}' (conf: {conf_raw:.2f})")
+            
+            # Solo formatear con guión si no lo tiene
+            from src.core.ocr.recognizer import format_siiv_plate
+            formatted = format_siiv_plate(clean_text)
+            
+            final_confidence = conf_raw * 0.9
+            if formatted and formatted[0] == 'T':
+                final_confidence = min(1.0, final_confidence * 1.3)
+            
+            return formatted, final_confidence
+        
+        # PASO 2: Si NO es válida, intentar correcciones conscientes del formato
+        print(f"⚠️ ENHANCER: Placa no válida, aplicando correcciones SIIV...")
+        corrected_text = self.correct_confusing_characters_siiv_aware(clean_text, context_position=True)
+        
+        # Validar después de correcciones
         is_valid, format_confidence = self.validate_plate_format(corrected_text)
         
         if is_valid:
-            return corrected_text, format_confidence * 0.2  # Confianza base
+            print(f"✅ ENHANCER: Corrección exitosa: '{clean_text}' -> '{corrected_text}' (conf: {format_confidence:.2f})")
+            
+            # Formatear con guión
+            from src.core.ocr.recognizer import format_siiv_plate
+            formatted = format_siiv_plate(corrected_text)
+            
+            final_confidence = format_confidence * 0.8
+            if formatted and formatted[0] == 'T':
+                final_confidence = min(1.0, final_confidence * 1.3)
+            
+            return formatted, final_confidence
         
-        # Si no es válido, buscar sugerencias
-        suggestions = self.suggest_corrections(clean_text)
+        # PASO 3: Si aún no es válida, RECHAZAR en lugar de inventar
+        # NO usar sugerencias porque genera placas falsas como LG37S
+        print(f"❌ ENHANCER: Placa '{corrected_text}' no cumple formato SIIV válido")
+        print(f"   Rechazando detección para evitar falsos positivos")
         
-        if suggestions:
-            best_suggestion, confidence = suggestions[0]
-            return best_suggestion, confidence * 0.15  # Confianza reducida por ser sugerencia
-        
-        # Si nada funciona, devolver texto corregido básicamente
-        return corrected_text, 0.1
+        # Retornar vacío para indicar que no es válida
+        # Esto evita que se registren placas inventadas
+        return "", 0.0
 
 # Instancia global del enhancer
 _plate_enhancer = None

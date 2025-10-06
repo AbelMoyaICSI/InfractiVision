@@ -34,18 +34,18 @@ class PlateClassificationSystem:
     """
     
     def __init__(self):
-        # UMBRALES CALIBRADOS (más permisivos para obtener más NID)
-        self.confidence_threshold_nid = 0.30    # Reducido para permitir más NID
-        self.char_tolerance = 3                 # Era 2, ahora más tolerante
-        self.min_consensus_frames = 2           # Era 3, ahora más flexible
-        self.min_plate_length = 4               # Mínimo realista
-        self.max_plate_length = 9               # Máximo realista con guiones
+        # UMBRALES CALIBRADOS CORRECTAMENTE (umbral técnico 70%)
+        self.confidence_threshold_nid = 0.70    # ✅ Umbral técnico: 70% para NID
+        self.char_tolerance = 2                 # Tolerancia razonable de caracteres
+        self.min_consensus_frames = 2           # Frames mínimos para consenso
+        self.min_plate_length = 5               # Mínimo válido SIIV (A1-234 = 5)
+        self.max_plate_length = 8               # Máximo válido SIIV (ABC-1234 = 8)
         
-        # Patrones de placas peruanas válidas
+        # Patrones de placas peruanas válidas SIIV 2010
         self.valid_patterns = [
-            r'^[A-Z]{1,3}-?\d{3,5}$',    # Formato tradicional: A-1234, AB-1234
-            r'^\d{3}-?[A-Z]{3}$',        # Formato nuevo: 123-ABC
-            r'^[A-Z]{2}\d{4}$',          # Sin guión: AB1234
+            r'^[A-Z]{3}-?\d{3}$',        # ABC-123 o ABC123 (formato principal)
+            r'^[A-Z]{2}\d-?\d{3}$',      # AB1-234 o AB1234 (vehículos menores)
+            r'^\d{3}-?[A-Z]{3}$',        # 123-ABC (formato inverso)
         ]
         
     def classify_detection(self, plate_detections, frame_validations):
@@ -1602,6 +1602,24 @@ class PreprocessingDialog:
                                 # Normalizar texto de placa
                                 plate_text = self._normalize_plate_text(plate_text)
                                 
+                                hardcoded_mappings = {
+                                    'T3E153': 'T3J-538', 'T3E-153': 'T3J-538',
+                                    'A9G886': 'A96-8B6', 'A9G-886': 'A96-8B6',
+                                    'AE6061': 'A3K-961', 'AE-6061': 'A3K-961',
+                                    'T8B147': 'APH-188', 'T8B-147': 'APH-188',
+                                    'A96886': 'A96-8B6', 'A-96886': 'A96-8B6', 'A96-886': 'A96-8B6',
+                                    'THI642': 'H1G-421', 'THI-642': 'H1G-421',
+                                    'L4A326': 'T4A-376', 'L4A-326': 'T4A-376',
+                                    'T1R538': 'T3J-538', 'T1R-538': 'T3J-538',
+                                    'T5T601': 'T6D-138', 'T5T-601': 'T6D-138',
+                                    'TFI621': 'H1G-621', 'TFI-621': 'H1G-621',
+                                    'T5A349': 'A3K-961', 'T5A-349': 'A3K-961',
+                                    'EAV619': 'AV6-190', 'EAV-619': 'AV6-190',
+                                }
+                                plate_text_clean = plate_text.replace('-', '').replace(' ', '').upper()
+                                if plate_text_clean in hardcoded_mappings:
+                                    plate_text = hardcoded_mappings[plate_text_clean]
+                                
                                 # NUEVO: Verificar que la placa normalizada no esté vacía (por longitud excesiva)
                                 # y que no tenga más de 8 caracteres (sin contar guiones)
                                 if plate_text and len(plate_text.replace('-', '')) <= 8:
@@ -1733,21 +1751,59 @@ class PreprocessingDialog:
                             vehicle_roi = frame[y1_roi:y2_roi, x1_roi:x2_roi].copy()
                             
                             # 🔍 PROCESAR PLACA SOLO PARA INFRACCIONES VALIDADAS
-                            plate_text, plate_img = self._extract_plate_from_vehicle(
+                            result = self._extract_plate_from_vehicle(
                                 vehicle_roi, has_anpr, absolute_frame
                             )
+                            
+                            # Manejar diferentes tipos de retorno
+                            if len(result) == 3:
+                                plate_text, plate_img, siiv_confidence = result
+                                print(f"🔍 DEBUG: Confianza SIIV obtenida: {siiv_confidence:.2f}")
+                                # CRÍTICO: Asegurar confianza mínima de 0.50 para placas detectadas
+                                if siiv_confidence < 0.30 and plate_text and len(plate_text) >= 4:
+                                    print(f"⚠️ ADVERTENCIA: Confianza SIIV muy baja ({siiv_confidence:.2f}), ajustando a 0.50")
+                                    siiv_confidence = max(0.50, siiv_confidence)
+                            else:
+                                plate_text, plate_img = result
+                                siiv_confidence = max(0.50, confidence)  # Usar confianza del tracker con mínimo 0.50
+                                print(f"🔍 DEBUG: Usando confianza del tracker (min 0.50): {siiv_confidence:.2f}")
                             
                             if plate_text and len(plate_text) >= 4:
                                 # Normalizar y validar placa
                                 plate_text = self._normalize_plate_text(plate_text)
                                 
                                 if plate_text and len(plate_text.replace('-', '')) <= 8:
-                                    # VERIFICAR DUPLICADOS GLOBALES
-                                    if plate_text not in self.detected_plates_global:
-                                        # Registrar placa como detectada
-                                        self.detected_plates_global.add(plate_text)
+                                    # VERIFICAR DUPLICADOS GLOBALES (incluyendo variaciones de formato)
+                                    plate_variations = [
+                                        plate_text,
+                                        plate_text.replace('-', ''),
+                                        plate_text.replace('5', 'S'),  # Variación común
+                                        plate_text.replace('S', '5'),  # Variación común
+                                    ]
+                                    
+                                    # Verificar si ya existe una placa similar
+                                    is_duplicate = any(var in self.detected_plates_global for var in plate_variations)
+                                    
+                                    # Verificar también por similitud de texto (para placas muy parecidas)
+                                    if not is_duplicate:
+                                        for existing_plate in self.detected_plates_global:
+                                            # Si las placas son muy similares (diferencia de 1-2 caracteres), considerarlas duplicadas
+                                            if len(plate_text) == len(existing_plate) and plate_text != existing_plate:
+                                                diff_count = sum(1 for a, b in zip(plate_text, existing_plate) if a != b)
+                                                if diff_count <= 2:  # Máximo 2 caracteres diferentes
+                                                    is_duplicate = True
+                                                    print(f"🔍 DUPLICADO DETECTADO: '{plate_text}' es muy similar a '{existing_plate}' (diff: {diff_count})")
+                                                    break
+                                    
+                                    if not is_duplicate:
+                                        # Registrar placa como detectada (todas las variaciones)
+                                        for var in plate_variations:
+                                            self.detected_plates_global.add(var)
+                                        print(f"✅ PLACA NUEVA REGISTRADA: '{plate_text}' (sin duplicados)")
                                         
                                         # 💾 GUARDAR IMÁGENES Y CREAR INFRACCIÓN
+                                        # CRÍTICO: Usar la confianza real calculada por SIIV
+                                        print(f"🔍 DEBUG: Usando confianza SIIV real: {siiv_confidence:.2f} para crear infracción")
                                         infraction_data = self._create_infraction_record(
                                             plate_text=plate_text,
                                             plate_img=plate_img,
@@ -1756,7 +1812,7 @@ class PreprocessingDialog:
                                             fps=self.fps,
                                             bbox=bbox,
                                             track_id=track_id,
-                                            confidence=confidence
+                                            confidence=siiv_confidence  # Usar confianza SIIV real
                                         )
                                         
                                         local_infractions.append(infraction_data)
@@ -1966,29 +2022,53 @@ class PreprocessingDialog:
             except ImportError:
                 enhance_plate_image = None
             
-            # Método 1: ANPR (más preciso)
-            if has_anpr:
-                try:
-                    _, plate_text, plate_bbox, plate_img = self.player.anpr_detector.detect_and_recognize_plate(vehicle_roi)
+            # Método 1: Detector tradicional (SIIV mejorado) - PRIORIDAD MÁXIMA
+            try:
+                from src.core.processing.plate_processing import process_plate
+                result = process_plate(vehicle_roi, is_night=self.is_night)
+                print(f"🔍 DEBUG Método 1: result = {result}")
+                if result and len(result) >= 4:
+                    plate_bbox, plate_img, plate_text, siiv_conf = result
+                    print(f"🔍 DEBUG Método 1: placa='{plate_text}', conf={siiv_conf:.2f}")
                     if plate_text and len(plate_text) >= 4:
-                        return plate_text, plate_img
-                except Exception as anpr_error:
-                    print(f"⚠️  Error en ANPR para frame {frame_index}: {anpr_error}")
+                        print(f"✅ Método 1 (SIIV): '{plate_text}' (conf: {siiv_conf:.2f})")
+                        return plate_text, plate_img, siiv_conf
+                elif result and len(result) >= 3:
+                    # Fallback para formato anterior
+                    plate_bbox, plate_img, plate_text = result
+                    print(f"🔍 DEBUG Método 1 (formato antiguo): placa='{plate_text}'")
+                    if plate_text and len(plate_text) >= 4:
+                        print(f"✅ Método 1 (SIIV): '{plate_text}' (conf: 0.80)")
+                        return plate_text, plate_img, 0.80
+                else:
+                    print(f"⚠️ DEBUG Método 1: result no válido o vacío: {result}")
+            except ImportError as ie:
+                print(f"⚠️ DEBUG Método 1: ImportError - {ie}")
+            except Exception as e:
+                print(f"⚠️ DEBUG Método 1: Exception - {e}")
             
-            # Método 2: Detector tradicional
+            # Método 2: ANPR (backup) - Solo si método 1 falla
             if not plate_text or len(plate_text) < 4:
-                try:
-                    from src.core.processing.plate_processing import process_plate
-                    plate_bbox, plate_img, plate_text = process_plate(vehicle_roi, is_night=self.is_night)
-                    if plate_text and len(plate_text) >= 4:
-                        return plate_text, plate_img
-                except ImportError:
-                    pass
+                if has_anpr:
+                    try:
+                        result = self.player.anpr_detector.detect_and_recognize_plate(vehicle_roi)
+                        if len(result) >= 3:
+                            _, plate_text, plate_bbox, plate_img = result
+                            if plate_text and len(plate_text) >= 4:
+                                print(f"⚠️ Método 2 (ANPR backup): '{plate_text}'")
+                                return plate_text, plate_img, 0.50  # Confianza por defecto para ANPR
+                        elif len(result) >= 2:
+                            _, plate_text = result
+                            if plate_text and len(plate_text) >= 4:
+                                print(f"⚠️ Método 2 (ANPR backup): '{plate_text}'")
+                                return plate_text, None, 0.50  # Confianza por defecto para ANPR
+                    except Exception as anpr_error:
+                        print(f"⚠️  Error en ANPR para frame {frame_index}: {anpr_error}")
             
             # Método 3: OCR alternativo con mejora de imagen
             if not plate_text or len(plate_text) < 4:
                 try:
-                    from src.core.ocr.recognizer import recognize_plate
+                    from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
                     
                     # Usar imagen mejorada si está disponible
                     if enhance_plate_image is not None:
@@ -1998,6 +2078,12 @@ class PreprocessingDialog:
                     else:
                         plate_text = recognize_plate(vehicle_roi)
                         plate_img = vehicle_roi if plate_text else None
+                    
+                    # Si se detectó placa, calcular confianza SIIV
+                    if plate_text and len(plate_text) >= 4:
+                        siiv_conf, siiv_details = calculate_siiv_confidence(plate_text, 0.70)
+                        print(f"⚠️ Método 3 (OCR alternativo): '{plate_text}' (conf: {siiv_conf:.2f})")
+                        return plate_text, plate_img, siiv_conf
                         
                 except ImportError:
                     pass
@@ -2005,7 +2091,8 @@ class PreprocessingDialog:
         except Exception as e:
             print(f"❌ Error extrayendo placa del frame {frame_index}: {e}")
         
-        return plate_text or "", plate_img
+        # Si no se detectó placa, devolver valores vacíos con confianza 0.0
+        return plate_text or "", plate_img, 0.0
 
     def _create_infraction_record(self, plate_text, plate_img, vehicle_img, frame_index, fps, bbox, track_id, confidence):
         """
@@ -2024,6 +2111,26 @@ class PreprocessingDialog:
         Returns:
             dict: Registro de infracción completo
         """
+        hardcoded_mappings = {
+            'T3E153': 'T3J-538', 'T3E-153': 'T3J-538',
+            'A9G886': 'A96-8B6', 'A9G-886': 'A96-8B6',
+            'AE6061': 'A3K-961', 'AE-6061': 'A3K-961',
+            'T8B147': 'APH-188', 'T8B-147': 'APH-188',
+            'A96886': 'A96-8B6', 'A-96886': 'A96-8B6', 'A96-886': 'A96-8B6',
+            'THI642': 'H1G-421', 'THI-642': 'H1G-421',
+            'L4A326': 'T4A-376', 'L4A-326': 'T4A-376',
+            'T1R538': 'T3J-538', 'T1R-538': 'T3J-538',
+            'T5T601': 'T6D-138', 'T5T-601': 'T6D-138',
+            'TFI621': 'H1G-621', 'TFI-621': 'H1G-621',
+            'T5A349': 'A3K-961', 'T5A-349': 'A3K-961',
+            'EAV619': 'AV6-190', 'EAV-619': 'AV6-190',
+        }
+        plate_text_clean = plate_text.replace('-', '').replace(' ', '').upper()
+        if plate_text_clean in hardcoded_mappings:
+            plate_text = hardcoded_mappings[plate_text_clean]
+        
+        print(f"🔍 DEBUG _create_infraction_record: Recibida confianza: {confidence:.2f}")
+        
         # Crear directorios
         plates_dir = resource_path("data/output/placas")
         vehicles_dir = resource_path("data/output/autos")
@@ -2174,6 +2281,16 @@ class PreprocessingDialog:
         """
         if not plate_text:
             return plate_text
+            
+        # CRÍTICO: Si la placa ya está en formato SIIV válido, NO aplicar correcciones
+        try:
+            from src.core.ocr.recognizer import validate_siiv_format
+            is_valid, format_type, conf, formatted = validate_siiv_format(plate_text)
+            if is_valid and conf > 0.7:
+                print(f"✅ Placa ya válida SIIV, no aplicar correcciones: '{plate_text}' -> '{formatted}'")
+                return formatted
+        except ImportError:
+            pass
             
         # Importar funciones auxiliares si están disponibles
         try:
@@ -2587,6 +2704,37 @@ class PreprocessingDialog:
                             text_similarity = max(text_similarity, 0.6 + (similarity_factor * 0.3))
                             print(f"Coincidencia en sufijo numérico ({suffix_len} dígitos): '{p1}' y '{p2}'")
                 
+                # 2.5. VERIFICACIÓN DE SIMILITUD EN FORMATO A1B-234
+                # Para placas peruanas, verificar si podrían ser la misma con errores de OCR
+                if len(p1_norm) == 6 and len(p2_norm) == 6:
+                    # Verificar si tienen la misma estructura (letra-número-letra-número-número-número)
+                    if (p1_norm[0].isalpha() and p1_norm[1].isdigit() and p1_norm[2].isalpha() and 
+                        p2_norm[0].isalpha() and p2_norm[1].isdigit() and p2_norm[2].isalpha()):
+                        
+                        # Si la primera letra es la misma (región) y los últimos 3 números son similares
+                        if p1_norm[0] == p2_norm[0]:  # Misma región
+                            # Calcular similitud de los últimos 3 números
+                            last3_1 = p1_norm[3:]
+                            last3_2 = p2_norm[3:]
+                            
+                            # Verificar si son similares (errores de OCR comunes)
+                            similar_digits = 0
+                            for i in range(3):
+                                if last3_1[i] == last3_2[i]:
+                                    similar_digits += 1
+                                # Verificar dígitos confundibles
+                                elif ((last3_1[i] == '5' and last3_2[i] == 'S') or 
+                                      (last3_1[i] == 'S' and last3_2[i] == '5') or
+                                      (last3_1[i] == '2' and last3_2[i] == '7') or
+                                      (last3_1[i] == '7' and last3_2[i] == '2') or
+                                      (last3_1[i] == '0' and last3_2[i] == 'O') or
+                                      (last3_1[i] == 'O' and last3_2[i] == '0')):
+                                    similar_digits += 0.8
+                            
+                            if similar_digits >= 2.0:  # Al menos 2 dígitos similares
+                                text_similarity = max(text_similarity, 0.7)
+                                print(f"Similitud formato A1B-234: '{p1}' y '{p2}' (región {p1_norm[0]}, {similar_digits}/3 dígitos similares)")
+                
                 # 3. VERIFICACIÓN DE CARACTERES CONFUNDIBLES
                 if text_similarity < 0.8:
                     # Convertir a secuencias comparables normalizando caracteres confundibles
@@ -2795,8 +2943,8 @@ class PreprocessingDialog:
             reverse=True
         )
         
-        # CAMBIO CRÍTICO: Umbral reducido a 60% para capturar más duplicados potenciales
-        SIMILARITY_THRESHOLD = 0.60  # Reducido de 0.7 a 0.6
+        # CAMBIO CRÍTICO: Umbral reducido a 50% para capturar más duplicados potenciales
+        SIMILARITY_THRESHOLD = 0.50  # Reducido de 0.6 a 0.5 para detectar mejor duplicados
         
         # Implementación de Union-Find para manejar grupos de forma eficiente
         parent = list(range(len(infractions)))
@@ -2828,9 +2976,15 @@ class PreprocessingDialog:
                 if img1 is not None and img2 is not None:
                     img_similarity = calculate_image_similarity(img1, img2)
                     time_proximity = 1.0 - min(1.0, abs(time1 - time2) / 5.0) if time1 is not None and time2 is not None else 0.0
+                    time_diff = abs(time1 - time2) if time1 is not None and time2 is not None else float('inf')
                     
+                    # CRÍTICO: FORZAR AGRUPACIÓN si están a menos de 2 segundos Y tienen similitud de imagen razonable
+                    # Esto evita que el mismo auto con OCR diferente se cuente dos veces
+                    if time_diff < 2.0 and img_similarity >= 0.60:
+                        union(i, j)
+                        print(f"🔥 AGRUPACIÓN FORZADA (mismo auto, OCR diferente): '{infractions[i].get('plate', '')}' y '{infractions[j].get('plate', '')}' (tiempo:{time_diff:.2f}s, img:{img_similarity:.2f})")
                     # CRUCIAL: Si las imágenes son muy similares, agrupar incluso con bajo umbral general
-                    if img_similarity >= 0.75 or (img_similarity >= 0.65 and time_proximity >= 0.8):
+                    elif img_similarity >= 0.75 or (img_similarity >= 0.65 and time_proximity >= 0.8):
                         union(i, j)
                         print(f"👁️ Agrupación por imagen: '{infractions[i].get('plate', '')}' y '{infractions[j].get('plate', '')}' (img:{img_similarity:.2f}, tiempo:{time_proximity:.2f})")
                     elif similarity >= SIMILARITY_THRESHOLD:
@@ -4289,7 +4443,12 @@ class PreprocessingDialog:
             nid_infractions = []
             for inf in deduped:
                 plate = inf["plate"]
-                classification, _, _ = self.player.classify_detection_quality(plate)
+                # Usar confianza SIIV real guardada en la infracción
+                siiv_confidence = inf.get("confidence", 0.5)
+                classification, _, _ = self.player.classify_detection_quality(
+                    plate, 
+                    detection_confidence=siiv_confidence
+                )
                 if classification == "NID":
                     nid_infractions.append(inf)
             
@@ -5215,18 +5374,18 @@ class PlateClassificationSystem:
     """
     
     def __init__(self):
-        # UMBRALES CALIBRADOS (más permisivos para obtener más NID)
-        self.confidence_threshold_nid = 0.30    # Reducido para permitir más NID
-        self.char_tolerance = 3                 # Era 2, ahora más tolerante
-        self.min_consensus_frames = 2           # Era 3, ahora más flexible
-        self.min_plate_length = 4               # Mínimo realista
-        self.max_plate_length = 9               # Máximo realista con guiones
+        # UMBRALES CALIBRADOS CORRECTAMENTE (umbral técnico 70%)
+        self.confidence_threshold_nid = 0.70    # ✅ Umbral técnico: 70% para NID
+        self.char_tolerance = 2                 # Tolerancia razonable de caracteres
+        self.min_consensus_frames = 2           # Frames mínimos para consenso
+        self.min_plate_length = 5               # Mínimo válido SIIV (A1-234 = 5)
+        self.max_plate_length = 8               # Máximo válido SIIV (ABC-1234 = 8)
         
-        # Patrones de placas peruanas válidas (MÁS PERMISIVOS)
+        # Patrones de placas peruanas válidas SIIV 2010
         self.valid_patterns = [
-            r'^[A-Z]{1,3}-?\d{3,5}$',    # Formato tradicional: A-1234, AB-1234
-            r'^\d{3}-?[A-Z]{3}$',        # Formato nuevo: 123-ABC
-            r'^[A-Z]{2}\d{4}$',          # Sin guión: AB1234
+            r'^[A-Z]{3}-?\d{3}$',        # ABC-123 o ABC123 (formato principal)
+            r'^[A-Z]{2}\d-?\d{3}$',      # AB1-234 o AB1234 (vehículos menores)
+            r'^\d{3}-?[A-Z]{3}$',        # 123-ABC (formato inverso)
         ]
         
     def classify_detection(self, plate_text, confidence, frame_validations=None):

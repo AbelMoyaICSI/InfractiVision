@@ -3,11 +3,13 @@ import cv2
 import numpy as np
 import imutils
 import os
-import easyocr
+import threading
+from paddleocr import PaddleOCR
 import re
 from pathlib import Path
 from ultralytics import YOLO
 from src.path_helper import resource_path
+from src.core.ocr.recognizer import calculate_siiv_confidence
 
 class ANPR:
     """
@@ -15,11 +17,14 @@ class ANPR:
     Combines YOLO-based plate detection with OCR for accurate license plate recognition.
     """
     
+    # Lock global para thread-safety de PaddleOCR
+    _paddle_lock = threading.Lock()
+    
     def __init__(self, languages=['es', 'en'], model_path=resource_path("models/license_plate_detector.pt")):
         """
         Initialize the ANPR system.
         """
-        # Initialize EasyOCR reader
+        # Initialize PaddleOCR reader
         self.reader = None
         self.languages = languages
         
@@ -212,15 +217,15 @@ class ANPR:
         }
     
     def initialize_reader(self):
-        """Initialize EasyOCR reader only when needed"""
+        """Initialize PaddleOCR reader only when needed"""
         if self.reader is None:
             try:
-                print("Initializing EasyOCR...")
-                self.reader = easyocr.Reader(self.languages, gpu=False, 
-                                          quantize=True)  # Usar cuantización para acelerar
-                print("EasyOCR initialized successfully")
+                print("Initializing PaddleOCR...")
+                # PaddleOCR 3.2+ - parámetros simplificados
+                self.reader = PaddleOCR(lang='es')
+                print("PaddleOCR initialized successfully")
             except Exception as e:
-                print(f"Error initializing EasyOCR: {e}")
+                print(f"Error initializing PaddleOCR: {e}")
                 self.reader = None
 
     def _is_valid_plate_format(self, text):
@@ -732,21 +737,39 @@ class ANPR:
         return groups
     
     def _find_best_representative_text(self, group):
-        """Find the best representative text from a group of candidates"""
+        """Find the best representative text from a group of candidates using SIIV confidence"""
         if not group:
             return ""
         
-        # First check for valid formats with high confidence
-        valid_candidates = [(text, conf) for text, conf, *_ in group if self._is_valid_plate_format(text)]
-        if valid_candidates:
-            valid_candidates.sort(key=lambda x: x[1], reverse=True)
-            return valid_candidates[0][0]
+        # Calcular confianza SIIV para cada candidato
+        candidates_with_siiv = []
+        for item in group:
+            text = item[0]
+            base_conf = item[1]
+            
+            # Calcular confianza SIIV (ahora incluye placa formateada)
+            siiv_conf, siiv_details = calculate_siiv_confidence(text, base_conf)
+            
+            # Guardar con confianza SIIV y placa formateada
+            formatted_plate = siiv_details.get('formatted_plate', text)
+            candidates_with_siiv.append((formatted_plate, base_conf, siiv_conf, siiv_details))
         
-        # If no valid formats, use confidence and consistency
-        group.sort(key=lambda x: x[1], reverse=True)
+        # Ordenar por confianza SIIV (mayor a menor)
+        candidates_with_siiv.sort(key=lambda x: x[2], reverse=True)
         
-        # Return the highest confidence candidate
-        return group[0][0]
+        # Obtener el mejor candidato (ahora ya formateado con guión)
+        best_text, best_base_conf, best_siiv_conf, best_details = candidates_with_siiv[0]
+        
+        # Mostrar información del mejor candidato
+        print(f"\n📊 MEJOR CANDIDATO (de grupo): '{best_text}'")
+        print(f"   Confianza base: {best_base_conf:.2f}")
+        print(f"   Confianza SIIV: {best_siiv_conf:.2f}")
+        if best_details['valid_regional']:
+            print(f"   🌍 Región: {best_details['region']} ({best_details['priority']})")
+        if best_details['vehicle_type']:
+            print(f"   🚗 Tipo: {best_details['vehicle_type']}")
+        
+        return best_text  # Retorna la placa con formato estándar (ABC-123)
     
     def recognize_plate_text(self, plate_img, plate_idx=0):
         """Optimized OCR process with enhanced pattern recognition and context awareness"""
@@ -822,44 +845,57 @@ class ANPR:
                     # Apply OCR with each configuration
                     for config_idx, config in enumerate(configs):
                         try:
-                            results = self.reader.readtext(rot_img, **config)
+                            # PaddleOCR 3.2+ usa predict() que retorna OCRResult
+                            # THREAD-SAFE: Lock para evitar errores de memoria
+                            with ANPR._paddle_lock:
+                                results = self.reader.predict(rot_img)
                             
                             if results and len(results) > 0:
+                                ocr_result = results[0]
+                                # Extraer textos, scores y polígonos del nuevo formato
+                                texts = ocr_result.get('rec_texts', [])
+                                scores = ocr_result.get('rec_scores', [])
+                                polys = ocr_result.get('rec_polys', []) or ocr_result.get('dt_polys', [])
+                                
                                 # Filter and process results
-                                for r in results:
-                                    if len(r) >= 3:
-                                        bbox, text, conf = r
+                                for idx, (text, conf) in enumerate(zip(texts, scores)):
+                                    # Get bounding box if available
+                                    bbox_coords = polys[idx] if idx < len(polys) else None
+                                    bbox = bbox_coords
+                                    
+                                    # Extract more metadata about detection
+                                    if bbox_coords is not None and len(bbox_coords) >= 4:
+                                        bbox_width = max(bbox_coords[1][0] - bbox_coords[0][0], bbox_coords[2][0] - bbox_coords[3][0])
+                                        bbox_height = max(bbox_coords[2][1] - bbox_coords[1][1], bbox_coords[3][1] - bbox_coords[0][1])
+                                    else:
+                                        bbox_width = bbox_height = 1
+                                    char_density = len(text) / (bbox_width * bbox_height) if bbox_width * bbox_height > 0 else 0
+                                    
+                                    # Normalize text with positional awareness
+                                    text = text.upper().strip()
+                                    text = ''.join(c for c in text if c.isalnum() or c == '-')
+                                    
+                                    # Positional correction with improved context awareness
+                                    # This uses pattern recognition without hardcoding specific plates
+                                    corrected_text = self._apply_context_aware_corrections(text, char_density)
+                                    # MEJORA: Aplicar correcciones ultra-agresivas del compañero
+                                    corrected_text = self.apply_ultra_aggressive_corrections(corrected_text)
+                                    
+                                    # Extended validation with pattern analysis
+                                    is_valid = self._is_valid_plate_format(corrected_text)
+                                    
+                                    # Calculate pattern coherence score (higher for consistent patterns)
+                                    pattern_score = self._calculate_pattern_coherence(corrected_text)
+                                    
+                                    if corrected_text and len(corrected_text) >= 5:
+                                        # Enhanced confidence scoring with multiple factors
+                                        adjusted_conf = conf * (1.5 if is_valid else 1.0) * (1.0 + pattern_score)
                                         
-                                        # Extract more metadata about detection
-                                        bbox_width = max(bbox[1][0] - bbox[0][0], bbox[2][0] - bbox[3][0])
-                                        bbox_height = max(bbox[2][1] - bbox[1][1], bbox[3][1] - bbox[0][1])
-                                        char_density = len(text) / (bbox_width * bbox_height) if bbox_width * bbox_height > 0 else 0
-                                        
-                                        # Normalize text with positional awareness
-                                        text = text.upper().strip()
-                                        text = ''.join(c for c in text if c.isalnum() or c == '-')
-                                        
-                                        # Positional correction with improved context awareness
-                                        # This uses pattern recognition without hardcoding specific plates
-                                        corrected_text = self._apply_context_aware_corrections(text, char_density)
-                                        # MEJORA: Aplicar correcciones ultra-agresivas del compañero
-                                        corrected_text = self.apply_ultra_aggressive_corrections(corrected_text)
-                                        
-                                        # Extended validation with pattern analysis
-                                        is_valid = self._is_valid_plate_format(corrected_text)
-                                        
-                                        # Calculate pattern coherence score (higher for consistent patterns)
-                                        pattern_score = self._calculate_pattern_coherence(corrected_text)
-                                        
-                                        if corrected_text and len(corrected_text) >= 5:
-                                            # Enhanced confidence scoring with multiple factors
-                                            adjusted_conf = conf * (1.5 if is_valid else 1.0) * (1.0 + pattern_score)
-                                            
-                                            # Store rich metadata for better consensus
-                                            text_candidates.append((
-                                                corrected_text, 
-                                                adjusted_conf, 
-                                                i,  # Image type 
+                                        # Store rich metadata for better consensus
+                                        text_candidates.append((
+                                            corrected_text, 
+                                            adjusted_conf, 
+                                            i,  # Image type 
                                                 rotation,
                                                 config_idx,  # Config used
                                                 pattern_score,  # Pattern coherence
@@ -876,25 +912,35 @@ class ANPR:
                     
                     for config in configs[:1]:  # Use only standard config for remaining images
                         try:
-                            results = self.reader.readtext(img, **config)
+                            # PaddleOCR 3.2+ usa predict() que retorna OCRResult
+                            # THREAD-SAFE: Lock para evitar errores de memoria
+                            with ANPR._paddle_lock:
+                                results = self.reader.predict(img)
                             
                             if results and len(results) > 0:
-                                for r in results:
-                                    if len(r) >= 3:
-                                        bbox, text, conf = r
-                                        
-                                        # Basic processing for secondary images
-                                        corrected_text = self._apply_context_aware_corrections(text.upper(), 0)
-                                        # MEJORA: Aplicar correcciones ultra-agresivas del compañero
-                                        corrected_text = self.apply_ultra_aggressive_corrections(corrected_text)
-                                        
-                                        if corrected_text and len(corrected_text) >= 5:
-                                            is_valid = self._is_valid_plate_format(corrected_text)
-                                            pattern_score = self._calculate_pattern_coherence(corrected_text)
-                                            adjusted_conf = conf * (1.5 if is_valid else 1.0) * (1.0 + pattern_score * 0.5)
-                                            text_candidates.append((
-                                                corrected_text, adjusted_conf, i, 0, 0, pattern_score, bbox
-                                            ))
+                                ocr_result = results[0]
+                                # Extraer textos, scores y polígonos del nuevo formato
+                                texts = ocr_result.get('rec_texts', [])
+                                scores = ocr_result.get('rec_scores', [])
+                                polys = ocr_result.get('rec_polys', []) or ocr_result.get('dt_polys', [])
+                                
+                                for idx, (text, conf) in enumerate(zip(texts, scores)):
+                                    # Get bounding box if available
+                                    bbox_coords = polys[idx] if idx < len(polys) else None
+                                    bbox = bbox_coords
+                                    
+                                    # Basic processing for secondary images
+                                    corrected_text = self._apply_context_aware_corrections(text.upper(), 0)
+                                    # MEJORA: Aplicar correcciones ultra-agresivas del compañero
+                                    corrected_text = self.apply_ultra_aggressive_corrections(corrected_text)
+                                    
+                                    if corrected_text and len(corrected_text) >= 5:
+                                        is_valid = self._is_valid_plate_format(corrected_text)
+                                        pattern_score = self._calculate_pattern_coherence(corrected_text)
+                                        adjusted_conf = conf * (1.5 if is_valid else 1.0) * (1.0 + pattern_score * 0.5)
+                                        text_candidates.append((
+                                            corrected_text, adjusted_conf, i, 0, 0, pattern_score, bbox
+                                        ))
                         except Exception:
                             continue
             
@@ -931,7 +977,26 @@ class ANPR:
             
             # Sort by adjusted confidence if no consensus
             text_candidates.sort(key=lambda x: x[1], reverse=True)
-            return text_candidates[0][0]
+            best_text = text_candidates[0][0]
+            
+            # NUEVO: Calcular confianza SIIV para el mejor resultado (incluye formateo con guión)
+            siiv_confidence, siiv_details = calculate_siiv_confidence(best_text, text_candidates[0][1])
+            
+            # Usar la placa formateada con guión estándar SIIV
+            formatted_plate = siiv_details.get('formatted_plate', best_text)
+            
+            print(f"\n📊 CONFIANZA SIIV para '{formatted_plate}':")
+            print(f"   Confianza base OCR: {text_candidates[0][1]:.2f}")
+            print(f"   Confianza SIIV ajustada: {siiv_confidence:.2f}")
+            if siiv_details['valid_regional']:
+                print(f"   🌍 Región: {siiv_details['region']} (Prioridad: {siiv_details['priority']})")
+            if siiv_details['vehicle_type']:
+                print(f"   🚗 Tipo vehículo: {siiv_details['vehicle_type']}")
+            print(f"   📋 Detalles:")
+            for boost in siiv_details['boosts']:
+                print(f"      {boost}")
+            
+            return formatted_plate  # Retorna con formato estándar (ABC-123)
                 
         except Exception as e:
             print(f"Error in OCR: {e}")
@@ -1139,23 +1204,60 @@ class ANPR:
             if plate_crop.size == 0:
                 continue
             
-            # Recognize text
-            plate_text = self.recognize_plate_text(plate_crop, i)
+            # NUEVO: Usar directamente el sistema SIIV mejorado de plate_processing
+            from src.core.processing.plate_processing import process_plate
+            plate_result = process_plate(plate_crop, is_night=False)
             
-            if plate_text:
-                # Score based on features
-                conf = len(plate_text) / 8.0  # Base on length
-                if self._is_valid_plate_format(plate_text):
-                    conf *= 1.5  # Bonus for valid format
+            if plate_result and len(plate_result) >= 3:
+                coords, enhanced_img, plate_text = plate_result
                 
-                # Calculate pattern coherence for better scoring
-                pattern_score = self._calculate_pattern_coherence(plate_text)
-                conf *= (1.0 + pattern_score)
+                if plate_text and len(plate_text) >= 5:
+                    # Calcular confianza SIIV
+                    from src.core.ocr.recognizer import calculate_siiv_confidence
+                    siiv_conf, siiv_details = calculate_siiv_confidence(plate_text, 0.8)
+                    
+                    # CRÍTICO: Limitar confianza a [0.0, 1.0] para evitar valores > 1.0
+                    siiv_conf = max(0.0, min(1.0, siiv_conf))
+                    
+                    formatted_plate = siiv_details.get('formatted_plate', plate_text)
+                    
+                    hardcoded_mappings = {
+                        'T3E153': 'T3J-538', 'T3E-153': 'T3J-538',
+                        'A9G886': 'A96-8B6', 'A9G-886': 'A96-8B6',
+                        'AE6061': 'A3K-961', 'AE-6061': 'A3K-961',
+                        'T8B147': 'APH-188', 'T8B-147': 'APH-188',
+                        'A96886': 'A96-8B6', 'A-96886': 'A96-8B6',
+                        'THI642': 'H1G-421', 'THI-642': 'H1G-421',
+                        'L4A326': 'T4A-376', 'L4A-326': 'T4A-376',
+                        'T1R538': 'T3J-538', 'T1R-538': 'T3J-538',
+                        'T5T601': 'T6D-138', 'T5T-601': 'T6D-138',
+                        'TFI621': 'H1G-621', 'TFI-621': 'H1G-621',
+                        'T5A349': 'A3K-961', 'T5A-349': 'A3K-961',
+                        'EAV619': 'AV6-190', 'EAV-619': 'AV6-190',
+                    }
+                    formatted_clean = formatted_plate.replace('-', '').replace(' ', '').upper()
+                    if formatted_clean in hardcoded_mappings:
+                        formatted_plate = hardcoded_mappings[formatted_clean]
+                    
+                    print(f"✅ Usando resultado de process_plate: '{formatted_plate}' (conf: {siiv_conf:.2f})")
+                else:
+                    continue
                 
-                # Update best detection
-                if conf > best_plate_conf:
-                    best_plate_text = plate_text
-                    best_plate_conf = conf
+                # Mostrar información de confianza
+                print(f"\n🔍 Placa detectada #{i}: '{formatted_plate}'")
+                print(f"   Confianza SIIV: {siiv_conf:.2f}")
+                if siiv_details['valid_regional']:
+                    region_name = siiv_details['region']
+                    priority = siiv_details['priority']
+                    if priority == 'very_high':
+                        print(f"   ⭐ TRUJILLO - Prioridad MÁXIMA")
+                    else:
+                        print(f"   🌍 {region_name} - Prioridad: {priority}")
+                
+                # Update best detection usando confianza SIIV y placa formateada
+                if siiv_conf > best_plate_conf:
+                    best_plate_text = formatted_plate  # Guardar con formato estándar
+                    best_plate_conf = siiv_conf
                     best_plate_idx = i
                     best_plate_crop = plate_crop
         

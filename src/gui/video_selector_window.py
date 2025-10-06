@@ -298,7 +298,7 @@ class VideoSelectorWindow:
         button_frame = tk.Frame(card_frame, bg='white')
         button_frame.pack(fill="x")
         
-        # Fila 1: Botones principales - Con lógica de bloqueo
+        # Fila 1: Botones principales - Siempre seleccionables
         main_buttons_frame = tk.Frame(button_frame, bg='white')
         main_buttons_frame.pack(fill="x", pady=(0, 5))
         
@@ -307,20 +307,20 @@ class VideoSelectorWindow:
         total_configured = sum([config_status['polygon'], config_status['semaphore'], config_status['avenue']])
         is_fully_configured = total_configured == 3
         
-        # Botón Seleccionar - BLOQUEADO si está completamente configurado
+        # Botón Seleccionar - Siempre habilitado, cambia el texto según configuración
         if is_fully_configured:
             select_btn = tk.Button(
                 main_buttons_frame,
-                text="🔒 Bloqueado",
-                state="disabled",
-                bg="#95a5a6",
+                text="✅ Reseleccionar",
+                command=lambda v=video: self.select_video(v),
+                bg="#27ae60",
                 fg="white",
                 font=("Arial", 9),
                 pady=4
             )
             # Agregar tooltip explicativo
             self.create_tooltip(select_btn, 
-                "Video ya configurado.\nPara volver a seleccionar debe limpiarlo primero.")
+                "Video ya configurado.\nClick para seleccionarlo nuevamente y procesarlo.")
         else:
             select_btn = tk.Button(
                 main_buttons_frame,
