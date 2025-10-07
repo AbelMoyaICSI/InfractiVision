@@ -30,17 +30,22 @@ ENV/
 
 # === ARCHIVOS DE CONFIGURACIÓN SENSIBLES ===
 secrets/
-*.json
-!requirements.txt
-!package*.json
-!config/*.json
-!data/*.json
-
-# === CREDENCIALES ESPECÍFICAS ===
-**/infractivision-*.json
 **/*credentials*.json
 **/*-key.json
 **/service-account*.json
+**/infractivision-*.json
+
+# === ARCHIVOS JSON DE CONFIGURACIÓN Y DATOS ===
+config/*.json
+data/*.json
+*.json
+!requirements.txt
+!package*.json
+
+# === ARCHIVOS TEMPORALES DE SCRIPTS ===
+clean_method.py
+fix_colors.py
+fix_update_frames_optimized.py
 
 # === ARCHIVOS TEMPORALES ===
 .DS_Store

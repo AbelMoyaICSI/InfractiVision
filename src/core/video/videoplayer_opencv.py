@@ -819,65 +819,9 @@ class VideoPlayerOpenCV:
         var_end_m = tk.StringVar(value="0")
         var_end_ampm = tk.StringVar(value="PM")
         
-        # MEJORA: AUTOCOMPLETAR - Cargar valores existentes automáticamente
+        # Cargar valores existentes para autocompletado (se aplicarán después)
         existing_avenue = self.get_avenue_for_video(video_path)
         existing_times = self.get_time_preset_for_video(video_path)
-        
-        # AUTOCOMPLETAR AVENIDA
-        if existing_avenue:
-            avenue_entry.delete(0, tk.END)
-            avenue_entry.insert(0, existing_avenue)
-            print(f"✅ AUTOCOMPLETADO: Avenida '{existing_avenue}'")
-            
-        # AUTOCOMPLETAR TIEMPOS Y HORARIOS
-        if existing_times:
-            var_green.set(existing_times.get("green", 30))
-            var_yellow.set(existing_times.get("yellow", 5))
-            var_red.set(existing_times.get("red", 30))
-            print(f"✅ AUTOCOMPLETADO: Tiempos semáforo Verde:{var_green.get()}s, Amarillo:{var_yellow.get()}s, Rojo:{var_red.get()}s")
-            
-            # AUTOCOMPLETAR HORARIOS - Convertir de 24h a 12h AM/PM
-            time_slot = existing_times.get("time_slot", "7:00 - 19:00")
-            try:
-                start_str, end_str = time_slot.split(" - ")
-                start_h_24, start_m = map(int, start_str.split(":"))
-                end_h_24, end_m = map(int, end_str.split(":"))
-                
-                # Función para convertir 24h a 12h AM/PM
-                if start_h_24 == 0:
-                    var_start_h.set(12)
-                    var_start_ampm.set("AM")
-                elif start_h_24 < 12:
-                    var_start_h.set(start_h_24)
-                    var_start_ampm.set("AM")
-                elif start_h_24 == 12:
-                    var_start_h.set(12)
-                    var_start_ampm.set("PM")
-                else:
-                    var_start_h.set(start_h_24 - 12)
-                    var_start_ampm.set("PM")
-                
-                # Convertir hora final de 24h a 12h
-                if end_h_24 == 0:
-                    var_end_h.set(12)
-                    var_end_ampm.set("AM")
-                elif end_h_24 < 12:
-                    var_end_h.set(end_h_24)
-                    var_end_ampm.set("AM")
-                elif end_h_24 == 12:
-                    var_end_h.set(12)
-                    var_end_ampm.set("PM")
-                else:
-                    var_end_h.set(end_h_24 - 12)
-                    var_end_ampm.set("PM")
-                
-                var_start_m.set(start_m)
-                var_end_m.set(end_m)
-                
-                print(f"✅ AUTOCOMPLETADO: Horarios {var_start_h.get()}:{var_start_m.get():02d} {var_start_ampm.get()} - {var_end_h.get()}:{var_end_m.get():02d} {var_end_ampm.get()}")
-            except:
-                # Si hay error en formato, usar valores por defecto
-                pass
         
         # MEJORA: Layout compacto - Hora inicio con formato 00:00
         tk.Label(time_frame, text="Desde:", font=("Arial", 11, "bold")).grid(row=0, column=0, sticky="w")
@@ -937,6 +881,61 @@ class VideoPlayerOpenCV:
         red_spin = tk.Spinbox(fields_frame, from_=1, to=300, width=8, textvariable=var_red,
                              font=("Arial", 10), justify="center", buttonbackground="#F44336")
         red_spin.grid(row=4, column=1, sticky="w", padx=5, pady=8)
+        
+        # AUTOCOMPLETADO: Aplicar valores existentes DESPUÉS de definir las variables
+        if existing_avenue:
+            avenue_entry.delete(0, tk.END)
+            avenue_entry.insert(0, existing_avenue)
+            print(f"✅ AUTOCOMPLETADO: Avenida '{existing_avenue}'")
+            
+        if existing_times:
+            var_green.set(existing_times.get("green", 30))
+            var_yellow.set(existing_times.get("yellow", 5))
+            var_red.set(existing_times.get("red", 30))
+            print(f"✅ AUTOCOMPLETADO: Tiempos semáforo Verde:{var_green.get()}s, Amarillo:{var_yellow.get()}s, Rojo:{var_red.get()}s")
+            
+            # AUTOCOMPLETAR HORARIOS - Convertir de 24h a 12h AM/PM
+            time_slot = existing_times.get("time_slot", "7:00 - 19:00")
+            try:
+                start_str, end_str = time_slot.split(" - ")
+                start_h_24, start_m = map(int, start_str.split(":"))
+                end_h_24, end_m = map(int, end_str.split(":"))
+                
+                # Función para convertir 24h a 12h AM/PM
+                if start_h_24 == 0:
+                    var_start_h.set("12")
+                    var_start_ampm.set("AM")
+                elif start_h_24 < 12:
+                    var_start_h.set(str(start_h_24))
+                    var_start_ampm.set("AM")
+                elif start_h_24 == 12:
+                    var_start_h.set("12")
+                    var_start_ampm.set("PM")
+                else:
+                    var_start_h.set(str(start_h_24 - 12))
+                    var_start_ampm.set("PM")
+                
+                var_start_m.set(str(start_m).zfill(2))
+                
+                # Convertir hora final de 24h a 12h
+                if end_h_24 == 0:
+                    var_end_h.set("12")
+                    var_end_ampm.set("AM")
+                elif end_h_24 < 12:
+                    var_end_h.set(str(end_h_24))
+                    var_end_ampm.set("AM")
+                elif end_h_24 == 12:
+                    var_end_h.set("12")
+                    var_end_ampm.set("PM")
+                else:
+                    var_end_h.set(str(end_h_24 - 12))
+                    var_end_ampm.set("PM")
+                    
+                var_end_m.set(str(end_m).zfill(2))
+                
+                print(f"✅ AUTOCOMPLETADO: Horario {time_slot} convertido a formato 12h")
+            except Exception as e:
+                print(f"⚠️ Error parseando horario existente: {e}")
         
         # Panel derecho - previsualización y área restringida (MÁS ESPACIO)
         preview_frame_container = tk.Frame(main_frame, bd=2, relief=tk.GROOVE)
@@ -1330,21 +1329,35 @@ class VideoPlayerOpenCV:
                 text="💡 Pausa video,\nsemáforo y timer"
             )
         
-        # Reanudar semáforo SOLO si no se ha completado un procesamiento
-        if not getattr(self, 'processing_completed', False):
-            if hasattr(self.semaforo, 'resume_semaphore'):
-                self.semaforo.resume_semaphore()
-            else:
-                self.semaforo.activate_semaphore()
-        else:
-            print("🚦 SEMÁFORO MANTENIDO PAUSADO - Procesamiento completado")
-        
         # Reanudar timestamp con sincronización de franja horaria
         if not self.timestamp_updater.running:
             self.timestamp_updater.start_timestamp()
         
-        # Reanudar actualización de frames
-        self.update_frames()
+        # 🎯 MODO INTELIGENTE: Modo reproducción por defecto, procesamiento solo cuando se solicite
+        if getattr(self, 'processing_active', False):
+            # MODO PROCESAMIENTO: Solo cuando se está ejecutando preprocesamiento
+            print("▶️ MODO PROCESAMIENTO: Análisis completo con infracciones")
+            # Reanudar semáforo para procesamiento
+            if hasattr(self.semaforo, 'resume_semaphore'):
+                self.semaforo.resume_semaphore()
+            else:
+                self.semaforo.activate_semaphore()
+            self.update_frames()
+        else:
+            # MODO REPRODUCCIÓN: Por defecto, siempre (antes y después del procesamiento)
+            print("▶️ MODO REPRODUCCIÓN: Visualización con cuadros (sin OCR)")
+            print(f"🔍 DEBUG: processing_active = {getattr(self, 'processing_active', 'NO DEFINIDO')}")
+            
+            # 🚨 CRÍTICO: El semáforo DEBE funcionar para determinar colores de cuadros
+            if hasattr(self.semaforo, 'resume_semaphore'):
+                self.semaforo.resume_semaphore()
+                print("🚦 SEMÁFORO ACTIVADO en modo reproducción")
+            else:
+                self.semaforo.activate_semaphore() 
+                print("🚦 SEMÁFORO INICIADO en modo reproducción")
+                
+            self.optimization_mode = "reproduction"
+            self.update_frames_optimized()
         
         print("▶️ REPRODUCCIÓN INICIADA")
 
@@ -1534,8 +1547,8 @@ class VideoPlayerOpenCV:
         # Calcular brillo promedio
         avg_brightness = cv2.mean(gray)[0]
         
-        # Si el brillo promedio es bajo, consideramos que es una escena nocturna
-        return avg_brightness < 70  # Umbral ajustable según tus vídeos
+        # Si el brillo promedio es muy bajo, consideramos que es una escena nocturna
+        return avg_brightness < 50  # Umbral restrictivo - solo videos muy oscuros
 
     def _enhance_night_visibility(self, frame):
         """Mejora la visibilidad en escenas nocturnas"""
@@ -2894,11 +2907,15 @@ class VideoPlayerOpenCV:
 
     def update_frames_optimized(self):
         """
-        Versión optimizada de update_frames que sólo detecta vehículos sin procesar placas.
-        Se usa después del preprocesamiento para mostrar el video de forma más eficiente.
+        🚀 MODO REPRODUCCIÓN CON CUADROS: Video + polígono + detección básica
         """
-        if not self.running or not self.cap:
+        if not self.running or not self.cap or self.is_paused:
             return
+        
+        # 🔍 DEBUG al inicio
+        if not hasattr(self, '_debug_optimized_shown'):
+            print("🚗 ENTRANDO A update_frames_optimized - Cuadros deben aparecer")
+            self._debug_optimized_shown = True
         
         ret, frame = self.cap.read()
         if not ret:
@@ -2906,173 +2923,144 @@ class VideoPlayerOpenCV:
             self._after_id = self.parent.after(int(1000/30), self.update_frames_optimized)
             return
 
-        # Detectar si es escena nocturna para optimizaciones
-        is_night = self._is_night_scene(frame)
+        # 🎯 MODO OPTIMIZADO: Video + polígono + cuadros básicos (sin OCR)
+        frame_display = frame.copy()
         
-        # Procesamiento optimizado: sólo detectamos vehículos, sin procesar placas
-        try:
-            # Reducir resolución para procesamiento más rápido
-            proc_scale = 0.5
-            h, w = frame.shape[:2]
-            proc_w, proc_h = int(w * proc_scale), int(h * proc_scale)
-            
-            # Redimensionar frame para procesamiento
-            small_frame = cv2.resize(frame, (proc_w, proc_h), interpolation=cv2.INTER_LINEAR)
-            
-            # Pre-procesamiento específico para escenas nocturnas (más ligero)
-            if is_night:
-                # Usar conversión rápida en lugar de CLAHE completo
-                small_frame = cv2.convertScaleAbs(small_frame, alpha=1.3, beta=30)
-            
-            # Ajustar umbral de confianza
-            confidence_threshold = 0.25 if is_night else 0.4
-            
-            # Detectar vehículos (optimizado)
-            if hasattr(self, 'vehicle_detector'):
-                detections = self.vehicle_detector.detect(
-                    small_frame, 
-                    conf=confidence_threshold,
-                    draw=False
-                )
-                
-                # Escalar detecciones al tamaño original
-                frame_with_cars = frame.copy()
-                scale_factor = 1.0 / proc_scale
-                
-                # Dibujar polígono de área si existe
-                if self.polygon_points:
-                    pts = np.array(self.polygon_points, np.int32).reshape(-1, 1, 2)
-                    poly_color = (0, 220, 255) if is_night else (0, 0, 255)
-                    cv2.polylines(frame_with_cars, [pts], True, poly_color, 2)
-                
-                # Dibujar vehículos detectados
-                for detection in detections:
-                    # Extraer coordenadas y clase
-                    x1, y1, x2, y2, cls_id = detection[:5]
-                    
-                    # Solo procesar vehículos (coches, buses, camiones)
-                    if cls_id in [2, 5, 7]:
-                        # Escalar coordenadas a tamaño original
-                        x1s, y1s = int(x1 * scale_factor), int(y1 * scale_factor)
-                        x2s, y2s = int(x2 * scale_factor), int(y2 * scale_factor)
-                        
-                        # Color según si está en zona restringida
-                        in_polygon = False
-                        if self.polygon_points and len(self.polygon_points) >= 3:
-                            if is_night:
-                                in_polygon = self.is_vehicle_in_polygon_night((x1s, y1s, x2s, y2s), self.polygon_points)
-                            else:
-                                in_polygon = self.is_vehicle_in_polygon((x1s, y1s, x2s, y2s), self.polygon_points)
-                        
-                        # Color según estado (en área + semáforo rojo = rojo, en área = amarillo, fuera de área = verde)
-                        if in_polygon and self.semaforo.get_current_state() == "red":
-                            box_color = (0, 0, 255)  # Rojo para infracciones
-                            
-                            # REGISTRAR INFRACCIÓN - Procesar placa si hay una infracción detectada
-                            if not self.plate_queue.full():
-                                # 🎯 DETECCIÓN INTELIGENTE del mejor recorte de placa
-                                best_plate_crop, confidence = self.enhanced_plate_detection(frame, (x1s, y1s, x2s, y2s, cls_id, label))
-                                
-                                if best_plate_crop is not None and confidence > 0.3:
-                                    # 🔍 SUPER-RESOLUCIÓN MEJORADA para placas de baja calidad
-                                    enhanced_plate = best_plate_crop
-                                    if confidence < 0.6:  # Baja confianza = posible borrosidad
-                                        try:
-                                            # Aplicar super-resolución mejorada con múltiples técnicas
-                                            enhanced_plate = self._apply_super_resolution(best_plate_crop, is_night)
-                                            print(f"🔍 Super-resolución mejorada aplicada (confianza: {confidence:.3f})")
-                                        except Exception as e:
-                                            print(f"⚠️ Super-resolución falló: {e}")
-                                            enhanced_plate = best_plate_crop  # Usar original
-                                    
-                                    # 🔤 EXTRAER TEXTO DE LA PLACA CON OCR
-                                    plate_text = ""
-                                    siiv_confidence = confidence  # Inicializar con confianza base
-                                    try:
-                                        from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
-                                        
-                                        # Reconocer texto de la placa
-                                        plate_text = recognize_plate(enhanced_plate, is_night=is_night)
-                                        
-                                        if plate_text:
-                                            # Calcular confianza SIIV
-                                            siiv_confidence, siiv_details = calculate_siiv_confidence(plate_text, confidence)
-                                            
-                                            print(f"📝 PLACA DETECTADA: '{plate_text}'")
-                                            print(f"   Confianza OCR: {confidence:.2f}")
-                                            print(f"   Confianza SIIV: {siiv_confidence:.2f}")
-                                            
-                                            if siiv_details['valid_regional']:
-                                                region = siiv_details['region']
-                                                priority = siiv_details['priority']
-                                                if priority == 'very_high':
-                                                    print(f"   ⭐ TRUJILLO - Prioridad MÁXIMA")
-                                                else:
-                                                    print(f"   🌍 Región: {region}")
-                                            
-                                            if siiv_details['vehicle_type']:
-                                                print(f"   🚗 Tipo: {siiv_details['vehicle_type']}")
-                                        else:
-                                            print(f"⚠️ No se pudo extraer texto de la placa")
-                                            
-                                    except Exception as ocr_error:
-                                        print(f"❌ Error en OCR: {ocr_error}")
-                                        plate_text = ""
-                                    
-                                    # 📊 Obtener timestamp sincronizado
-                                    current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
-                                    current_time = current_frame / self.video_fps
-                                    synchronized_timestamp = self._calculate_timestamp_with_time_range(current_time)
-                                    
-                                    # Actualizar timestamp_label
-                                    if isinstance(synchronized_timestamp, str):
-                                        self.timestamp_label.config(text=synchronized_timestamp)
-                                    
-                                    # 📤 Poner en cola para OCR con imagen mejorada y CONFIANZA SIIV
-                                    if not self.plate_queue.full():
-                                        # CRÍTICO: Incluir siiv_confidence en la cola
-                                        self.plate_queue.put((frame.copy(), enhanced_plate, is_night, current_time, plate_text, siiv_confidence))
-                                        print(f"🚨 Infracción detectada - Placa: '{plate_text}' - Confianza SIIV: {siiv_confidence:.3f}")
-                                    
-                                    # 🔴 Visual feedback de infracción detectada
-                                    cv2.putText(frame_with_cars, "INFRACCION", (x1s, y1s-10),
-                                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                                    
-                                    # Mostrar nivel de confianza si hay detección válida
-                                    conf_text = f"Conf: {confidence:.2f}"
-                                    cv2.putText(frame_with_cars, conf_text, (x1s, y2s+20),
-                                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-                            
-                        elif in_polygon:
-                            box_color = (0, 255, 255)  # Amarillo para vehículos en área permitida
-                        else:
-                            box_color = (0, 255, 0)  # Verde para vehículos fuera del área
-                        
-                        # Dibujar rectángulo
-                        cv2.rectangle(frame_with_cars, (x1s, y1s), (x2s, y2s), box_color, 2)
-                        
-                        # Etiquetas según la clase
-                        label = "CAR" if cls_id == 2 else "BUS" if cls_id == 5 else "TRUCK"
-                        
-                        # Dibujar texto con fondo para mejor visibilidad
-                        text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
-                        cv2.rectangle(frame_with_cars, 
-                                    (x1s, y1s - text_size[1] - 10), 
-                                    (x1s + text_size[0], y1s), 
-                                    box_color, -1)
-                        cv2.putText(frame_with_cars, label,
-                                    (x1s, y1s - 5),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                                    (0, 0, 0), 2)
-            else:
-                frame_with_cars = frame
-                    
-        except Exception as e:
-            print(f"Error al detectar vehículos: {str(e)}")
-            frame_with_cars = frame
+        # Dibujar polígono (muy rápido)
+        if self.polygon_points:
+            pts = np.array(self.polygon_points, np.int32).reshape(-1, 1, 2)
+            cv2.polylines(frame_display, [pts], True, (0, 0, 255), 2)
         
-        # Mostrar información del estado del semáforo
+        # Estado del semáforo
         current_state = self.semaforo.get_current_state()
+        
+        # 🚀 DETECCIÓN CON TRACKING PERSISTENTE (evitar intermitencia)
+        if not hasattr(self, '_reproduction_frame_skip'):
+            self._reproduction_frame_skip = 0
+        if not hasattr(self, '_tracked_vehicles'):
+            self._tracked_vehicles = {}  # Tracking persistente
+        if not hasattr(self, '_vehicle_id_counter'):
+            self._vehicle_id_counter = 0
+        
+        self._reproduction_frame_skip += 1
+        
+        # Detectar cada 3 frames, pero mantener tracking en todos los frames
+        if self._reproduction_frame_skip % 3 == 0:
+            # Detección rápida con resolución reducida
+            h, w = frame.shape[:2]
+            small_w, small_h = w // 3, h // 3  # Reducir resolución para velocidad
+            small_frame = cv2.resize(frame, (small_w, small_h))
+            
+            # 🚀 Inicializar detector si no existe
+            if not hasattr(self, 'vehicle_detector'):
+                from src.core.detection.vehicle_detector import VehicleDetector
+                self.vehicle_detector = VehicleDetector(model_path=resource_path("models/yolov8n.pt"))
+                print("🚗 VehicleDetector inicializado para modo reproducción")
+            
+            # Detectar vehículos y actualizar tracking
+            if hasattr(self, 'vehicle_detector'):
+                try:
+                    detections = self.vehicle_detector.detect(small_frame, conf=0.4, draw=False)
+                    
+                    # Actualizar tracking con nuevas detecciones
+                    current_vehicles = {}
+                    for detection in detections:
+                        x1, y1, x2, y2, cls_id = detection[:5]
+                        
+                        # Solo vehículos (coches, buses, camiones)
+                        if cls_id in [2, 5, 7]:
+                            # Escalar coordenadas al tamaño original
+                            scale_x, scale_y = w / small_w, h / small_h
+                            x1s, y1s = int(x1 * scale_x), int(y1 * scale_y)
+                            x2s, y2s = int(x2 * scale_x), int(y2 * scale_y)
+                            
+                            center_x = (x1s + x2s) // 2
+                            center_y = (y1s + y2s) // 2
+                            
+                            # Buscar vehículo existente cercano o crear nuevo
+                            vehicle_id = None
+                            min_distance = float('inf')
+                            
+                            for existing_id, existing_data in self._tracked_vehicles.items():
+                                ex_center = existing_data['center']
+                                distance = ((center_x - ex_center[0])**2 + (center_y - ex_center[1])**2)**0.5
+                                if distance < 80 and distance < min_distance:  # 80 pixeles de tolerancia
+                                    vehicle_id = existing_id
+                                    min_distance = distance
+                            
+                            # Si no se encontró vehículo cercano, crear nuevo
+                            if vehicle_id is None:
+                                vehicle_id = self._vehicle_id_counter
+                                self._vehicle_id_counter += 1
+                            
+                            # 🚗 VERIFICACIÓN INTELIGENTE: Solo parachoques delantero (parte inferior frontal)
+                            # Simular perspectiva real: el punto crítico es la parte delantera del vehículo
+                            front_bumper_x = center_x  # Centro horizontal
+                            front_bumper_y = y2s - 10   # Parte inferior del cuadro (parachoques)
+                            
+                            in_polygon = False
+                            if self.polygon_points and len(self.polygon_points) >= 3:
+                                # Verificar si el PARACHOQUES DELANTERO está en área restrictiva
+                                in_polygon = cv2.pointPolygonTest(
+                                    np.array(self.polygon_points, np.int32), 
+                                    (front_bumper_x, front_bumper_y), False) >= 0
+                            
+                            # Actualizar información del vehículo
+                            current_vehicles[vehicle_id] = {
+                                'bbox': (x1s, y1s, x2s, y2s),
+                                'center': (center_x, center_y),
+                                'cls_id': cls_id,
+                                'in_polygon': in_polygon,
+                                'last_seen': self._reproduction_frame_skip
+                            }
+                    
+                    # Mantener vehículos que se vieron recientemente (máximo 6 frames sin ver)
+                    for vehicle_id, vehicle_data in list(self._tracked_vehicles.items()):
+                        if (self._reproduction_frame_skip - vehicle_data['last_seen']) <= 6:
+                            if vehicle_id not in current_vehicles:
+                                current_vehicles[vehicle_id] = vehicle_data
+                    
+                    # Actualizar tracking
+                    self._tracked_vehicles = current_vehicles
+                    
+                except Exception as e:
+                    # Silenciar errores para mantener fluidez
+                    pass
+        
+        # 🎯 DIBUJAR CUADROS ESTABLES (siempre, usando tracking)
+        for vehicle_id, vehicle_data in self._tracked_vehicles.items():
+            x1s, y1s, x2s, y2s = vehicle_data['bbox']
+            cls_id = vehicle_data['cls_id']
+            in_polygon = vehicle_data['in_polygon']
+            
+            # 🎯 REGLAS DE COLORES DE CUADROS:
+            if in_polygon and current_state == "red":
+                # 🔴 CUADRO ROJO: PARACHOQUES en área + rojo = INFRACCIÓN REAL
+                box_color = (0, 0, 255)
+                label_text = "INFRACCION"
+                text_color = (255, 255, 255)
+                
+                # 🚨 Marcar punto crítico del parachoques
+                front_x, front_y = (x1s + x2s) // 2, y2s - 10
+                cv2.circle(frame_display, (front_x, front_y), 8, (0, 0, 255), -1)
+            
+            else:
+                # 🟢 CUADRO VERDE: Fuera del área
+                box_color = (0, 255, 0)
+                label_text = "NORMAL"
+                text_color = (0, 0, 0)
+            
+            # Dibujar cuadro estable
+            cv2.rectangle(frame_display, (x1s, y1s), (x2s, y2s), box_color, 2)
+            
+            # Etiqueta del vehículo
+            vehicle_label = "CAR" if cls_id == 2 else "BUS" if cls_id == 5 else "TRUCK"
+            cv2.putText(frame_display, vehicle_label, (x1s, y1s - 25),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, box_color, 2)
+            
+            # Estado de la detección
+            cv2.putText(frame_display, label_text, (x1s, y1s - 5),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 2)
         semaforo_text = f"Semaforo: {current_state.upper()}"
         
         # Color según estado
@@ -3088,59 +3076,37 @@ class VideoPlayerOpenCV:
         
         # Mostrar estado del semáforo
         text_size = cv2.getTextSize(semaforo_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 3)[0]
-        cv2.rectangle(frame_with_cars, 
-                    (5, 5), 
-                    (text_size[0] + 20, 40), 
-                    bg_color, -1)
-        cv2.putText(frame_with_cars, semaforo_text, 
-                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, 
-                    text_color, 3)
+        cv2.rectangle(frame_display, (5, 5), (text_size[0] + 20, 40), bg_color, -1)
+        cv2.putText(frame_display, semaforo_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, text_color, 3)
         
-        # Indicador de modo optimizado
-        cv2.putText(frame_with_cars, "MODO OPTIMIZADO", 
-                    (frame_with_cars.shape[1] - 250, 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, 
-                    (0, 165, 255), 2)
+        # Indicador de modo
+        cv2.putText(frame_display, "MODO REPRODUCCION", 
+                    (frame_display.shape[1] - 300, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
         
-        # Indicador de modo nocturno si es el caso
-        if is_night:
-            cv2.putText(frame_with_cars, "MODO NOCTURNO", 
-                        (frame_with_cars.shape[1] - 250, 60), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, 
-                        (0, 255, 255), 2)
-        
-        # Mostrar el frame anotado
-        bgr_img = self.resize_and_letterbox(frame_with_cars)
+        # Mostrar el frame con overlay
+        bgr_img = self.resize_and_letterbox(frame_display)
         rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
         imgtk = ImageTk.PhotoImage(Image.fromarray(rgb_img))
         self.video_label.config(image=imgtk)
         self.video_label.image = imgtk
         
-        # Métricas y siguiente frame
+        # Métricas básicas
+        if not hasattr(self, 'last_time'):
+            self.last_time = time.time()
+        if not hasattr(self, 'fps_calc'):
+            self.fps_calc = 30.0
+        
         dt = time.time() - self.last_time
         self.last_time = time.time()
         if dt > 0:
-            alpha = 0.9
-            inst_fps = 1.0 / dt
-            self.fps_calc = alpha * self.fps_calc + (1 - alpha) * inst_fps
-
-        # Actualizar métricas
-        process = psutil.Process(os.getpid())
-        mem_mb = process.memory_info().rss / (1024 * 1024)
-        dev = "GPU" if self.using_gpu else "CPU"
-        mode = "NOCHE" if is_night else "DÍA"
-        info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | {mode} | OPTIMIZADO"
-        self.info_label.config(text=info_text)
+            self.fps_calc = 0.9 * self.fps_calc + 0.1 * (1.0 / dt)
         
-        # Asegurarse que las etiquetas estén visibles
-        self.timestamp_label.lift()
-        self.avenue_label.lift()
-        self.lighting_indicator_label.lift()
-        self.current_video_label.lift()
-        self.system_info_label.lift()
-        self.info_label.lift()
+        # Info básica
+        self.info_label.config(text=f"REPRODUCCIÓN | FPS: {self.fps_calc:.1f}")
         
-        self._after_id = self.parent.after(10, self.update_frames_optimized)
+        # Continuar reproducción
+        self._after_id = self.parent.after(33, self.update_frames_optimized)  # ~30 FPS
 
     def _validate_detection_quality(self, detection_data):
         """Valida la calidad de una detección basada en múltiples factores"""
@@ -4582,15 +4548,15 @@ class VideoPlayerOpenCV:
                 # Calcular brillo promedio general
                 overall_brightness = np.mean(brightness_values)
                 
-                # UMBRAL CRÍTICO: 90 - SINCRONIZADO CON PREPROCESSING
-                is_night = overall_brightness < 90
+                # UMBRAL CRÍTICO: 60 - SINCRONIZADO CON PREPROCESSING (RESTRICTIVO)
+                is_night = overall_brightness < 60
                 
                 # Actualizar indicador visual en la UI
                 self._update_lighting_indicator(is_night, overall_brightness)
                 
                 print(f"🌙 ANÁLISIS COMPLETADO:")
                 print(f"   📊 Brillo promedio: {overall_brightness:.1f}/255")
-                print(f"   🌓 Umbral nocturno: 90")
+                print(f"   🌓 Umbral nocturno: 60 (RESTRICTIVO)")
                 print(f"   🎯 Resultado: {'NOCTURNO' if is_night else 'DIURNO'}")
                 
                 # Guardar resultado para usar en el preprocesamiento

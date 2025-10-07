@@ -758,9 +758,15 @@ def get_reader():
     """Inicializa el lector de PaddleOCR si no existe"""
     global paddle_reader
     if paddle_reader is None:
-        print("Inicializando PaddleOCR...")
-        # PaddleOCR 3.2+ - parámetros simplificados
-        paddle_reader = PaddleOCR(lang='es')
+        print("⚡ Inicializando PaddleOCR optimizado...")
+        start_time = time.time()
+        # PaddleOCR 3.2+ con configuración optimizada para velocidad
+        paddle_reader = PaddleOCR(
+            lang='es',
+            use_angle_cls=False  # Desactivar clasificación de ángulo para velocidad
+        )
+        init_time = time.time() - start_time
+        print(f"⚡ PaddleOCR inicializado en {init_time:.1f}s")
     return paddle_reader
 
 def preprocess_plate_image(plate_img):

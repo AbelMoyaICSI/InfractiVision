@@ -6,11 +6,22 @@ import os
 import getpass
 import socket
 import sys
+import threading
+import time
 
 from src.gui.app_manager import AppManager
 from src.path_helper import resource_path  # <-- usamos el helper
 
-
+# Precarga de PaddleOCR en background
+def preload_paddle_ocr():
+    """Precarga PaddleOCR en background para inicio más rápido"""
+    try:
+        print("⚡ Precargando PaddleOCR en background...")
+        from src.core.ocr.recognizer import get_reader
+        get_reader()  # Esto inicializa PaddleOCR
+        print("✅ PaddleOCR precargado exitosamente")
+    except Exception as e:
+        print(f"⚠️ Error precargando PaddleOCR: {e}")
 
 def get_config_path() -> str:
     """
@@ -74,6 +85,10 @@ def main():
     except Exception:
         pass
 
+    # Iniciar precarga de PaddleOCR en background
+    paddle_thread = threading.Thread(target=preload_paddle_ocr, daemon=True)
+    paddle_thread.start()
+    
     # Instanciar gestor de la app
     app = AppManager(root, user_id=user_id, device_id=device_id)
 

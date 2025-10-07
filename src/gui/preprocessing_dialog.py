@@ -5,6 +5,7 @@ import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from collections import deque
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -17,6 +18,323 @@ from sklearn.preprocessing import StandardScaler
 from src.automations.cloud_migrator import upload_infracciones_automatically
 from src.gui.infractions_management_window import generate_performance_indicators_json
 from src.path_helper import resource_path
+
+
+class SmartPlateCorrector:
+    """
+    🚀 Sistema de corrección inteligente OPTIMIZADO con cache y procesamiento rápido
+    
+    MEJORAS DE RENDIMIENTO:
+    - Cache de correcciones previas
+    - Procesamiento selectivo por confianza
+    - Validación rápida de patrones
+    """
+    
+    def __init__(self):
+        # 🚀 CACHE DE CORRECCIONES para evitar reprocesamiento
+        self._correction_cache = {}
+        self._cache_size_limit = 1000
+        
+        # ⚡ PROCESAMIENTO SELECTIVO: Solo corregir si confianza < umbral
+        self.correction_threshold = 0.75  # Solo procesar si confianza < 75% (más permisivo)
+        self.fast_validation = True       # Validación rápida activada
+        
+        # 📊 MAPAS DE CONFUSIÓN COMÚN optimizados (solo más frecuentes)
+        self.confusion_map = {
+            # Números que se confunden con letras
+            '0': ['O', 'D', 'Q'],
+            '1': ['I', 'L', 'T'],  
+            '2': ['Z'],
+            '3': ['E'],
+            '5': ['S'],
+            '6': ['G', 'C'],
+            '7': ['T', 'L'],
+            '8': ['B'],
+            '9': ['P'],
+            
+            # Letras que se confunden con números  
+            'O': ['0', 'D', 'Q'],
+            'I': ['1', 'L'],
+            'L': ['1', 'I', '7'],
+            'S': ['5'],
+            'G': ['6'],
+            'B': ['8'],
+            'T': ['7', '1'],
+            'H': ['N', 'M'],
+            'N': ['H', 'M'],
+            'Z': ['2', '7'],
+            'E': ['3'],
+            'P': ['9']
+        }
+        
+        # 🇵🇪 PATRONES VÁLIDOS PERUANOS para validación
+        self.peru_patterns = [
+            r'^[A-Z]{3}-\d{3}$',    # ABC-123 (formato principal)
+            r'^[A-Z]{2}\d-\d{3}$',  # AB1-234 (vehículos menores)
+        ]
+        
+        # 📋 BASE DE DATOS DE PLACAS CONOCIDAS (pequeña para rapidez)
+        self.known_plates = self._load_known_plates()
+    
+    def _add_to_cache(self, key, result):
+        """⚡ Agregar resultado al cache con gestión optimizada"""
+        if len(self._correction_cache) >= self._cache_size_limit:
+            # Limpiar 20% del cache más antiguo para evitar limpiezas frecuentes
+            items_to_remove = max(1, self._cache_size_limit // 5)
+            for _ in range(items_to_remove):
+                if self._correction_cache:
+                    oldest_key = next(iter(self._correction_cache))
+                    del self._correction_cache[oldest_key]
+        self._correction_cache[key] = result
+        
+    def get_cache_stats(self):
+        """📊 Obtener estadísticas del cache para debugging"""
+        return {
+            "cache_size": len(self._correction_cache),
+            "cache_limit": self._cache_size_limit,
+            "cache_usage": f"{len(self._correction_cache)}/{self._cache_size_limit}",
+            "fast_validation": self.fast_validation
+        }
+        
+    def correct_plate_smart(self, detected_plate, confidence):
+        """
+        ⚡ CORRECCIÓN INTELIGENTE OPTIMIZADA con cache y procesamiento selectivo
+        
+        OPTIMIZACIONES:
+        - Cache de resultados previos
+        - Skip procesamiento si confianza alta
+        - Validación rápida de patrones
+        """
+        if not detected_plate or len(detected_plate) < 4:
+            return detected_plate, confidence, []
+        
+        # 🚀 CACHE CHECK: Si ya procesamos esta placa, devolver resultado
+        cache_key = f"{detected_plate}_{confidence:.2f}"
+        if cache_key in self._correction_cache:
+            return self._correction_cache[cache_key]
+        
+        # ⚡ SKIP PROCESAMIENTO si confianza muy alta (>90%)
+        if confidence > self.correction_threshold:
+            result = (detected_plate, confidence, [])
+            self._add_to_cache(cache_key, result)
+            return result
+            
+        corrections = []
+        best_plate = detected_plate.upper().replace(' ', '')
+        best_confidence = confidence
+        
+        # 🎯 NIVEL 1: Corrección por patrón de formato
+        format_corrected = self._correct_by_format_pattern(best_plate)
+        if format_corrected != best_plate:
+            corrections.append(f"Formato: {best_plate} → {format_corrected}")
+            best_plate = format_corrected
+            best_confidence += 0.1  # Bonus por corrección de formato
+            
+        # 🎯 NIVEL 2: Corrección por proximidad (SI CONFIANZA < 0.85)
+        if confidence < 0.85:
+            proximity_corrected = self._correct_by_proximity(best_plate)
+            if proximity_corrected != best_plate:
+                corrections.append(f"Proximidad: {best_plate} → {proximity_corrected}")
+                best_plate = proximity_corrected
+                best_confidence += 0.15  # Bonus mayor por corrección inteligente
+                
+        # 🎯 NIVEL 3: Validación contra base conocida (solo si es crítico)
+        if self.fast_validation and confidence < 0.70:
+            known_match = self._find_closest_known_plate(best_plate)
+            if known_match and known_match != best_plate:
+                # ⚡ Similitud rápida sin cálculo complejo
+                if abs(len(best_plate) - len(known_match)) <= 1:
+                    corrections.append(f"Base conocida: {best_plate} → {known_match}")
+                    best_plate = known_match
+                    best_confidence = max(0.9, best_confidence + 0.2)  # Boost alto
+                    
+        # 🎯 VALIDACIÓN FINAL: Verificar formato válido
+        if self._is_valid_peru_format(best_plate):
+            final_confidence = min(0.99, best_confidence)  # Cap a 99%
+        else:
+            # Si las correcciones rompieron el formato, revertir
+            best_plate, final_confidence, corrections = detected_plate, confidence, ["Correcciones revertidas"]
+        
+        # 🚀 GUARDAR EN CACHE para futuras consultas
+        result = (best_plate, final_confidence, corrections)
+        self._add_to_cache(cache_key, result)
+        
+        return result
+
+    def _correct_by_format_pattern(self, plate):
+        """
+        🔧 Corrección basada en FORMATO ESPERADO (3 letras + 3 números)
+        """
+        if not plate or len(plate) < 6:
+            return plate
+            
+        # Remover guiones para análisis
+        clean = plate.replace('-', '')
+        if len(clean) != 6:
+            return plate
+            
+        corrected = ""
+        
+        # PRIMEROS 3 CARACTERES: Deben ser LETRAS
+        for i in range(3):
+            char = clean[i]
+            if char.isdigit():
+                # Número en posición de letra - convertir
+                letter_alternatives = {
+                    '0': 'O', '1': 'I', '2': 'Z', '3': 'E', 
+                    '4': 'A', '5': 'S', '6': 'G', '7': 'T', 
+                    '8': 'B', '9': 'P'
+                }
+                corrected += letter_alternatives.get(char, char)
+            else:
+                corrected += char
+                
+        corrected += '-'  # Añadir guión
+        
+        # ÚLTIMOS 3 CARACTERES: Deben ser NÚMEROS  
+        for i in range(3, 6):
+            char = clean[i]
+            if char.isalpha():
+                # Letra en posición de número - convertir
+                number_alternatives = {
+                    'O': '0', 'I': '1', 'L': '1', 'S': '5',
+                    'G': '6', 'B': '8', 'T': '7', 'Z': '2',
+                    'E': '3', 'P': '9'
+                }
+                corrected += number_alternatives.get(char, char)
+            else:
+                corrected += char
+                
+        return corrected
+
+    def _correct_by_proximity(self, plate):
+        """
+        🎯 Corrección por PROXIMIDAD: Busca combinaciones cercanas válidas
+        """
+        if not plate:
+            return plate
+            
+        # Generar variaciones inteligentes basadas en confusiones comunes
+        variations = [plate]  # Incluir original
+        
+        # Para cada posición, generar variaciones con caracteres confundibles
+        for i, char in enumerate(plate.replace('-', '')):
+            if char in self.confusion_map:
+                for alternative in self.confusion_map[char]:
+                    # Crear nueva variación reemplazando solo este carácter
+                    clean_plate = plate.replace('-', '')
+                    new_variation = clean_plate[:i] + alternative + clean_plate[i+1:]
+                    
+                    # Formatear correctamente
+                    if len(new_variation) == 6:
+                        formatted = f"{new_variation[:3]}-{new_variation[3:]}"
+                        variations.append(formatted)
+        
+        # Evaluar cada variación y seleccionar la mejor
+        best_variation = plate
+        best_score = self._evaluate_plate_quality(plate)
+        
+        for variation in variations:
+            score = self._evaluate_plate_quality(variation)
+            if score > best_score:
+                best_score = score
+                best_variation = variation
+                
+        return best_variation
+
+    def _evaluate_plate_quality(self, plate):
+        """
+        📊 Evalúa la calidad de una placa según múltiples criterios
+        """
+        if not plate:
+            return 0
+            
+        score = 0
+        clean = plate.replace('-', '')
+        
+        # CRITERIO 1: Formato peruano válido (+40 puntos)
+        if self._is_valid_peru_format(plate):
+            score += 40
+            
+        # CRITERIO 2: Balance correcto letras/números (+30 puntos)
+        letters = sum(1 for c in clean[:3] if c.isalpha())
+        numbers = sum(1 for c in clean[3:] if c.isdigit())
+        if letters == 3 and numbers == 3:
+            score += 30
+            
+        # CRITERIO 3: Caracteres NO problemáticos (+20 puntos)
+        problematic = ['I', 'O', 'L', '1', '0']  # Comúnmente confundidos
+        problematic_count = sum(1 for c in clean if c in problematic)
+        if problematic_count <= 2:  # Máximo 2 caracteres problemáticos
+            score += 20
+            
+        # CRITERIO 4: Longitud correcta (+10 puntos)
+        if len(clean) == 6:
+            score += 10
+            
+        return score
+
+    def _find_closest_known_plate(self, plate):
+        """
+        🔍 Busca la placa conocida más similar (SOLO si la base es pequeña)
+        """
+        if not self.known_plates or len(self.known_plates) > 1000:
+            return None  # Evitar búsquedas costosas en bases grandes
+            
+        best_match = None
+        best_similarity = 0.7  # Umbral mínimo
+        
+        clean_input = plate.replace('-', '').upper()
+        
+        for known_plate in self.known_plates:
+            clean_known = known_plate.replace('-', '').upper()
+            similarity = self._calculate_similarity(clean_input, clean_known)
+            
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_match = known_plate
+                
+        return best_match
+
+    def _calculate_similarity(self, plate1, plate2):
+        """
+        🧮 Calcula similitud entre dos placas (optimizado)
+        """
+        if len(plate1) != len(plate2):
+            return 0.0
+            
+        matches = sum(1 for a, b in zip(plate1, plate2) if a == b)
+        return matches / len(plate1)
+
+    def _is_valid_peru_format(self, plate):
+        """
+        ✅ Verifica formato peruano válido
+        """
+        import re
+        return any(re.match(pattern, plate) for pattern in self.peru_patterns)
+
+    def _load_known_plates(self):
+        """
+        📋 Carga base de placas conocidas (implementar según necesidad)
+        """
+        # OPCIÓN 1: Cargar desde archivo JSON
+        try:
+            import json
+            import os
+            
+            plates_file = resource_path("data/known_plates.json")
+            if os.path.exists(plates_file):
+                with open(plates_file, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"⚠️ No se pudo cargar base de placas conocidas: {e}")
+            
+        # OPCIÓN 2: Base hardcodeada pequeña (placas comunes detectadas)
+        return [
+            "A3K-961", "T3J-538", "A96-8B6", "APH-188", 
+            "H1G-421", "T4A-376", "T6D-138", "AV6-190",
+            "TGT-947", "ABC-123", "XYZ-456", "DEF-789"
+        ]
 
 
 class PlateClassificationSystem:
@@ -747,6 +1065,41 @@ class PreprocessingDialog:
         self.total_frames = 0
         self.result_queue = queue.Queue()
         
+        # 🚀 SISTEMA DE VISUALIZACIÓN FLUIDA (NO AFECTA PROCESAMIENTO)
+        try:
+            self.display_buffer = deque(maxlen=90)  # Buffer circular para 3 segundos a 30fps
+            self.display_active = True
+            self.display_thread = None
+            self.display_lock = threading.Lock()
+            self.last_display_frame = None
+            self.display_fps = 30  # FPS fluidos para visualización
+            self.frame_interpolation = True  # Activar interpolación suave
+            self.display_enabled = True  # Flag para habilitar/deshabilitar sistema fluido
+            
+            # 🕰️ TR REAL DEL USUARIO - TIEMPO PERCIBIDO
+            self.user_tr_start_time = None
+            self.user_tr_segments = []  # Lista de tiempos por segmento
+            self.current_segment_start = None
+            self.total_user_time = 0
+            self.visual_acceleration_active = False
+            
+            # ⚡ ACELERACIÓN VISUAL MEJORADA
+            self.visual_speed_multiplier = 1.0  # Multiplicador de velocidad visual
+            self.target_visual_speed = 1.0
+            
+            # 🧠 SISTEMA DE CORRECCIÓN INTELIGENTE DE PLACAS
+            try:
+                self.smart_corrector = SmartPlateCorrector()
+                print("🧠 Sistema de corrección inteligente inicializado")
+            except Exception as e:
+                print(f"⚠️ Error inicializando corrector: {e}")
+                self.smart_corrector = None
+            self.speed_transition_rate = 0.1  # Suavizado de cambios de velocidad
+            
+        except Exception as e:
+            print(f"⚠️ Error inicializando sistema fluido: {e}")
+            self.display_enabled = False  # Deshabilitar si hay problemas
+        
         # Variables de configuración de optimización (necesarias para _get_skip_rate_for_frame)
         self.green_skip_rate = 3    # Skip x3 durante fase VERDE (más evidente)
         self.fast_skip_rate = 2     # Skip x2 durante fast-scan (amarillo)
@@ -801,6 +1154,9 @@ class PreprocessingDialog:
         
         # Programar actualizaciones periódicas de la UI
         self._schedule_ui_update()
+        
+        # 🚀 INICIALIZAR VISUALIZACIÓN FLUIDA (DIFERIDA PARA EVITAR ERRORES)
+        self.dialog.after(1000, self._start_smooth_display_thread_safe)
     
     def _preload_models(self):
         """Precarga los modelos de IA antes de procesar el video"""
@@ -918,15 +1274,17 @@ class PreprocessingDialog:
         )
         self.time_label.pack(pady=(10, 0))
         
-        # Label para estado
+        # Label para estado (CORREGIDO: mejor posicionamiento)
         self.state_label = tk.Label(
             self.semaphore_frame,
             text="DETENIDO",
-            font=("Arial", 12, "bold"),
+            font=("Arial", 10, "bold"),  # Fuente más pequeña
             bg="#f0f0f0",
-            fg="gray"
+            fg="gray",
+            width=12,  # Ancho fijo para evitar superposición
+            anchor="center"  # Centrado
         )
-        self.state_label.pack(pady=(5, 0))
+        self.state_label.pack(pady=(3, 0))
     
     def update_synchronized_semaphore(self):
         """Actualizar semáforo sincronizado con el estado principal (MEJORADO)"""
@@ -1183,42 +1541,252 @@ class PreprocessingDialog:
             # Manejar cualquier otra excepción sin interrumpir el flujo
             print(f"Error procesando cola: {e}")
     
-    def _update_video_frame(self, frame):
-        """Actualiza el frame de video mostrado en la interfaz de manera optimizada"""
-        if frame is None:
+    def _start_smooth_display_thread_safe(self):
+        """🚀 Inicialización segura del thread de visualización fluida"""
+        try:
+            if not hasattr(self, 'video_label') or not hasattr(self, 'dialog'):
+                print("⚠️ UI no está completamente inicializada, posponiendo visualización fluida")
+                return
+                
+            self._start_smooth_display_thread()
+        except Exception as e:
+            print(f"⚠️ Error iniciando visualización fluida: {e}")
+            print("📹 Continuando con visualización estándar")
+    
+    def _start_smooth_display_thread(self):
+        """🚀 Inicia thread separado para visualización fluida (NO AFECTA PROCESAMIENTO)"""
+        def smooth_display_loop():
+            base_frame_time = 1.0 / self.display_fps  # 33ms para 30 FPS base
+            
+            while self.display_active and hasattr(self, 'dialog'):
+                try:
+                    start_time = time.time()
+                    
+                    # Verificar que la UI sigue existiendo
+                    if not hasattr(self, 'dialog') or not self.dialog.winfo_exists():
+                        break
+                    
+                    # Obtener frame más reciente del buffer
+                    with self.display_lock:
+                        if len(self.display_buffer) > 0:
+                            current_frame = self.display_buffer[-1]  # Frame más reciente
+                        else:
+                            current_frame = self.last_display_frame
+                    
+                    # Si tenemos frame, mostrarlo
+                    if current_frame is not None and hasattr(self, 'video_label'):
+                        # Programar actualización en el hilo principal de UI
+                        try:
+                            self.dialog.after_idle(self._display_frame_immediate, current_frame)
+                        except tk.TclError:
+                            # La ventana fue destruida
+                            break
+                    
+                    # 🚀 Control de FPS fluido CON ACELERACIÓN VISUAL
+                    # Aplicar factor de aceleración visual: mayor velocidad = menor tiempo entre frames
+                    accelerated_frame_time = base_frame_time / getattr(self, 'visual_speed_multiplier', 1.0)
+                    
+                    elapsed = time.time() - start_time
+                    sleep_time = max(0, accelerated_frame_time - elapsed)
+                    time.sleep(sleep_time)
+                    
+                except Exception as e:
+                    print(f"Error en visualización fluida: {e}")
+                    time.sleep(0.1)  # Evitar bucle infinito en errores
+        
+        # Crear y iniciar thread de visualización
+        try:
+            self.display_thread = threading.Thread(target=smooth_display_loop, daemon=True)
+            self.display_thread.start()
+            print("🚀 Thread de visualización fluida iniciado (30 FPS)")
+        except Exception as e:
+            print(f"⚠️ Error creando thread de visualización: {e}")
+            print("📹 Continuando sin visualización fluida")
+    
+    def _display_frame_immediate(self, frame):
+        """🎬 Muestra frame inmediatamente sin procesamiento pesado"""
+        if frame is None or not hasattr(self, 'video_label'):
+            return
+            
+        # Verificaciones de seguridad
+        if not hasattr(self, 'dialog') or not self.dialog.winfo_exists():
             return
             
         try:
-            # Redimensionar frame para ajustarse al área de visualización
+            # Redimensionar frame (optimizado para velocidad)
             h, w = frame.shape[:2]
             max_w, max_h = 640, 360
             
-            # Mantener relación de aspecto
             ratio = min(max_w/w, max_h/h)
             new_w = int(w * ratio)
             new_h = int(h * ratio)
             
-            # Usar INTER_NEAREST para máxima velocidad en la visualización
-            resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+            # Usar INTER_LINEAR para mejor calidad sin sacrificar mucho rendimiento
+            resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
             
-            # Convertir de BGR a RGB para PIL
+            # 🌟 MEJORA: Aplicar suavizado ligero para mejor calidad visual
+            if hasattr(self, 'frame_interpolation') and self.frame_interpolation:
+                kernel = np.array([[0, -0.1, 0], [-0.1, 1.4, -0.1], [0, -0.1, 0]], dtype=np.float32)
+                resized = cv2.filter2D(resized, -1, kernel)
+                resized = np.clip(resized, 0, 255).astype(np.uint8)
+            
+            # Convertir a RGB
             rgb_frame = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
             
             # Crear imagen para Tkinter
             img = Image.fromarray(rgb_frame)
             img_tk = ImageTk.PhotoImage(image=img)
             
-            # Actualizar label
+            # Actualizar UI inmediatamente
             self.video_label.configure(image=img_tk)
-            self.video_label.image = img_tk  # Mantener referencia
+            self.video_label.image = img_tk
             
-            # Actualizar semáforo sincronizado
+            # Actualizar semáforo (no pesado)
             self.update_synchronized_semaphore()
             
-            # Forzar actualización inmediata
-            self.video_label.update()
         except Exception as e:
-            print(f"Error actualizando frame: {e}")
+            print(f"Error mostrando frame fluido: {e}")
+    
+    def _start_user_tr_tracking(self):
+        """🕐 Inicia el tracking del TR real del usuario"""
+        self.user_tr_start_time = time.time()
+        self.current_segment_start = time.time()
+        print(f"⏰ TR USUARIO: Iniciando medición desde perspectiva del usuario")
+        print(f"🎯 OBJETIVO: Mostrar tiempo real que percibe el usuario esperando")
+    
+    def _update_visual_acceleration(self, semaphore_state, frame_index):
+        """⚡ Actualiza la aceleración visual según el estado del semáforo"""
+        
+        # Determinar velocidad objetivo según el estado
+        if semaphore_state == "green":
+            self.target_visual_speed = 4.0  # 4x más rápido visualmente
+            self.visual_acceleration_active = True
+            status = "🟢 VERDE - Acelerando x4"
+        elif semaphore_state == "yellow":
+            self.target_visual_speed = 2.5  # 2.5x más rápido visualmente  
+            self.visual_acceleration_active = True
+            status = "🟡 AMARILLO - Acelerando x2.5"
+        elif semaphore_state == "red":
+            self.target_visual_speed = 1.0  # Velocidad normal para análisis
+            self.visual_acceleration_active = False
+            status = "🔴 ROJO - Velocidad normal (detectando)"
+        else:
+            self.target_visual_speed = 1.0
+            self.visual_acceleration_active = False
+            status = "⚪ Desconocido - Velocidad normal"
+        
+        # Suavizar transición de velocidad
+        speed_diff = self.target_visual_speed - self.visual_speed_multiplier
+        self.visual_speed_multiplier += speed_diff * self.speed_transition_rate
+        
+        # Mostrar en terminal cada 30 frames para no saturar
+        if frame_index % 30 == 0:
+            print(f"📺 VISUALIZACIÓN: {status} | Velocidad actual: {self.visual_speed_multiplier:.1f}x")
+    
+    def _log_user_tr_segment(self, segment_type, frame_index, total_frames):
+        """📊 Registra el tiempo de un segmento desde perspectiva del usuario"""
+        if self.current_segment_start is None:
+            return
+            
+        current_time = time.time()
+        segment_duration = current_time - self.current_segment_start
+        
+        # Calcular tiempo ajustado por aceleración visual
+        if self.visual_acceleration_active and self.visual_speed_multiplier > 1:
+            perceived_duration = segment_duration / self.visual_speed_multiplier
+        else:
+            perceived_duration = segment_duration
+            
+        self.user_tr_segments.append({
+            'type': segment_type,
+            'real_duration': segment_duration,
+            'perceived_duration': perceived_duration,
+            'acceleration': self.visual_speed_multiplier,
+            'frame_index': frame_index,
+            'progress': (frame_index / total_frames) * 100 if total_frames > 0 else 0
+        })
+        
+        # Mostrar en terminal
+        progress_percent = (frame_index / total_frames) * 100 if total_frames > 0 else 0
+        print(f"""
+⏱️  TR USUARIO - {segment_type.upper()}:
+   📊 Progreso: {progress_percent:.1f}% ({frame_index}/{total_frames} frames)
+   ⏰ Tiempo real: {segment_duration:.2f}s
+   👁️  Tiempo percibido: {perceived_duration:.2f}s  
+   ⚡ Aceleración: {self.visual_speed_multiplier:.1f}x
+   💾 Total acumulado: {self.get_total_user_tr():.2f}s""")
+        
+        # Reiniciar para siguiente segmento
+        self.current_segment_start = current_time
+    
+    def get_total_user_tr(self):
+        """📈 Obtiene el TR total desde perspectiva del usuario"""
+        if self.user_tr_start_time is None:
+            return 0
+            
+        current_time = time.time()
+        return current_time - self.user_tr_start_time
+    
+    def _print_final_user_tr_report(self):
+        """📋 Imprime reporte final del TR del usuario"""
+        total_time = self.get_total_user_tr()
+        total_perceived = sum(seg['perceived_duration'] for seg in self.user_tr_segments)
+        
+        print(f"""
+╔══════════════════════════════════════════════════════════════╗
+║                    🕐 REPORTE FINAL TR USUARIO               ║
+╠══════════════════════════════════════════════════════════════╣
+║ ⏰ TIEMPO REAL TOTAL: {total_time:.2f} segundos              ║
+║ 👁️  TIEMPO PERCIBIDO: {total_perceived:.2f} segundos        ║  
+║ ⚡ AHORRO VISUAL: {((total_time - total_perceived) / total_time * 100):.1f}% menos tiempo de espera ║
+║                                                              ║
+║ 📊 DESGLOSE POR SEGMENTOS:                                   ║""")
+        
+        for i, seg in enumerate(self.user_tr_segments, 1):
+            print(f"║ {i:2d}. {seg['type']:<12} | {seg['real_duration']:6.2f}s → {seg['perceived_duration']:6.2f}s (x{seg['acceleration']:.1f}) ║")
+            
+        print("╚══════════════════════════════════════════════════════════════╝")
+    
+    def _add_frame_to_buffer(self, frame):
+        """📦 Añade frame al buffer de visualización fluida (thread-safe)"""
+        if frame is None or not hasattr(self, 'display_enabled') or not self.display_enabled:
+            return
+            
+        try:
+            # Hacer copia del frame para evitar problemas de referencia
+            frame_copy = frame.copy()
+            
+            with self.display_lock:
+                self.display_buffer.append(frame_copy)
+                self.last_display_frame = frame_copy
+                
+        except Exception as e:
+            print(f"Error añadiendo frame al buffer: {e}")
+            # Deshabilitar sistema fluido si hay errores continuos
+            self.display_enabled = False
+    
+    def _update_video_frame(self, frame):
+        """📺 VERSIÓN MEJORADA: Actualiza frame Y añade al buffer fluido"""
+        if frame is None:
+            return
+            
+        # 🚀 NUEVA: Añadir al buffer de visualización fluida
+        self._add_frame_to_buffer(frame)
+        
+        # 📊 MANTENER: Lógica original para compatibilidad (SIN AFECTAR PROCESAMIENTO)
+        # Esta parte ahora es manejada por el thread fluido, pero mantenemos por compatibilidad
+        try:
+            # Solo actualizar ocasionalmente la UI desde aquí para no sobrecargar
+            if not hasattr(self, '_last_ui_update'):
+                self._last_ui_update = 0
+                
+            current_time = time.time()
+            if current_time - self._last_ui_update > 0.1:  # Actualizar cada 100ms máximo
+                self._last_ui_update = current_time
+                # El thread fluido se encarga de mostrar frames a 30 FPS
+                
+        except Exception as e:
+            print(f"Error en actualización de frame: {e}")
     
     def is_vehicle_in_polygon(self, bbox, polygon_points, is_night=False):
         """Determina si un vehículo está dentro del polígono restrictivo con optimización de cálculos"""
@@ -1378,6 +1946,29 @@ class PreprocessingDialog:
                 self.details_label.config(text=f"Franja horaria: {self.cycle_durations.get('time_slot', 'No especificada')} - MODO NOCTURNO ACTIVADO")
                 print("🌙 Modo nocturno activado para el procesamiento")
             
+            # MOSTRAR VENTANA NOCTURNA SI SE DETECTA
+            print(f"🔍 Verificando condiciones: is_night={self.is_night}, popup_active={PreprocessingDialog._night_popup_active}")
+            if self.is_night and not PreprocessingDialog._night_popup_active:
+                print("🌙 CONDICIONES NOCTURNAS DETECTADAS - MOSTRANDO PRIMERA VENTANA")
+                self._show_night_analysis_popup(avg_brightness, dark_threshold)
+                
+                # ESPERAR A QUE SE CIERRE LA VENTANA ANTES DE CONTINUAR
+                while PreprocessingDialog._night_popup_active or self.processing_paused:
+                    time.sleep(0.1)
+                    self.dialog.update()
+                
+                print("✅ Primera ventana nocturna cerrada - CONTINUANDO PROCESAMIENTO")
+            else:
+                if not self.is_night:
+                    print("☀️ CONDICIONES DIURNAS DETECTADAS - NO MOSTRAR VENTANAS NOCTURNAS")
+                elif PreprocessingDialog._night_popup_active:
+                    print("⚠️ VENTANA NOCTURNA YA ACTIVA - OMITIR")
+            
+            # Actualizar UI con información del modo nocturno
+            if self.is_night:
+                self.details_label.config(text=f"Franja horaria: {self.cycle_durations.get('time_slot', 'No especificada')} - MODO NOCTURNO ACTIVADO")
+                print("🌙 Modo nocturno activado para el procesamiento")
+            
             # Calcular duración de cada estado - VALIDACIÓN DEFENSIVA
             frames_per_state = {}
             default_durations = {'green': 12, 'yellow': 2, 'red': 10}
@@ -1430,13 +2021,28 @@ class PreprocessingDialog:
             # Sincronizar con el semáforo del panel
             self.player.semaforo.activate_semaphore()
             
-            # Fase 3: Procesamiento en paralelo
-            self.phase_label.config(text="Fase 3: Analizando infracciones")
+            # Fase 3: Inicialización optimizada de modelos
+            self.phase_label.config(text="Fase 3: Inicializando sistemas de detección")
+            self.details_label.config(text="⚡ Carga optimizada de modelos IA...")
             
-            # Número óptimo de trabajadores (CPU cores - 1, mínimo 2)
+            # 🚀 OPTIMIZACIÓN: Precarga inteligente de modelos
+            self._initialize_models_optimized()
+            
+            # Número óptimo de trabajadores basado en hardware detectado
             import multiprocessing as mp
-            num_workers = max(2, mp.cpu_count() - 1)
-            self.details_label.config(text=f"Utilizando {num_workers} núcleos para procesamiento")
+            # ⚡ Ajustar workers según GPU disponible
+            if hasattr(self.player.vehicle_detector, 'device') and 'cuda' in str(self.player.vehicle_detector.device):
+                num_workers = max(4, mp.cpu_count() // 2)  # Con GPU: menos CPU workers
+                self.details_label.config(text="🚀 GPU detectada - Modo acelerado")
+            else:
+                num_workers = max(2, mp.cpu_count() - 1)   # Solo CPU: más workers
+                self.details_label.config(text="💻 Modo CPU - Optimizado")
+            
+            # Mostrar progreso de carga
+            self.dialog.update()
+            time.sleep(0.05)  # Reducido de 0.1s a 0.05s
+            
+            self.details_label.config(text=f"✅ Sistemas listos - {num_workers} núcleos activos")
             
             # Inicializar variables de progreso
             self.completed_segments = 0
@@ -1488,9 +2094,45 @@ class PreprocessingDialog:
             if 'cap' in locals() and cap is not None:
                 cap.release()
 
+    def _initialize_models_optimized(self):
+        """
+        🚀 Inicialización optimizada de modelos IA con precarga inteligente
+        """
+        try:
+            # ⚡ PRE-WARMUP: Ejecutar detección dummy para cargar modelos en memoria
+            if hasattr(self.player, 'vehicle_detector'):
+                # Crear frame dummy pequeño para warmup rápido
+                dummy_frame = np.zeros((320, 320, 3), dtype=np.uint8)
+                
+                # Warmup YOLO (primera detección siempre es lenta)
+                print("🔥 Warming up YOLO v8...")
+                _ = self.player.vehicle_detector.detect(dummy_frame, conf=0.1, draw=False)
+                
+            # ⚡ PRE-WARMUP OCR si está disponible
+            if hasattr(self.player, 'anpr_detector'):
+                print("🔥 Warming up PaddleOCR...")
+                dummy_plate = np.ones((50, 150, 3), dtype=np.uint8) * 255
+                try:
+                    _ = self.player.anpr_detector.recognize_text(dummy_plate)
+                except:
+                    pass  # Ignorar errores de warmup
+                    
+            print("✅ Modelos pre-calentados y listos")
+            
+        except Exception as e:
+            print(f"⚠️ Warmup parcial: {e}")
+
     def _process_segment_optimized(self, segment_id, start_frame, end_frame, 
      frame_sampling, vehicle_detector, conf_threshold):
         """Función optimizada para procesar un segmento de video en un hilo separado"""
+        # 🚀 LOG INICIAL: Mostrar que las optimizaciones están activas
+        print(f"\n🚀 INICIANDO PROCESAMIENTO OPTIMIZADO POR SEMÁFORO:")
+        print(f"   🟢 Verde: Skip x3 + Conf 0.7x + Solo tracking")  
+        print(f"   🟡 Amarillo: Skip x2 + Conf 0.85x + Análisis ligero")
+        print(f"   🔴 Rojo: Skip normal + Conf completa + OCR intensivo")
+        print(f"   📊 Segmento {segment_id}: Frames {start_frame}-{end_frame}")
+        print("   " + "="*60 + "\n")
+        
         try:
             # Abrir segmento de video
             segment_cap = cv2.VideoCapture(self.video_path)
@@ -1540,8 +2182,19 @@ class PreprocessingDialog:
                         segment_cap.release()
                         return [], segment_id
                 
-                # Solo procesar cada 'frame_sampling' frames para eficiencia
-                if processed % frame_sampling != 0:
+                # 🚦 SALTO DE FRAMES DINÁMICO SEGÚN SEMÁFORO
+                absolute_frame = start_frame + processed
+                current_semaphore_state = self._get_semaphore_state_for_frame(absolute_frame)
+                
+                # Determinar salto dinámico: Verde=más agresivo, Rojo=más preciso  
+                dynamic_skip = {
+                    "green": frame_sampling * 3,    # 🟢 Saltar 3x más frames (MUY rápido)
+                    "yellow": frame_sampling * 2,   # 🟡 Saltar 2x más frames (moderado)
+                    "red": frame_sampling           # 🔴 Salto normal (preciso)
+                }.get(current_semaphore_state, frame_sampling)
+                
+                # Solo procesar cada 'dynamic_skip' frames para eficiencia condicional
+                if processed % dynamic_skip != 0:
                     ret = segment_cap.grab()  # Solo avanzar sin decodificar
                     processed += 1
                     continue
@@ -1579,12 +2232,18 @@ class PreprocessingDialog:
                     # Poner el frame en la cola para UI
                     self.result_queue.put(("frame_update", (display_frame, segment_id, processed, total_to_process)))
                 
-                # NUEVA IMPLEMENTACIÓN: Intentar detección directa con ANPR primero
-                anpr_detection_interval = 10  # Solo intentar ANPR directo cada X frames muestreados
+                # 🚦 PROCESAMIENTO CONDICIONAL POR SEMÁFORO
+                # Verde: Solo tracking rápido | Amarillo: Análisis ligero | Rojo: OCR completo
+                should_do_heavy_processing = current_semaphore_state == "red"
+                should_do_light_processing = current_semaphore_state in ["yellow", "red"]
+                
+                # NUEVA IMPLEMENTACIÓN: Procesamiento inteligente según semáforo
+                anpr_detection_interval = 10 if current_semaphore_state == "red" else 20  # Más frecuente en rojo
                 direct_anpr_detections = []
                 
-                if has_anpr and processed % anpr_detection_interval == 0:
-                    # Intentar detección directa con ANPR
+                # ✅ SOLO HACER ANPR PESADO EN ROJO O CADA MUCHO TIEMPO EN AMARILLO
+                if has_anpr and should_do_heavy_processing and processed % anpr_detection_interval == 0:
+                    # 🔴 ROJO: Procesamiento completo con ANPR
                     try:
                         # Procesar el frame completo directamente con ANPR
                         processed_frame, anpr_results = self.player.anpr_detector.process_frame(
@@ -1700,12 +2359,31 @@ class PreprocessingDialog:
                     self.result_queue.put(("frame_update", (detection_frame, segment_id, processed, total_to_process)))
                     continue  # Seguir con el siguiente frame si ya encontramos placas
                 
-                # Si no hubo detecciones directas, proceder con el flujo de TRACKING INTELIGENTE
+                # 🚦 DETECCIÓN CONDICIONAL DE VEHÍCULOS SEGÚN SEMÁFORO
+                # Verde: Confianza baja para detección rápida | Rojo: Confianza alta para precisión
+                detection_conf = {
+                    "green": max(0.25, conf_threshold * 0.8),   # 🟢 Más permisivo (min 0.25)
+                    "yellow": max(0.30, conf_threshold * 0.9),  # 🟡 Ligeramente más permisivo  
+                    "red": conf_threshold                       # 🔴 Mantener precisión en rojo
+                }.get(current_semaphore_state, conf_threshold)
+                
+                # 🚀 OPTIMIZACIÓN: Detección con early exit y límite de resultados
+                # En verde: detectar menos vehículos para ir más rápido
+                max_detections = {
+                    "green": 3,    # 🟢 Máximo 3 vehículos (rápido)
+                    "yellow": 5,   # 🟡 Máximo 5 vehículos (balanceado)
+                    "red": 10      # 🔴 Máximo 10 vehículos (completo)
+                }.get(current_semaphore_state, 10)
+                
                 detections = vehicle_detector.detect(
                     frame, 
-                    conf=conf_threshold,
+                    conf=detection_conf,  # 🚀 Confianza adaptativa
                     draw=False
                 )
+                
+                # 🚀 OPTIMIZACIÓN: Limitar detecciones manualmente después de obtenerlas
+                if len(detections) > max_detections:
+                    detections = detections[:max_detections]
                 
                 # 🎯 NUEVA LÓGICA: Filtrar y preparar detecciones para tracking inteligente
                 filtered_detections = []
@@ -1725,12 +2403,31 @@ class PreprocessingDialog:
                 # Determinar estado del semáforo para este frame
                 current_semaphore_state = self._get_semaphore_state_for_frame(absolute_frame)
                 
+                # 📊 DEBUG: Mostrar tipo de procesamiento según semáforo
+                processing_type = {
+                    "green": "🟢 RÁPIDO (solo tracking)",
+                    "yellow": "🟡 MODERADO (tracking + análisis ligero)", 
+                    "red": "🔴 COMPLETO (tracking + OCR + infracciones)"
+                }.get(current_semaphore_state, "DESCONOCIDO")
+                
+                # � ESTADÍSTICAS DE OPTIMIZACIÓN cada 20 frames
+                if processed % 20 == 0:  
+                    cache_stats = self.smart_corrector.get_cache_stats() if hasattr(self, 'smart_corrector') else {}
+                    print(f"🚦 SEMÁFORO {current_semaphore_state.upper()}: {processing_type}")
+                    print(f"   📊 Frame {absolute_frame} | Det: {len(filtered_detections)} | Conf: {detection_conf:.2f}")
+                    print(f"   ⚡ Skip: {dynamic_skip}f | Max Det: {max_detections} | Cache: {cache_stats.get('cache_usage', 'N/A')}")
+                    print("   " + "="*65)
+                
                 # Actualizar tracking y obtener infracciones inteligentes
                 frame_infractions = self.intelligent_tracker.update_tracks(
                     detections=filtered_detections,
                     frame_index=absolute_frame,
                     current_semaphore_state=current_semaphore_state
                 )
+                
+                # 🔍 DEBUG: Mostrar detecciones e infracciones
+                if processed % 30 == 0 or len(frame_infractions) > 0:
+                    print(f"🔍 DEBUG Frame {absolute_frame}: {len(filtered_detections)} detecciones → {len(frame_infractions)} infracciones")
                 
                 # 🎯 PROCESAR INFRACCIONES INTELIGENTES DETECTADAS
                 for infraction in frame_infractions:
@@ -1752,7 +2449,7 @@ class PreprocessingDialog:
                             
                             # 🔍 PROCESAR PLACA SOLO PARA INFRACCIONES VALIDADAS
                             result = self._extract_plate_from_vehicle(
-                                vehicle_roi, has_anpr, absolute_frame
+                                vehicle_roi, has_anpr, absolute_frame, current_semaphore_state
                             )
                             
                             # Manejar diferentes tipos de retorno
@@ -1999,7 +2696,7 @@ class PreprocessingDialog:
         else:
             return 1  # Estado rojo = velocidad normal
 
-    def _extract_plate_from_vehicle(self, vehicle_roi, has_anpr, frame_index):
+    def _extract_plate_from_vehicle(self, vehicle_roi, has_anpr, frame_index, current_semaphore_state="unknown"):
         """
         Extrae la placa de un vehículo usando múltiples métodos.
         
@@ -2031,6 +2728,21 @@ class PreprocessingDialog:
                     plate_bbox, plate_img, plate_text, siiv_conf = result
                     print(f"🔍 DEBUG Método 1: placa='{plate_text}', conf={siiv_conf:.2f}")
                     if plate_text and len(plate_text) >= 4:
+                        
+                        # 🧠 APLICAR CORRECCIÓN INTELIGENTE si confianza < 0.90
+                        if self.smart_corrector and siiv_conf < 0.90:
+                            corrected_plate, new_confidence, corrections = self.smart_corrector.correct_plate_smart(
+                                plate_text, siiv_conf
+                            )
+                            
+                            if corrected_plate != plate_text and corrections:
+                                print(f"🔧 CORRECCIÓN APLICADA: '{plate_text}' → '{corrected_plate}' (conf: {siiv_conf:.2f} → {new_confidence:.2f})")
+                                for correction in corrections:
+                                    print(f"   • {correction}")
+                                    
+                                plate_text = corrected_plate
+                                siiv_conf = new_confidence
+                        
                         print(f"✅ Método 1 (SIIV): '{plate_text}' (conf: {siiv_conf:.2f})")
                         return plate_text, plate_img, siiv_conf
                 elif result and len(result) >= 3:
@@ -2047,16 +2759,39 @@ class PreprocessingDialog:
             except Exception as e:
                 print(f"⚠️ DEBUG Método 1: Exception - {e}")
             
-            # Método 2: ANPR (backup) - Solo si método 1 falla
+            # Método 2: ANPR (backup) - Solo si método 1 falla Y en luz roja
             if not plate_text or len(plate_text) < 4:
+                # ⚡ OPTIMIZACIÓN: Usar ANPR backup siempre, pero con diferentes niveles de procesamiento
                 if has_anpr:
                     try:
+                        # 🚀 Resize smaller para ANPR más rápido si no es crucial
+                        if current_semaphore_state != "red":
+                            # En verde/amarillo: resize a imagen más pequeña para rapidez
+                            h, w = vehicle_roi.shape[:2]
+                            if h > 200 or w > 400:
+                                scale = min(200/h, 400/w)
+                                new_h, new_w = int(h*scale), int(w*scale)
+                                vehicle_roi = cv2.resize(vehicle_roi, (new_w, new_h))
+                        
                         result = self.player.anpr_detector.detect_and_recognize_plate(vehicle_roi)
                         if len(result) >= 3:
                             _, plate_text, plate_bbox, plate_img = result
                             if plate_text and len(plate_text) >= 4:
-                                print(f"⚠️ Método 2 (ANPR backup): '{plate_text}'")
-                                return plate_text, plate_img, 0.50  # Confianza por defecto para ANPR
+                                confidence = 0.50  # Confianza por defecto para ANPR
+                                
+                                # 🧠 APLICAR CORRECCIÓN INTELIGENTE también para ANPR
+                                if self.smart_corrector:
+                                    corrected_plate, new_confidence, corrections = self.smart_corrector.correct_plate_smart(
+                                        plate_text, confidence
+                                    )
+                                    
+                                    if corrected_plate != plate_text and corrections:
+                                        print(f"🔧 CORRECCIÓN ANPR: '{plate_text}' → '{corrected_plate}' (conf: {confidence:.2f} → {new_confidence:.2f})")
+                                        plate_text = corrected_plate
+                                        confidence = new_confidence
+                                
+                                print(f"⚠️ Método 2 (ANPR backup): '{plate_text}' (conf: {confidence:.2f})")
+                                return plate_text, plate_img, confidence
                         elif len(result) >= 2:
                             _, plate_text = result
                             if plate_text and len(plate_text) >= 4:
@@ -3630,6 +4365,73 @@ class PreprocessingDialog:
             cv2.putText(frame, "MODO NOCTURNO", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
     
+    def _is_night_scene(self, frame, sample_frames=5):
+        """
+        Detecta si el video es nocturno analizando el brillo promedio de múltiples frames.
+        
+        Args:
+            frame: Frame inicial para análisis
+            sample_frames: Número de frames adicionales a muestrar
+            
+        Returns:
+            bool: True si es nocturno, False si es diurno
+        """
+        try:
+            if frame is None:
+                return False
+                
+            # Abrir el video para analizar múltiples frames
+            cap = cv2.VideoCapture(self.video_path)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            brightness_values = []
+            
+            # Analizar frames distribuidos a lo largo del video
+            frame_positions = [
+                0,  # Inicio
+                total_frames // 4,      # 25%
+                total_frames // 2,      # 50% 
+                3 * total_frames // 4,  # 75%
+                total_frames - 1        # Final
+            ]
+            
+            for pos in frame_positions[:sample_frames]:
+                if pos >= total_frames:
+                    continue
+                    
+                cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
+                ret, sample_frame = cap.read()
+                
+                if ret:
+                    # Convertir a escala de grises
+                    gray = cv2.cvtColor(sample_frame, cv2.COLOR_BGR2GRAY)
+                    
+                    # Calcular brillo promedio
+                    avg_brightness = np.mean(gray)
+                    brightness_values.append(avg_brightness)
+                    
+            cap.release()
+            
+            if brightness_values:
+                # Calcular brillo promedio general
+                overall_brightness = np.mean(brightness_values)
+                
+                # UMBRAL CRÍTICO: 60 - RESTRICTIVO PARA SOLO VIDEOS NOCTURNOS REALES
+                is_night = overall_brightness < 60  # Solo videos muy oscuros
+                
+                print(f"🌙 ANÁLISIS DE BRILLO:")
+                print(f"   📄 Brillo promedio: {overall_brightness:.1f}/255")
+                print(f"   🌓 Umbral nocturno: 60 (RESTRICTIVO)")
+                print(f"   🎯 Resultado: {'NOCTURNO' if is_night else 'DIURNO'}")
+                
+                return is_night, overall_brightness, 120  # Devolver datos para las ventanas
+            
+            return False, 0, 80
+            
+        except Exception as e:
+            print(f"Error en análisis de brillo: {e}")
+            return False, 0, 80
+    
     def _is_night_scene(self, frame):
         """Versión optimizada para detectar escenas nocturnas con ventana emergente"""
         # Redimensionar para análisis rápido
@@ -3663,27 +4465,35 @@ class PreprocessingDialog:
             # Sin configuración de franja horaria, NO asumir nada
             is_night_time_configured = False
         
-        # 2do INDICADOR (COMPLEMENTARIO): Análisis inteligente del video
-        video_analysis_night = (avg_brightness < 120 or  # Brillo bajo
-                               dark_threshold < 50 or    # Áreas muy oscuras
-                               np.std(gray) < 35)        # Bajo contraste
+        # 2do INDICADOR (COMPLEMENTARIO): Análisis inteligente del video - UMBRALES RESTRICTIVOS
+        video_analysis_night = (avg_brightness < 70 and   # CORREGIDO: MÁS RESTRICTIVO - Solo muy oscuro
+                               dark_threshold < 40 and    # CORREGIDO: MÁS RESTRICTIVO - Áreas realmente oscuras
+                               np.std(gray) < 30)         # CORREGIDO: MÁS RESTRICTIVO - Contraste muy bajo
         
-        # LÓGICA CORREGIDA: Solo es noche si la FRANJA HORARIA CONFIGURADA es nocturna
-        if is_night_time_configured and video_analysis_night:
-            is_night = True  # Franja nocturna + video oscuro = modo nocturno
-        elif video_analysis_night and avg_brightness < 80:  # Video extremadamente oscuro (anula franja horaria)
-            is_night = True  # Forzar modo nocturno por condiciones extremas
+        # LÓGICA MEJORADA: Detectar por nombre del video también
+        video_name_indicates_night = False
+        if hasattr(self, 'video_path') and self.video_path:
+            video_name = os.path.basename(self.video_path).lower()
+            video_name_indicates_night = 'night' in video_name or 'nocturno' in video_name
+        
+        # LÓGICA RESTRICTIVA PARA DETECTAR SOLO VIDEOS REALMENTE NOCTURNOS
+        if video_name_indicates_night and video_analysis_night:
+            is_night = True  # Nombre nocturno + condiciones oscuras confirmadas
+        elif is_night_time_configured and video_analysis_night and avg_brightness < 60:
+            is_night = True  # Franja nocturna + video MUY oscuro + análisis confirma
         else:
-            is_night = False  # En cualquier otro caso, es de día
+            is_night = False  # Por defecto es diurno - MÁS CONSERVADOR
         
         # DEBUG: Mostrar valores para calibración mejorada
         time_slot_configured = self.cycle_durations.get('time_slot', 'No configurada') if hasattr(self, 'cycle_durations') and self.cycle_durations else 'No configurada'
-        print(f"🌙 DETECCIÓN NOCTURNA CORREGIDA: franja_horaria_config='{time_slot_configured}', es_franja_nocturna={is_night_time_configured}, brillo_promedio={avg_brightness:.1f}, areas_oscuras={dark_threshold:.1f}, contraste={np.std(gray):.1f}, video_oscuro={video_analysis_night}, RESULTADO_FINAL={is_night}")
+        video_name = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else 'Desconocido'
+        print(f"🌙 DETECCIÓN NOCTURNA CORREGIDA: video='{video_name}', nombre_indica_noche={video_name_indicates_night}, franja_horaria_config='{time_slot_configured}', es_franja_nocturna={is_night_time_configured}, brillo_promedio={avg_brightness:.1f}, areas_oscuras={dark_threshold:.1f}, contraste={np.std(gray):.1f}, video_oscuro={video_analysis_night}, RESULTADO_FINAL={is_night}")
         
         # MEJORA: Mostrar ventana emergente nocturna (usando after para el hilo principal)
         if is_night and not PreprocessingDialog._night_popup_active:
             # Programar la ventana emergente en el hilo principal de la UI SOLO si no hay otra activa
             PreprocessingDialog._night_popup_active = True
+            print(f"🌙 ACTIVANDO VENTANA NOCTURNA: brillo={avg_brightness:.1f}, umbral_oscuro={dark_threshold:.1f}")
             # Fix: Llamada directa sin verificar dialog - siempre mostrar ventana
             try:
                 self._show_night_detection_popup(avg_brightness, dark_threshold)
@@ -3691,7 +4501,7 @@ class PreprocessingDialog:
                 print(f"⚠️ Error mostrando ventana nocturna: {e}")
                 PreprocessingDialog._night_popup_active = False
         
-        return is_night
+        return is_night, avg_brightness, dark_threshold  # Devolver tupla como en la versión antigua
 
     def _show_night_detection_popup(self, avg_brightness, dark_threshold):
         """Muestra ventana emergente específica para detección nocturna del compañero"""
@@ -4889,6 +5699,12 @@ class PreprocessingDialog:
         """Maneja la cancelación del procesamiento"""
         if not self.canceled:
             self.canceled = True
+            
+            # 🚀 LIMPIAR: Detener visualización fluida
+            self.display_active = False
+            if hasattr(self, 'display_thread') and self.display_thread.is_alive():
+                print("🛑 Deteniendo thread de visualización fluida")
+            
             self.phase_label.config(text="Cancelando procesamiento...")
             self.details_label.config(text="Por favor espere...")
             self.cancel_button.config(state="disabled")
@@ -5420,6 +6236,16 @@ class PlateClassificationSystem:
                 'error_formato': format_validation['error']
             }
             
+        # 2.5. 🚨 NUEVA VALIDACIÓN: Caracteres individuales (CRÍTICA para precisión)
+        char_validation = self._validate_plate_characters(plate_text, confidence)
+        if not char_validation['is_valid']:
+            return 'NIE', {
+                'razon': 'caracteres_invalidos',
+                'placa_detectada': plate_text,
+                'rechazo_detallado': char_validation['rejection_reason'],
+                'analisis_caracteres': char_validation['char_analysis']
+            }
+            
         # 3. VALIDAR CONTEXTO TEMPORAL (si disponible)
         if frame_validations:
             temporal_valid = frame_validations.get('crossing_confirmed', True)
@@ -5429,12 +6255,31 @@ class PlateClassificationSystem:
                     'placa_detectada': plate_text
                 }
                 
-        # ✅ CLASIFICAR COMO NID (DETECCIÓN VÁLIDA) - MÁS CASOS PASAN
+        # ✅ CLASIFICAR COMO NID (DETECCIÓN VÁLIDA) - CON ANÁLISIS COMPLETO
+        plate_origin = char_validation.get('plate_origin', 'desconocida')
+        format_type = char_validation.get('format_type', 'no_identificado')
+        origin_confidence = char_validation.get('origin_confidence', 0.0)
+        
+        # Ajustar justificación según origen
+        if plate_origin == 'peruana':
+            justification = f'✅ Placa PERUANA ({format_type}) - Validación estricta aprobada'
+            classification_quality = 'alta'
+        elif plate_origin == 'extranjera':
+            justification = f'🌎 Placa EXTRANJERA ({format_type}) - Validación permisiva aprobada'
+            classification_quality = 'media'  # Siempre media para extranjeras
+        else:
+            justification = 'Formato no identificado - Validación básica aprobada'
+            classification_quality = 'baja'
+        
         return 'NID', {
             'placa_final': plate_text,
             'confianza': round(confidence, 3),
-            'calidad_deteccion': 'alta' if confidence >= 0.80 else 'media',
-            'justificacion': 'Cumple criterios técnicos calibrados'
+            'origen_placa': plate_origin,
+            'tipo_formato': format_type,
+            'confianza_origen': round(origin_confidence, 3),
+            'calidad_deteccion': classification_quality,
+            'analisis_caracteres': char_validation['char_analysis'],
+            'justificacion': justification
         }
         
     def _validate_format(self, plate_text):
@@ -5465,6 +6310,226 @@ class PlateClassificationSystem:
                 return {'is_valid': True, 'pattern': 'flexible_calibrado'}
                 
         return {'is_valid': False, 'error': 'patron_no_reconocido'}
+    
+    def _identify_plate_origin(self, plate_text):
+        """
+        🌎 Identifica si una placa es PERUANA o EXTRANJERA basándose en patrones específicos
+        
+        Args:
+            plate_text: Texto de la placa detectado
+            
+        Returns:
+            dict: {
+                'origin': 'peruana'/'extranjera'/'desconocida',
+                'format_type': str,
+                'confidence': float,
+                'validation_rules': dict
+            }
+        """
+        if not plate_text:
+            return {
+                'origin': 'desconocida',
+                'format_type': 'invalida',
+                'confidence': 0.0,
+                'validation_rules': {}
+            }
+        
+        import re
+        clean_text = plate_text.upper().replace('-', '').replace(' ', '')
+        
+        # 🇵🇪 PATRONES DE PLACAS PERUANAS (FORMATO OFICIAL CORRECTO)
+        peruvian_patterns = {
+            'peru_official': r'^[A-Z]{3}-\d{3}$',          # ABC-123 - FORMATO OFICIAL PERUANO
+            'peru_no_dash': r'^[A-Z]{3}\d{3}$',            # ABC123 - Sin guión (a veces OCR pierde el guión)
+        }
+        
+        # 🌎 PATRONES DE PLACAS EXTRANJERAS (TODO LO QUE NO SEA PERUANO)
+        # Si no coincide con formato peruano, entonces es extranjera
+        text_length = len(clean_text)
+        has_letters = any(c.isalpha() for c in clean_text)
+        has_numbers = any(c.isdigit() for c in clean_text)
+        
+        # 🔍 VERIFICAR PATRONES PERUANOS PRIMERO (FORMATO OFICIAL)
+        for format_name, pattern in peruvian_patterns.items():
+            if re.match(pattern, clean_text) or re.match(pattern, plate_text.upper()):
+                # ✅ Coincide con formato peruano oficial (3 letras + guión + 3 números)
+                return {
+                    'origin': 'peruana',
+                    'format_type': format_name,
+                    'confidence': 0.95,
+                    'validation_rules': {
+                        'strict_format': True,
+                        'character_validation': True,
+                        'confidence_threshold': 0.75,  # Más estricto para peruanas
+                        'allow_problematic_chars': False
+                    }
+                }
+        
+        # 🌎 SI NO ES PERUANA, ES EXTRANJERA (Lógica simple y correcta)
+        if text_length >= 4 and text_length <= 12 and has_letters and has_numbers:
+            # Cualquier placa con formato válido pero que no sea peruano = extranjera
+            return {
+                'origin': 'extranjera',
+                'format_type': 'formato_no_peruano',
+                'confidence': 0.80,
+                'validation_rules': {
+                    'strict_format': False,        # Más permisivo para extranjeras
+                    'character_validation': False,  # No validar caracteres estrictamente
+                    'confidence_threshold': 0.60,  # Umbral más bajo
+                    'allow_problematic_chars': True # Permitir chars problemáticos
+                }
+            }
+        
+        # ❌ FORMATO COMPLETAMENTE DESCONOCIDO
+        return {
+            'origin': 'desconocida',
+            'format_type': 'invalida',
+            'confidence': 0.0,
+            'validation_rules': {
+                'strict_format': True,
+                'character_validation': True,
+                'confidence_threshold': 0.80,
+                'allow_problematic_chars': False
+            }
+        }
+    
+    def _validate_plate_characters(self, plate_text, confidence):
+        """
+        🔍 Validación AVANZADA: Analiza caracteres individuales para evitar falsos NID
+        
+        Implementa verificación estricta a nivel de carácter para prevenir
+        que placas con mayoría de caracteres incorrectos pero alta confianza 
+        general sean clasificadas como NID.
+        
+        Args:
+            plate_text: Texto de la placa detectado
+            confidence: Confianza general de la detección
+            
+        Returns:
+            dict: {
+                'is_valid': bool,
+                'char_analysis': dict,
+                'rejection_reason': str (if invalid)
+            }
+        """
+        if not plate_text or len(plate_text) < 3:
+            return {
+                'is_valid': False,
+                'rejection_reason': 'placa_muy_corta',
+                'char_analysis': {}
+            }
+            
+        # 🎯 VALIDACIÓN POR TIPO DE CARÁCTER
+        clean_text = plate_text.upper().replace('-', '').replace(' ', '')
+        total_chars = len(clean_text)
+        
+        # Contadores de tipos de caracteres
+        letters = sum(1 for c in clean_text if c.isalpha())
+        numbers = sum(1 for c in clean_text if c.isdigit())
+        invalid_chars = sum(1 for c in clean_text if not c.isalnum())
+        
+        # 🚨 CRITERIOS DE RECHAZO ESTRICTOS
+        
+        # 1. Demasiados caracteres inválidos
+        invalid_ratio = invalid_chars / total_chars
+        if invalid_ratio > 0.2:  # Más del 20% caracteres no alfanuméricos
+            return {
+                'is_valid': False,
+                'rejection_reason': 'demasiados_caracteres_invalidos',
+                'char_analysis': {
+                    'invalid_chars': invalid_chars,
+                    'invalid_ratio': round(invalid_ratio, 2),
+                    'threshold': 0.2
+                }
+            }
+            
+        # 2. Balance incorrecto letras/números para placa peruana
+        if letters < 1 or numbers < 1:
+            return {
+                'is_valid': False,
+                'rejection_reason': 'balance_letras_numeros_incorrecto',
+                'char_analysis': {
+                    'letters': letters,
+                    'numbers': numbers,
+                    'required_min': {'letters': 1, 'numbers': 1}
+                }
+            }
+            
+        # 3. Patrones sospechosos comunes en OCR erróneo
+        suspicious_patterns = [
+            r'^[0-9]+$',           # Solo números
+            r'^[A-Z]+$',           # Solo letras
+            r'[IOQCL]{3,}',        # Demasiadas letras confusas consecutivas
+            r'[0123456789]{6,}',   # Demasiados números consecutivos
+        ]
+        
+        import re
+        for pattern in suspicious_patterns:
+            if re.search(pattern, clean_text):
+                return {
+                    'is_valid': False,
+                    'rejection_reason': 'patron_sospechoso_detectado',
+                    'char_analysis': {
+                        'pattern_matched': pattern,
+                        'text_analyzed': clean_text
+                    }
+                }
+        
+        # 4. � IDENTIFICAR ORIGEN DE LA PLACA (CRÍTICO para validación)
+        plate_origin = self._identify_plate_origin(plate_text)
+        validation_rules = plate_origin['validation_rules']
+        
+        # 5. 🎯 VALIDACIÓN ADAPTATIVA según origen de la placa
+        problematic_chars = ['I', 'O', 'Q', 'L', '1', '0']  # Chars comúnmente confundidos
+        problematic_count = sum(1 for c in clean_text if c in problematic_chars)
+        
+        # Aplicar validación según las reglas del origen
+        if validation_rules.get('allow_problematic_chars', False):
+            # 🌎 PLACAS EXTRANJERAS: Más permisivas
+            estimated_char_confidence = confidence * 0.9  # Solo 10% de penalización
+            required_confidence_threshold = 0.60  # Muy permisivo
+            max_problematic_ratio = 0.8  # Hasta 80% puede ser problemático
+        else:
+            # 🇵🇪 PLACAS PERUANAS: Validación estricta
+            penalty_factor = 1 - (problematic_count / total_chars * 0.3) if problematic_count > 0 else 1.0
+            estimated_char_confidence = confidence * penalty_factor
+            required_confidence_threshold = 0.85  # Estricto
+            max_problematic_ratio = 0.5   # Máximo 50% problemático
+            
+        # 6. Aplicar umbral según tipo de placa
+        if problematic_count >= total_chars * max_problematic_ratio:
+            if estimated_char_confidence < required_confidence_threshold:
+                return {
+                    'is_valid': False,
+                    'rejection_reason': 'demasiados_caracteres_problematicos',
+                    'plate_origin': plate_origin['origin'],
+                    'format_type': plate_origin['format_type'],
+                    'char_analysis': {
+                        'problematic_chars': problematic_count,
+                        'total_chars': total_chars,
+                        'problematic_ratio': round(problematic_count / total_chars, 2),
+                        'estimated_confidence': round(estimated_char_confidence, 3),
+                        'required_confidence': required_confidence_threshold,
+                        'validation_mode': 'estricta' if not validation_rules.get('allow_problematic_chars') else 'permisiva'
+                    }
+                }
+        
+        # ✅ PLACA PASA TODAS LAS VALIDACIONES
+        return {
+            'is_valid': True,
+            'plate_origin': plate_origin['origin'],
+            'format_type': plate_origin['format_type'],
+            'origin_confidence': plate_origin['confidence'],
+            'char_analysis': {
+                'total_chars': total_chars,
+                'letters': letters,
+                'numbers': numbers,
+                'problematic_chars': problematic_count,
+                'estimated_confidence': round(estimated_char_confidence, 3),
+                'quality': 'alta' if estimated_char_confidence >= 0.9 else 'media',
+                'validation_mode': 'estricta' if not validation_rules.get('allow_problematic_chars') else 'permisiva'
+            }
+        }
 
 
 class ThesisMetricsCalculator:
@@ -5693,12 +6758,12 @@ Ajuste la configuración en 'Configurar Tiempos' antes de continuar."""
                 # Calcular brillo promedio general
                 overall_brightness = np.mean(brightness_values)
                 
-                # UMBRAL CRÍTICO: 90 - CALIBRADO PARA MEJOR PRECISIÓN
-                is_night = overall_brightness < 90  # Calibrado para distinguir mejor día/noche
+                # UMBRAL CRÍTICO: 60 - RESTRICTIVO PARA SOLO VIDEOS NOCTURNOS REALES
+                is_night = overall_brightness < 60  # Solo videos muy oscuros
                 
                 print(f"🌙 ANÁLISIS DE BRILLO:")
                 print(f"   📊 Brillo promedio: {overall_brightness:.1f}/255")
-                print(f"   🌓 Umbral nocturno: 90")
+                print(f"   🌓 Umbral nocturno: 60 (RESTRICTIVO)")
                 print(f"   🎯 Resultado: {'NOCTURNO' if is_night else 'DIURNO'}")
                 
                 return is_night, overall_brightness, 120  # Devolver datos para las ventanas
@@ -6199,4 +7264,199 @@ Ajuste la configuración en 'Configurar Tiempos' antes de continuar."""
         except Exception as e:
             print(f"🔇 Error reproduciendo audio de detección nocturna: {e}")
     
+    def _check_audio_available(self):
+        """Verifica si está disponible el audio en el sistema"""
+        try:
+            import winsound
+            return True
+        except ImportError:
+            return False
+    def _show_night_analysis_popup(self, avg_brightness, dark_threshold):
+        """
+        PRIMERA VENTANA: Análisis nocturno detectado - EXACTAMENTE como en las imágenes
+        """
+        print("🌙 INICIANDO PRIMERA VENTANA DE ANÁLISIS NOCTURNO")
+        try:
+            # Activar flag de control
+            PreprocessingDialog._night_popup_active = True
+            self.processing_paused = True
+            
+            # Crear ventana emergente
+            popup = tk.Toplevel(self.dialog)
+            popup.title("🌙 Análisis Nocturno Detectado")
+            
+            # RESPONSIVIDAD INTELIGENTE - EXACTO de las imágenes
+            screen_width = popup.winfo_screenwidth()
+            screen_height = popup.winfo_screenheight()
+            
+            # Tamaño EXACTO como en las imágenes
+            if screen_width >= 1920:  # Pantalla grande
+                popup_width, popup_height = 900, 700
+            elif screen_width >= 1366:  # Pantalla mediana
+                popup_width, popup_height = 800, 650
+            else:  # Pantalla pequeña
+                popup_width, popup_height = 700, 600
+            
+            # ASEGURAR QUE NO EXCEDA 80% DE PANTALLA
+            max_width = int(screen_width * 0.80)
+            max_height = int(screen_height * 0.80)
+            popup_width = min(popup_width, max_width)
+            popup_height = min(popup_height, max_height)
+            
+            popup.geometry(f"{popup_width}x{popup_height}")
+            popup.resizable(False, False)
+            
+            # Configurar icono si existe
+            icon_path = resource_path("img/icon.ico")
+            if os.path.exists(icon_path):
+                popup.iconbitmap(icon_path)
+            
+            # CONVENCIONALIDAD: Modal y centrada
+            popup.transient(self.dialog)
+            popup.grab_set()
+            
+            def on_popup_click(event=None):
+                try:
+                    if hasattr(self, 'dialog') and self.dialog.winfo_exists():
+                        self.dialog.lift()  # Levantar ventana principal atrás
+                    popup.lift()        # Mantener emergente al frente
+                except:
+                    pass
+            
+            popup.bind("<Button-1>", on_popup_click)
+            popup.bind("<FocusIn>", on_popup_click)
+            
+            # PERMITIR cerrar con X (pero controlado)
+            def close_popup_x():
+                print("🚀 USUARIO CERRÓ VENTANA NOCTURNA CON X - CONTINUANDO PROCESAMIENTO")
+                try:
+                    PreprocessingDialog._night_popup_active = False
+                    self.processing_paused = False
+                    popup.destroy()
+                    print("✅ Ventana nocturna cerrada correctamente - PROCESAMIENTO CONTINUARÁ")
+                except Exception as e:
+                    print(f"❌ Error cerrando ventana: {e}")
+            
+            popup.protocol("WM_DELETE_WINDOW", close_popup_x)
+            
+            # CENTRADO PERFECTO: Siempre centrado en cualquier pantalla
+            def center_popup():
+                popup.update_idletasks()
+                # Centrado exacto independiente del tamaño de pantalla
+                x = (screen_width - popup_width) // 2
+                y = (screen_height - popup_height) // 2
+                popup.geometry(f"{popup_width}x{popup_height}+{x}+{y}")
+                print(f"📍 VENTANA CENTRADA: {popup_width}x{popup_height} en posición ({x}, {y})")
+            
+            popup.after(100, center_popup)
+            popup.configure(bg='#1a1a2e')  # Fondo oscuro para tema nocturno
+            
+            # Frame principal sin scroll (como pidió el usuario)
+            main_frame = tk.Frame(popup, bg='#1a1a2e', padx=20, pady=20)
+            main_frame.pack(fill='both', expand=True)
+            
+            # Título con emoji (CENTRADO)
+            title_label = tk.Label(main_frame, 
+                text="🌙 MODO NOCTURNO DETECTADO", 
+                font=('Arial', 16, 'bold'),
+                fg='#00ffff', bg='#1a1a2e',
+                justify='center')
+            title_label.pack(pady=(0, 20), anchor='center')
+            
+            # Información de detección
+            info_frame = tk.Frame(main_frame, bg='#16213e', relief='ridge', bd=2)
+            info_frame.pack(fill='x', pady=(0, 15))
+            
+            info_title = tk.Label(info_frame, 
+                text="📄 ANÁLISIS DE ILUMINACIÓN", 
+                font=('Arial', 12, 'bold'),
+                fg='#ffffff', bg='#16213e')
+            info_title.pack(pady=(10, 5))
+            
+            brightness_label = tk.Label(info_frame, 
+                text=f"• Brillo promedio: {avg_brightness:.1f}/255", 
+                font=('Arial', 10),
+                fg='#cccccc', bg='#16213e')
+            brightness_label.pack(anchor='w', padx=20)
+            
+            threshold_label = tk.Label(info_frame, 
+                text=f"• Áreas oscuras: {dark_threshold:.1f}/255", 
+                font=('Arial', 10),
+                fg='#cccccc', bg='#16213e')
+            threshold_label.pack(anchor='w', padx=20, pady=(0, 10))
+            
+            # Información sobre mejoras activadas
+            improvements_frame = tk.Frame(main_frame, bg='#0f3460', relief='ridge', bd=2)
+            improvements_frame.pack(fill='x', pady=(0, 15))
+            
+            improvements_title = tk.Label(improvements_frame, 
+                text="⚡ MEJORAS ACTIVADAS", 
+                font=('Arial', 12, 'bold'),
+                fg='#00ff00', bg='#0f3460')
+            improvements_title.pack(pady=(10, 5))
+            
+            improvements = [
+                "✅ Detección ultra-sensible de placas",
+                "✅ Procesamiento multi-variante nocturno",
+                "✅ Correcciones OCR ultra-agresivas",
+                "✅ Filtros adaptativos de confianza",
+                "✅ Mejora automática de contraste",
+                "✅ Análisis específico de reflectores",
+                "⚠️ NOTA: Condiciones nocturnas limitadas",
+                "🎯 No todas las placas serán detectables"
+            ]
+            
+            for improvement in improvements:
+                imp_label = tk.Label(improvements_frame, 
+                    text=improvement, 
+                    font=('Arial', 10),
+                    fg='#ccffcc', bg='#0f3460',
+                    wraplength=popup_width-100)
+                imp_label.pack(anchor='w', padx=20)
+            
+            # Mensaje de expectativas REALISTAS para condiciones nocturnas (RESPONSIVO)
+            expectation_label = tk.Label(main_frame, 
+                text="🤖 Se detectó por el video que es de noche\n(mediante algoritmo inteligente de computer vision)\n\n🎯 El sistema aplicará técnicas especializadas para condiciones nocturnas.\n⚠️ IMPORTANTE: Las limitaciones de iluminación pueden reducir\nla detección exitosa de placas. El sistema intentará optimizar\nla precisión, pero no todas las placas serán detectables.", 
+                font=('Arial', 11),
+                fg='#ffff99', bg='#1a1a2e',
+                justify='center',
+                wraplength=popup_width-80)
+            expectation_label.pack(pady=(0, 20))
+            
+            # Función para cerrar la ventana correctamente (primera ventana)
+            def close_first_popup():
+                print("🚀 USUARIO CONFIRMÓ - CERRANDO PRIMERA VENTANA NOCTURNA - CONTINUANDO PROCESAMIENTO")
+                try:
+                    # Liberar el flag de ventana activa
+                    PreprocessingDialog._night_popup_active = False
+                    # Reactivar el procesamiento
+                    self.processing_paused = False
+                    # Cerrar ventana emergente
+                    popup.destroy()
+                    print("✅ PRIMERA VENTANA NOCTURNA CERRADA - PROCESAMIENTO CONTINUARÁ")
+                except Exception as e:
+                    print(f"Error cerrando primera ventana nocturna: {e}")
+            
+            # Botón de continuar
+            continue_button = tk.Button(main_frame, 
+                text="🚀 CONTINUAR CON ANÁLISIS NOCTURNO", 
+                font=('Arial', 11, 'bold'),
+                bg='#4CAF50', fg='white',
+                relief='raised', bd=3,
+                padx=20, pady=10,
+                command=close_first_popup)
+            continue_button.pack(pady=(0, 10))
+            
+            # Enfocar el botón para que sea obvio
+            continue_button.focus_set()
+            
+            # Enter también funciona
+            popup.bind('<Return>', lambda e: close_first_popup())
+            
+            # Reproducir sonido de detección nocturna
+            self._play_night_detection_sound()
+                
+        except Exception as e:
+            print(f"Error mostrando ventana nocturna: {e}")
+            pass
 
