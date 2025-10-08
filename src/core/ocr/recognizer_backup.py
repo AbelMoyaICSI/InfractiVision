@@ -758,9 +758,15 @@ def get_reader():
     """Inicializa el lector de PaddleOCR si no existe"""
     global paddle_reader
     if paddle_reader is None:
-        print("Inicializando PaddleOCR...")
-        # PaddleOCR 3.2+ - parámetros simplificados
-        paddle_reader = PaddleOCR(lang='es')
+        print("⚡ Inicializando PaddleOCR optimizado...")
+        start_time = time.time()
+        # PaddleOCR 3.2+ con configuración optimizada para velocidad
+        paddle_reader = PaddleOCR(
+            lang='es',
+            use_angle_cls=False  # Desactivar clasificación de ángulo para velocidad
+        )
+        init_time = time.time() - start_time
+        print(f"⚡ PaddleOCR inicializado en {init_time:.1f}s")
     return paddle_reader
 
 def preprocess_plate_image(plate_img):
@@ -1086,44 +1092,6 @@ def fix_plate_length_and_chars(plate_text):
         'T5A-349': 'A3K-961',
         'EAV619': 'AV6-190',
         'EAV-619': 'AV6-190',
-        'T8H085': 'BMJ-851',
-        'T8H-085': 'BMJ-851',
-        'T7I154': 'T1D-547',
-        'T7I-154': 'T1D-547',
-        'T7S000': 'T5D-110',
-        'T7S-000': 'T5D-110',
-        'TCT856': 'C7L-856',
-        'TCT-856': 'C7L-856',
-        'L0G191': 'T6T-601',
-        'L0G-191': 'T6T-601',
-        'APE788': 'APH-188',
-        'APE-788': 'APH-188',
-        'FAY619': 'AV6-190',
-        'FAY-619': 'AV6-190',
-        'TA9688': 'A96-8B6',
-        'TA9-688': 'A96-8B6',
-        'T5E851': 'BMJ-851',
-        'T5E-851': 'BMJ-851',
-        'T1E753': 'T3T-447',
-        'T1E-753': 'T3T-447',
-        'C2A313': 'C2A-113',
-        'C2A-313': 'C2A-113',
-        'TT1354': 'T7T-354',
-        'TT1-354': 'T7T-354',
-        'T5T506': 'T5U-677',
-        'T5T-506': 'T5U-677',
-        'T6O228': 'T6C-228',
-        'T6O-228': 'T6C-228',
-        'T5C241': 'C2A-113',
-        'T5C-241': 'C2A-113',
-        'E0G191': 'T6T-601',
-        'E0G-191': 'T6T-601',
-        'TFA354': 'T7T-354',
-        'TFA-354': 'T7T-354',
-        'T5H576': 'H5M-516',
-        'T5H-576': 'H5M-516',
-        'T7G038': 'T6D-138',
-        'T7G-038': 'T6D-138',
     }
     
     clean_normalized = clean.replace('-', '').upper()
@@ -1388,25 +1356,6 @@ def correct_plate_siiv_aware(text, is_night=False):
                 'TFI621': 'H1G-621', 'TFI-621': 'H1G-621',
                 'T5A349': 'A3K-961', 'T5A-349': 'A3K-961',
                 'EAV619': 'AV6-190', 'EAV-619': 'AV6-190',
-                'T8H085': 'BMJ-851', 'T8H-085': 'BMJ-851',
-                'T7I154': 'T1D-547', 'T7I-154': 'T1D-547',
-                'T7S000': 'T5D-110', 'T7S-000': 'T5D-110',
-                'TCT856': 'C7L-856', 'TCT-856': 'C7L-856',
-                'L0G191': 'T6T-601', 'L0G-191': 'T6T-601',
-                'APE788': 'APH-188', 'APE-788': 'APH-188',
-                'FAY619': 'AV6-190', 'FAY-619': 'AV6-190',
-                'TA9688': 'A96-8B6', 'TA9-688': 'A96-8B6',
-                'T5E851': 'BMJ-851', 'T5E-851': 'BMJ-851',
-                'T1E753': 'T3T-447', 'T1E-753': 'T3T-447',
-                'C2A313': 'C2A-113', 'C2A-313': 'C2A-113',
-                'TT1354': 'T7T-354', 'TT1-354': 'T7T-354',
-                'T5T506': 'T5U-677', 'T5T-506': 'T5U-677',
-                'T6O228': 'T6C-228', 'T6O-228': 'T6C-228',
-                'T5C241': 'C2A-113', 'T5C-241': 'C2A-113',
-                'E0G191': 'T6T-601', 'E0G-191': 'T6T-601',
-                'TFA354': 'T7T-354', 'TFA-354': 'T7T-354',
-                'T5H576': 'H5M-516', 'T5H-576': 'H5M-516',
-                'T7G038': 'T6D-138', 'T7G-038': 'T6D-138',
             }
             result_clean = result.replace('-', '').upper()
             if result_clean in hardcoded:
@@ -1899,25 +1848,6 @@ def recognize_plate(plate_bgr, is_night=False):
             'TFI621': 'H1G-621', 'TFI-621': 'H1G-621',
             'T5A349': 'A3K-961', 'T5A-349': 'A3K-961',
             'EAV619': 'AV6-190', 'EAV-619': 'AV6-190',
-            'T8H085': 'BMJ-851', 'T8H-085': 'BMJ-851',
-            'T7I154': 'T1D-547', 'T7I-154': 'T1D-547',
-            'T7S000': 'T5D-110', 'T7S-000': 'T5D-110',
-            'TCT856': 'C7L-856', 'TCT-856': 'C7L-856',
-            'L0G191': 'T6T-601', 'L0G-191': 'T6T-601',
-            'APE788': 'APH-188', 'APE-788': 'APH-188',
-            'FAY619': 'AV6-190', 'FAY-619': 'AV6-190',
-            'TA9688': 'A96-8B6', 'TA9-688': 'A96-8B6',
-            'T5E851': 'BMJ-851', 'T5E-851': 'BMJ-851',
-            'T1E753': 'T3T-447', 'T1E-753': 'T3T-447',
-            'C2A313': 'C2A-113', 'C2A-313': 'C2A-113',
-            'TT1354': 'T7T-354', 'TT1-354': 'T7T-354',
-            'T5T506': 'T5U-677', 'T5T-506': 'T5U-677',
-            'T6O228': 'T6C-228', 'T6O-228': 'T6C-228',
-            'T5C241': 'C2A-113', 'T5C-241': 'C2A-113',
-            'E0G191': 'T6T-601', 'E0G-191': 'T6T-601',
-            'TFA354': 'T7T-354', 'TFA-354': 'T7T-354',
-            'T5H576': 'H5M-516', 'T5H-576': 'H5M-516',
-            'T7G038': 'T6D-138', 'T7G-038': 'T6D-138',
         }
         most_common_clean = most_common.replace('-', '').upper()
         if most_common_clean in hardcoded_final:

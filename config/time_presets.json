@@ -1,5 +1,17 @@
 {
-  "Traffic IP Camera video (DEMO 1).mp4": {
+  "VID7EDIT \u2010 Hecho con Clipchamp.mp4": {
+    "green": 15,
+    "yellow": 5,
+    "red": 15,
+    "time_slot": "07:00 - 08:00"
+  },
+  "VID4EDIT \u2010 Hecho con Clipchamp.mp4": {
+    "green": 30,
+    "yellow": 5,
+    "red": 40,
+    "time_slot": "10:00 - 11:00"
+  },
+  "Night Time Traffic Camera video (DEMO 4).mp4": {
     "green": 10,
     "yellow": 3,
     "red": 15,

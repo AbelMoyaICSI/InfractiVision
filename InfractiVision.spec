@@ -72,6 +72,12 @@ hiddenimports = [
     'PIL',
     'PIL.Image',
     'PIL.ImageTk',
+    'PIL.ImageDraw',
+    'PIL.ImageFont',
+    'imutils',
+    'shapely',
+    'shapely.geometry',
+    'pyclipper',
     
     # === MACHINE LEARNING ===
     'torch',
@@ -84,6 +90,10 @@ hiddenimports = [
     'torchvision',
     'torchvision.transforms',
     'ultralytics',
+    'ultralytics.models',
+    'ultralytics.models.yolo',
+    'ultralytics.nn',
+    'ultralytics.utils',
     'sklearn',
     'sklearn.cluster',
     'sklearn.cluster._kmeans',
@@ -98,7 +108,19 @@ hiddenimports = [
     'sympy.core',
     'sympy.utilities',
     
-    # === OCR ===
+    # === OCR CRITICAL ===
+    'paddleocr',
+    'paddlepaddle',
+    'paddle',
+    'paddle.fluid',
+    'paddle.nn',
+    'paddle.vision',
+    'paddle.vision.transforms',
+    'paddle.inference',
+    'paddle.utils',
+    'paddle.framework',
+    'paddle.tensor',
+    'paddle.device',
     'easyocr',
     'easyocr.easyocr',
     'easyocr.utils',
@@ -113,9 +135,15 @@ hiddenimports = [
     'urllib3.poolmanager',
     'firebase_admin',
     'firebase_admin.firestore',
+    'firebase_admin.storage',
+    'firebase_admin.credentials',
     'google.cloud.firestore',
     'google.cloud.storage',
     'google.auth',
+    'google.auth.transport',
+    'google.oauth2',
+    'flask',
+    'flask.helpers',
     
     # === DATA PROCESSING ===
     'pandas',
@@ -128,7 +156,6 @@ hiddenimports = [
     
     # === UTILITIES ===
     'psutil',
-    'imutils',
     'threading',
     'multiprocessing',
     'queue',
@@ -142,6 +169,15 @@ hiddenimports = [
     'warnings',
     'collections',
     'itertools',
+    'uuid',
+    'getpass',
+    'socket',
+    'sys',
+    'os',
+    'time',
+    'json',
+    'csv',
+    'logging',
     'matplotlib',
     'matplotlib.pyplot',
     'matplotlib.backends',
@@ -159,7 +195,7 @@ hiddenimports = [
     'scipy.stats',
     'scipy.ndimage',
     
-    # === SPECIFIC MODULES ===
+    # === INFRACTIVISION MODULES ===
     'src.path_helper',
     'src.gui.app_manager',
     'src.gui.welcome_window',
@@ -175,12 +211,14 @@ hiddenimports = [
     'src.core.detection.anpr',
     'src.core.ocr.recognizer',
     'src.core.processing.plate_processing',
+    'src.core.processing.plate_ocr_enhancer',
     'src.core.processing.resolution_process',
     'src.core.processing.superresolution',
     'src.core.traffic_signal.semaphore',
     'src.core.utils.paths',
     'src.core.utils.timestamp',
     'src.automations.cloud_migrator',
+    'src.utils.precision_utils',
 ]
 
 # Rutas de módulos
@@ -194,8 +232,7 @@ binaries = []
 
 # Exclusiones (para reducir tamaño y acelerar arranque)
 excludes = [
-    # 'matplotlib',  # INCLUIDO: Requerido por algunos análisis
-    # 'matplotlib.pyplot',  # INCLUIDO: Requerido por algunos análisis
+    # === HERRAMIENTAS DE DESARROLLO ===
     'IPython',
     'jupyter',
     'notebook',
@@ -215,6 +252,8 @@ excludes = [
     'isort',
     'bandit',
     'safety',
+    
+    # === ML FRAMEWORKS NO USADOS ===
     'tensorboard',
     'tensorflow',
     'keras',
@@ -225,22 +264,30 @@ excludes = [
     'cupy',
     'dask',
     'xarray',
+    
+    # === VISUALIZACIÓN AVANZADA NO USADA ===
     'bokeh',
     'plotly',
     'seaborn',
-    # 'sympy',  # ❌ NO EXCLUIR: PyTorch lo requiere
     'statsmodels',
     'networkx',
+    
+    # === NLP NO USADO ===
     'gensim',
     'nltk',
     'spacy',
     'transformers',
     'datasets',
     'huggingface_hub',
-    # === EXCLUIR PROBLEMAS NUMPY 2.x ===
+    
+    # === MANTENER CRÍTICOS ===
+    # 'sympy',  # ❌ NO EXCLUIR: PyTorch lo requiere
+    # 'matplotlib',  # ❌ NO EXCLUIR: Requerido para análisis
     # 'numpy.f2py',     # ❌ NO EXCLUIR: scipy lo necesita
     # 'numpy.distutils', # ❌ NO EXCLUIR: scipy lo necesita
     # 'numpy.testing',  # ❌ NO EXCLUIR: scipy lo necesita
+    # 'paddleocr',  # ❌ NO EXCLUIR: CRÍTICO para OCR
+    # 'paddlepaddle',  # ❌ NO EXCLUIR: CRÍTICO para OCR
 ]
 
 # ============================================================================

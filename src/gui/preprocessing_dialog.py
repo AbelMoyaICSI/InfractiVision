@@ -4365,73 +4365,6 @@ class PreprocessingDialog:
             cv2.putText(frame, "MODO NOCTURNO", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
     
-    def _is_night_scene(self, frame, sample_frames=5):
-        """
-        Detecta si el video es nocturno analizando el brillo promedio de múltiples frames.
-        
-        Args:
-            frame: Frame inicial para análisis
-            sample_frames: Número de frames adicionales a muestrar
-            
-        Returns:
-            bool: True si es nocturno, False si es diurno
-        """
-        try:
-            if frame is None:
-                return False
-                
-            # Abrir el video para analizar múltiples frames
-            cap = cv2.VideoCapture(self.video_path)
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            
-            brightness_values = []
-            
-            # Analizar frames distribuidos a lo largo del video
-            frame_positions = [
-                0,  # Inicio
-                total_frames // 4,      # 25%
-                total_frames // 2,      # 50% 
-                3 * total_frames // 4,  # 75%
-                total_frames - 1        # Final
-            ]
-            
-            for pos in frame_positions[:sample_frames]:
-                if pos >= total_frames:
-                    continue
-                    
-                cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
-                ret, sample_frame = cap.read()
-                
-                if ret:
-                    # Convertir a escala de grises
-                    gray = cv2.cvtColor(sample_frame, cv2.COLOR_BGR2GRAY)
-                    
-                    # Calcular brillo promedio
-                    avg_brightness = np.mean(gray)
-                    brightness_values.append(avg_brightness)
-                    
-            cap.release()
-            
-            if brightness_values:
-                # Calcular brillo promedio general
-                overall_brightness = np.mean(brightness_values)
-                
-                # UMBRAL CRÍTICO: 60 - RESTRICTIVO PARA SOLO VIDEOS NOCTURNOS REALES
-                is_night = overall_brightness < 60  # Solo videos muy oscuros
-                
-                print(f"🌙 ANÁLISIS DE BRILLO:")
-                print(f"   📄 Brillo promedio: {overall_brightness:.1f}/255")
-                print(f"   🌓 Umbral nocturno: 60 (RESTRICTIVO)")
-                print(f"   🎯 Resultado: {'NOCTURNO' if is_night else 'DIURNO'}")
-                
-                return is_night, overall_brightness, 120  # Devolver datos para las ventanas
-            
-            return False, 0, 80
-            
-        except Exception as e:
-            print(f"Error en análisis de brillo: {e}")
-            return False, 0, 80
-    
     def _is_night_scene(self, frame):
         """Versión optimizada para detectar escenas nocturnas con ventana emergente"""
         # Redimensionar para análisis rápido
@@ -4477,8 +4410,8 @@ class PreprocessingDialog:
             video_name_indicates_night = 'night' in video_name or 'nocturno' in video_name
         
         # LÓGICA RESTRICTIVA PARA DETECTAR SOLO VIDEOS REALMENTE NOCTURNOS
-        if video_name_indicates_night and video_analysis_night:
-            is_night = True  # Nombre nocturno + condiciones oscuras confirmadas
+        if video_name_indicates_night:  # Simplificado: solo verificar nombre
+            is_night = True  # Nombre nocturno = modo nocturno activado
         elif is_night_time_configured and video_analysis_night and avg_brightness < 60:
             is_night = True  # Franja nocturna + video MUY oscuro + análisis confirma
         else:
@@ -6706,73 +6639,6 @@ Ajuste la configuración en 'Configurar Tiempos' antes de continuar."""
     # =====================================================
     # SISTEMA DE ANÁLISIS NOCTURNO 
     # =====================================================
-    
-    def _is_night_scene(self, frame, sample_frames=5):
-        """
-        Detecta si el video es nocturno analizando el brillo promedio de múltiples frames.
-        
-        Args:
-            frame: Frame inicial para análisis
-            sample_frames: Número de frames adicionales a muestrar
-            
-        Returns:
-            bool: True si es nocturno, False si es diurno
-        """
-        try:
-            if frame is None:
-                return False
-                
-            # Abrir el video para analizar múltiples frames
-            cap = cv2.VideoCapture(self.video_path)
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            
-            brightness_values = []
-            
-            # Analizar frames distribuidos a lo largo del video
-            frame_positions = [
-                0,  # Inicio
-                total_frames // 4,      # 25%
-                total_frames // 2,      # 50% 
-                3 * total_frames // 4,  # 75%
-                total_frames - 1        # Final
-            ]
-            
-            for pos in frame_positions[:sample_frames]:
-                if pos >= total_frames:
-                    continue
-                    
-                cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
-                ret, sample_frame = cap.read()
-                
-                if ret:
-                    # Convertir a escala de grises
-                    gray = cv2.cvtColor(sample_frame, cv2.COLOR_BGR2GRAY)
-                    
-                    # Calcular brillo promedio
-                    avg_brightness = np.mean(gray)
-                    brightness_values.append(avg_brightness)
-                    
-            cap.release()
-            
-            if brightness_values:
-                # Calcular brillo promedio general
-                overall_brightness = np.mean(brightness_values)
-                
-                # UMBRAL CRÍTICO: 60 - RESTRICTIVO PARA SOLO VIDEOS NOCTURNOS REALES
-                is_night = overall_brightness < 60  # Solo videos muy oscuros
-                
-                print(f"🌙 ANÁLISIS DE BRILLO:")
-                print(f"   📊 Brillo promedio: {overall_brightness:.1f}/255")
-                print(f"   🌓 Umbral nocturno: 60 (RESTRICTIVO)")
-                print(f"   🎯 Resultado: {'NOCTURNO' if is_night else 'DIURNO'}")
-                
-                return is_night, overall_brightness, 120  # Devolver datos para las ventanas
-            
-            return False, 0, 80
-            
-        except Exception as e:
-            print(f"Error en análisis de brillo: {e}")
-            return False, 0, 80
 
     def _show_night_analysis_popup(self, avg_brightness, dark_threshold):
         """

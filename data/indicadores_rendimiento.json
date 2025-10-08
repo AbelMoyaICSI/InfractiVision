@@ -1,7 +1,7 @@
 {
-  "fecha_generacion": "04/10/2025 17:49:36",
-  "periodo_analisis": "Sin fecha - Sin fecha",
-  "dias_analizados": 1,
+  "fecha_generacion": "07/10/2025 22:04:19",
+  "periodo_analisis": "N/A - N/A",
+  "dias_analizados": 0,
   "indicadores": {
     "TI": {
       "descripcion": "Tasa de Infracciones Detectadas (Nivel Diario Agregado)",
@@ -11,10 +11,10 @@
         "fuente": "Registros PNP históricos"
       },
       "con_software": {
-        "detecciones_software_diarias": 4.0,
-        "dias_analizados": 1
+        "detecciones_software_diarias": 0,
+        "dias_analizados": 0
       },
-      "porcentaje_acierto": 94.49
+      "porcentaje_acierto": 0.0
     },
     "TR": {
       "descripcion": "Tiempo de Registro por Infracción Individual",
@@ -27,19 +27,19 @@
         "tiempo_promedio_minutos": 0.0,
         "muestras_analizadas": 1
       },
-      "reduccion_tiempo_porcentual": 99.97,
-      "veces_mas_rapido": 3591.85
+      "reduccion_tiempo_porcentual": 100.0,
+      "veces_mas_rapido": 0
     },
     "NID": {
       "descripcion": "Número de Infracciones Detectadas Correctamente (Clasificación por Confianza)",
       "unidad": "cantidad válida por día",
       "infracciones_hoy": 0,
-      "promedio_diario": 4.0,
-      "periodo_analizado": "1 días"
+      "promedio_diario": 0,
+      "periodo_analizado": "0 días"
     }
   },
   "resumen_global": {
-    "ti_porcentaje_acierto": "94.5%",
+    "ti_porcentaje_acierto": "0.0%",
     "tiempo_registro_minutos": "0.00 min",
     "infracciones_detectadas_hoy": 0
   }
