@@ -4032,39 +4032,27 @@ class PreprocessingDialog:
                                 self._generate_intelligent_analysis_message(guardadas)
                             except Exception as e:
                                 print(f"⚠️ Error mostrando análisis inteligente: {e}")
-            print(f"Procesamiento completado: {len(self.detected_infractions)} vehículos infractores ({guardadas} imágenes guardadas)")
-            
-            # CRÍTICO: Seguir el flujo original del commit 8392064
-            # 1. Mostrar ventana de éxito PRIMERO (si hay detecciones)
-            # 2. Reproducir beep
-            # 3. DESPUÉS llamar _complete_processing con dialog.after()
-            
-            if len(self.detected_infractions) == 0:
-                # Sin detecciones
-                if getattr(self, 'is_night', False):
-                    # Modo nocturno sin detecciones
-                    print("🌙 MODO NOCTURNO SIN DETECCIONES - VENTANA SE MANTIENE ABIERTA")
-                    self.no_cloud_migration = True
-                    if hasattr(self, 'dialog') and self.dialog.winfo_exists():
-                        self.dialog.after(0, lambda: self._show_night_no_detection_info())
-                    return  # Salir sin llamar _complete_processing
-                else:
-                    # Modo diurno sin detecciones
-                    if hasattr(self, 'dialog') and self.dialog.winfo_exists():
-                        self.dialog.after(0, lambda: self._generate_intelligent_analysis_message(guardadas))
             else:
-                # HAY DETECCIONES: Mostrar ventana de éxito y reproducir sonido
+                # Hay detecciones: mostrar ventana de éxito y reproducir sonido
                 self._show_success_detection_popup(len(self.detected_infractions))
                 self._play_success_sound()
+            print(f"Procesamiento completado: {len(self.detected_infractions)} vehículos infractores ({guardadas} imágenes guardadas)")
             
             # Llamar a _complete_processing SOLO si NO es ventana nocturna sin detecciones
-            if len(self.detected_infractions) > 0 or not getattr(self, 'is_night', False):
-                # Solo procesar si hay detecciones O no es nocturno
-                if hasattr(self, 'dialog') and self.dialog.winfo_exists():
-                    self.dialog.after(0, self._complete_processing)  # PROGRAMADO con after()
+            print(f"🔍 DEBUG COMPLETO: {len(self.detected_infractions)} infracciones, is_night: {getattr(self, 'is_night', False)}")
+            print(f"🔍 Dialog exists: {hasattr(self, 'dialog')}, Dialog valid: {hasattr(self, 'dialog') and self.dialog.winfo_exists() if hasattr(self, 'dialog') else False}")
+            
+            # SIMPLIFICADO: Siempre llamar a _complete_processing si hay infracciones
+            if len(self.detected_infractions) > 0:
+                print("📋 HAY INFRACCIONES - Llamando a _complete_processing INMEDIATAMENTE...")
+                self._complete_processing()  # Llamada directa sin delays
+            elif not getattr(self, 'is_night', False):
+                # Modo diurno sin detecciones - también crear cards vacías
+                print("☀️ MODO DIURNO SIN DETECCIONES - Llamando a _complete_processing...")
+                self._complete_processing()  # Llamada directa
             else:
-                # Es nocturno sin detecciones - ya se manejó arriba
-                print("🌙 MODO NOCTURNO SIN DETECCIONES CONFIRMADO")
+                # Es nocturno sin detecciones - NO cerrar automáticamente
+                print("🌙 MODO NOCTURNO SIN DETECCIONES - VENTANA SE MANTIENE ABIERTA HASTA QUE USUARIO PRESIONE ACEPTAR")
         except Exception as e:
             print(f"Error en _finalize_processing: {e}")
             import traceback
@@ -5078,14 +5066,9 @@ class PreprocessingDialog:
                 wraplength=popup_width-80)  # RESPONSIVO: texto se adapta al ancho
             final_label.pack(pady=(20, 20))
             
-            # CONTADOR DE 10 SEGUNDOS CON BOTÓN DINÁMICO (RESTAURADO)
-            countdown_seconds = 10
-            countdown_active = True
-            
+            # BOTÓN SIN CONTADOR AUTOMÁTICO - Solo se cierra al hacer clic
             def close_success_popup():
-                nonlocal countdown_active
-                countdown_active = False
-                print("✅ CERRANDO VENTANA DE ÉXITO - CONTINUANDO")
+                print("✅ CERRANDO VENTANA DE ÉXITO - USUARIO HIZO CLIC EN ACEPTAR")
                 try:
                     popup.destroy()
                     print("✅ VENTANA DE ÉXITO CERRADA")
@@ -5093,26 +5076,13 @@ class PreprocessingDialog:
                     print(f"Error cerrando ventana de éxito: {e}")
             
             continue_button = tk.Button(main_frame, 
-                text=f"✨ ACEPTAR ({countdown_seconds}s)", 
+                text="✨ ACEPTAR", 
                 font=('Arial', 12, 'bold'),
                 bg='#4CAF50', fg='white',
                 relief='raised', bd=3,
                 padx=30, pady=12,
                 command=close_success_popup)
             continue_button.pack(pady=(0, 10), anchor='center')
-            
-            def update_countdown():
-                nonlocal countdown_seconds, countdown_active
-                if countdown_active and countdown_seconds > 0:
-                    countdown_seconds -= 1
-                    continue_button.config(text=f"✨ ACEPTAR ({countdown_seconds}s)")
-                    popup.after(1000, update_countdown)
-                elif countdown_active and countdown_seconds <= 0:
-                    # Tiempo agotado, cerrar automáticamente
-                    close_success_popup()
-            
-            # Iniciar contador
-            popup.after(1000, update_countdown)
             
             # COMPORTAMIENTO AL HACER CLIC: Mostrar ventana principal atrás si existe
             def on_success_popup_click(event=None):
