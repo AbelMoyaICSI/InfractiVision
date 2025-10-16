@@ -189,22 +189,22 @@ class VideoPlayerOpenCV:
 
         # CORRECCIÓN: Eliminar código duplicado en la configuración del panel de placas
         self.plates_frame = tk.Frame(
-            self.video_panel_container, bg="#34495e", width=380
+            self.video_panel_container, bg="#34495e", width=300  # 🔧 FIX: Ancho por defecto aumentado
         )
         self.plates_frame.pack(side="right", fill="y")
         self.plates_frame.pack_propagate(False)
 
         self.plates_title = tk.Label(
             self.plates_frame, text="Placas Detectadas",
-            bg="#2c3e50", fg="white", font=("Arial", 16, "bold"),
-            pady=10
+            bg="#2c3e50", fg="white", font=("Arial", 14, "bold"),  # 🔧 FIX: Fuente ligeramente reducida
+            pady=8  # 🔧 FIX: Padding reducido
         )
         self.plates_title.pack(fill="x")
 
         # Subtítulo para indicadores con especificación
         indicators_subtitle = tk.Label(
             self.plates_frame, text="📊 INDICADORES\n(por franja horaria)",
-            bg="#2c3e50", fg="#ecf0f1", font=("Arial", 11, "bold"),
+            bg="#2c3e50", fg="#ecf0f1", font=("Arial", 9, "bold"),  # 🔧 FIX: Fuente reducida
             justify="center", pady=2
         )
         indicators_subtitle.pack(fill="x")
@@ -230,10 +230,10 @@ class VideoPlayerOpenCV:
         # IMPORTANTE: Crear un solo frame interno para contener las cards
         self.plates_inner_frame = tk.Frame(self.plates_canvas, bg="#ecf0f1")
         
-        # CRÍTICO: Crear una sola ventana de canvas
+        # CRÍTICO: Crear una sola ventana de canvas con ancho adaptativo
         self.plates_canvas_window = self.plates_canvas.create_window(
             (0, 0), window=self.plates_inner_frame, anchor="nw",
-            width=360  # Ancho fijo adecuado para panel de 380px
+            width=280  # 🔧 FIX: Ancho por defecto aumentado de 360 a 280
         )
         
         # AÑADIR: Binding para actualizar scroll automáticamente
@@ -2093,16 +2093,16 @@ class VideoPlayerOpenCV:
             self.margin_y = max(1, int(4 * scale_factor))
             
             # 📝 WRAPLENGTH DINÁMICO MEJORADO para evitar desbordamiento
-            # Usar un porcentaje más conservador y ajustar según el tamaño del panel
+            # 🔧 FIX: Usar porcentajes más conservadores y mínimos absolutos más altos
             if self.panel_size in ['xs', 'small']:
-                self.wraplength = max(60, int(width * 0.65))   # 65% para pantallas pequeñas
+                self.wraplength = max(100, int(width * 0.60))   # 60% para pantallas pequeñas, mínimo 100px
             elif self.panel_size in ['medium']:
-                self.wraplength = max(80, int(width * 0.70))   # 70% para pantallas medianas  
+                self.wraplength = max(140, int(width * 0.65))   # 65% para pantallas medianas, mínimo 140px
             else:
-                self.wraplength = max(100, int(width * 0.75))  # 75% para pantallas grandes
+                self.wraplength = max(180, int(width * 0.70))  # 70% para pantallas grandes, mínimo 180px
             
             # 📊 DEBUG OPCIONAL
-            # print(f"📱 Media Query: {width}px → {self.panel_size} (scale: {scale_factor:.1f}) font: {self.font_title}/{self.font_normal}px img: {self.img_w}x{self.img_h}px")
+            # print(f"📱 Media Query: {width}px → {self.panel_size} (scale: {scale_factor:.1f}) font: {self.font_title}/{self.font_normal}px img: {self.img_w}x{self.img_h}px wrap: {self.wraplength}px")
         
         def create_horizontal_layout(self):
             """Layout horizontal: texto a la izquierda, imagen a la derecha"""
@@ -4361,13 +4361,13 @@ class VideoPlayerOpenCV:
                     width=12
                 )
             
-            # Panel de placas más estrecho para laptops
+            # 🔧 FIX: Panel de placas con ancho fijo más apropiado para laptops
             if hasattr(self, 'plates_frame'):
-                self.plates_frame.config(width=220)
+                self.plates_frame.config(width=280)  # Aumentado de 220 a 280
             
-            # Ajustar canvas interno para laptops
+            # 🔧 FIX: Ajustar canvas interno con ancho consistente
             if hasattr(self, 'plates_canvas_window'):
-                self.plates_canvas.itemconfig(self.plates_canvas_window, width=200)
+                self.plates_canvas.itemconfig(self.plates_canvas_window, width=260)  # Aumentado de 200 a 260
             
             # Ajustar márgenes para laptops
             self._adjust_margins_and_spacing()
