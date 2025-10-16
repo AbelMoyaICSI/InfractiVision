@@ -1313,10 +1313,26 @@ class VideoPlayerOpenCV:
         print("🔄 NUEVA CARGA DE VIDEO - Bandera de procesamiento reseteada")
         def on_preprocessing_complete(success, infractions=None):
             """Función que se ejecuta cuando finaliza el preprocesamiento"""
+            print(f"🔄 CALLBACK PREPROCESAMIENTO: success={success}, infracciones={len(infractions) if infractions else 0}")
+            
             if success:
                 # PAUSAR VIDEO Y SEMÁFORO AL COMPLETAR ANÁLISIS
                 self.is_paused = True
                 print(f"⏸️ Video y semáforo pausados - Análisis completado: {len(infractions) if infractions else 0} infracciones detectadas")
+                
+                # 🆕 NUEVO: Abrir automáticamente el panel de gestión de infracciones
+                if infractions and len(infractions) > 0:
+                    print(f"📋 Abriendo panel de gestión con {len(infractions)} infracciones...")
+                    try:
+                        from src.gui.infractions_management_window import InfractionsManagementWindow
+                        InfractionsManagementWindow(self.parent)
+                        print("✅ Panel de gestión abierto exitosamente")
+                    except Exception as e:
+                        print(f"❌ Error abriendo panel de gestión: {e}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print("ℹ️ No hay infracciones para mostrar en panel de gestión")
                 
                 # Si queremos cargar la primera imagen del video como vista previa
                 cap = cv2.VideoCapture(path)
