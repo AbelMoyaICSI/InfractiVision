@@ -1265,15 +1265,16 @@ class PreprocessingDialog:
     
     def create_synchronized_semaphore(self):
         """Crear semáforo visual sincronizado con el principal"""
-        # Título del semáforo
+        # Título del semáforo (COMPACTO: 2 líneas)
         title_label = tk.Label(
             self.semaphore_frame,
-            text="🚦 Estado del Semáforo",
-            font=("Arial", 12, "bold"),
+            text="🚦 Estado\ndel Semáforo",  # COMPACTO: 2 líneas
+            font=("Arial", 9, "bold"),  # Fuente reducida
             bg="#f0f0f0",
-            fg="#2c3e50"
+            fg="#2c3e50",
+            justify="center"  # Centrado
         )
-        title_label.pack(pady=(10, 5))
+        title_label.pack(pady=(8, 3))  # Padding reducido
         
         # Canvas para dibujar el semáforo
         self.semaphore_canvas = tk.Canvas(
@@ -1381,8 +1382,8 @@ class PreprocessingDialog:
         self.video_frame.pack(side="left", padx=(0, 10))
         self.video_frame.pack_propagate(False)
         
-        # Frame para el semáforo sincronizado
-        self.semaphore_frame = ttk.Frame(video_container, width=120, height=360, relief="groove", borderwidth=2)
+        # Frame para el semáforo sincronizado (REDUCIDO para laptop)
+        self.semaphore_frame = ttk.Frame(video_container, width=90, height=360, relief="groove", borderwidth=2)
         self.semaphore_frame.pack(side="left", fill="y")
         self.semaphore_frame.pack_propagate(False)
         
@@ -4031,24 +4032,30 @@ class PreprocessingDialog:
                                 self._generate_intelligent_analysis_message(guardadas)
                             except Exception as e:
                                 print(f"⚠️ Error mostrando análisis inteligente: {e}")
-            else:
-                # Hay detecciones: mostrar ventana de éxito y reproducir sonido
-                self._show_success_detection_popup(len(self.detected_infractions))
-                self._play_success_sound()
             print(f"Procesamiento completado: {len(self.detected_infractions)} vehículos infractores ({guardadas} imágenes guardadas)")
             
-            # Llamar a _complete_processing SOLO si NO es ventana nocturna sin detecciones
-            print(f"🔍 DEBUG COMPLETO: {len(self.detected_infractions)} infracciones, is_night: {getattr(self, 'is_night', False)}")
-            print(f"🔍 Dialog exists: {hasattr(self, 'dialog')}, Dialog valid: {hasattr(self, 'dialog') and self.dialog.winfo_exists() if hasattr(self, 'dialog') else False}")
+            # CRÍTICO: Llamar a _complete_processing PRIMERO para crear las cards
+            # LUEGO mostrar la ventana de éxito y reproducir sonido
+            print(f"🔍 DEBUG: {len(self.detected_infractions)} infracciones detectadas")
             
-            # SIMPLIFICADO: Siempre llamar a _complete_processing si hay infracciones
             if len(self.detected_infractions) > 0:
                 print("📋 HAY INFRACCIONES - Llamando a _complete_processing INMEDIATAMENTE...")
-                self._complete_processing()  # Llamada directa sin delays
+                self._complete_processing()  # Crear cards PRIMERO
+                
+                # DESPUÉS de crear cards, mostrar ventana de éxito
+                print("🎯 Cards creadas, ahora mostrando ventana de éxito...")
+                self._show_success_detection_popup(len(self.detected_infractions))
+                self._play_success_sound()
             elif not getattr(self, 'is_night', False):
-                # Modo diurno sin detecciones - también crear cards vacías
+                # Modo diurno sin detecciones - también procesar
                 print("☀️ MODO DIURNO SIN DETECCIONES - Llamando a _complete_processing...")
-                self._complete_processing()  # Llamada directa
+                self._complete_processing()
+                # Mostrar análisis inteligente si no hay detecciones
+                if len(self.detected_infractions) == 0 and guardadas == 0:
+                    try:
+                        self._generate_intelligent_analysis_message(guardadas)
+                    except Exception as e:
+                        print(f"⚠️ Error mostrando análisis inteligente: {e}")
             else:
                 # Es nocturno sin detecciones - NO cerrar automáticamente
                 print("🌙 MODO NOCTURNO SIN DETECCIONES - VENTANA SE MANTIENE ABIERTA HASTA QUE USUARIO PRESIONE ACEPTAR")

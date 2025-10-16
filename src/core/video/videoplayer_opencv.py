@@ -2111,11 +2111,11 @@ class VideoPlayerOpenCV:
             # 📝 WRAPLENGTH DINÁMICO MEJORADO para evitar desbordamiento
             # 🔧 FIX: Usar porcentajes más conservadores y mínimos absolutos más altos
             if self.panel_size in ['xs', 'small']:
-                self.wraplength = max(100, int(width * 0.60))   # 60% para pantallas pequeñas, mínimo 100px
+                self.wraplength = max(120, int(width * 0.70))   # 70% para pantallas pequeñas, mínimo 120px (aumentado de 100px)
             elif self.panel_size in ['medium']:
-                self.wraplength = max(140, int(width * 0.65))   # 65% para pantallas medianas, mínimo 140px
+                self.wraplength = max(180, int(width * 0.75))   # 75% para pantallas medianas, mínimo 180px (aumentado de 140px)
             else:
-                self.wraplength = max(180, int(width * 0.70))  # 70% para pantallas grandes, mínimo 180px
+                self.wraplength = max(220, int(width * 0.80))  # 80% para pantallas grandes, mínimo 220px (aumentado de 180px)
             
             # 📊 DEBUG OPCIONAL
             # print(f"📱 Media Query: {width}px → {self.panel_size} (scale: {scale_factor:.1f}) font: {self.font_title}/{self.font_normal}px img: {self.img_w}x{self.img_h}px wrap: {self.wraplength}px")
