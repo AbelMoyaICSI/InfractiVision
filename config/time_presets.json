@@ -1,15 +1,15 @@
 {
   "VID4EDIT \u2010 Hecho con Clipchamp.mp4": {
-    "green": 10,
-    "yellow": 4,
-    "red": 10,
-    "time_slot": "10:00 - 11:00"
+    "green": 30,
+    "yellow": 5,
+    "red": 40,
+    "time_slot": "09:00 - 10:00"
   },
   "Traffic IP Camera video (DEMO 1).mp4": {
-    "green": 10,
+    "green": 4,
     "yellow": 3,
-    "red": 15,
-    "time_slot": "07:00 - 08:30"
+    "red": 10,
+    "time_slot": "07:00 - 09:30"
   },
   "Av-Condorcanqui.mp4": {
     "green": 20,

@@ -175,7 +175,7 @@ def migrar_datos():
 @app.route("/indicadores/<user_id>", methods=["GET", "POST"])
 def indicadores(user_id):
     if request.method == "GET":
-        # Obtener indicadores desde Firestore (todos los videos del usuario)
+        # Obtener indicadores desde Firestore (todos los videos+configs del usuario)
         try:
             # Obtener todos los documentos de videos del usuario
             videos_ref = db.collection("usuarios").document(user_id).collection("videos")
@@ -184,12 +184,19 @@ def indicadores(user_id):
             indicadores_list = []
             for video_doc in videos:
                 nombre_video = video_doc.id
-                # Obtener indicadores de cada video
-                indicadores_doc = videos_ref.document(nombre_video).collection("indicadores").document("resumen").get()
-                if indicadores_doc.exists:
-                    data = indicadores_doc.to_dict()
-                    data["nombre_video"] = nombre_video
-                    indicadores_list.append(data)
+                # 🆕 NUEVO: Obtener todas las configuraciones de cada video
+                configs_ref = videos_ref.document(nombre_video).collection("configuraciones")
+                configs = configs_ref.get()
+                
+                for config_doc in configs:
+                    config_semaforo = config_doc.id
+                    # Obtener indicadores de cada configuración
+                    indicadores_doc = configs_ref.document(config_semaforo).collection("indicadores").document("resumen").get()
+                    if indicadores_doc.exists:
+                        data = indicadores_doc.to_dict()
+                        data["nombre_video"] = nombre_video
+                        data["config_semaforo"] = config_semaforo
+                        indicadores_list.append(data)
             
             return jsonify({"indicadores": indicadores_list}), 200
         except Exception as e:
@@ -215,8 +222,11 @@ def indicadores(user_id):
         indicadores_data = metrics.get("indicadores", {})
         resumen_global = metrics.get("resumen_global", {})
         
-        # 🆕 NUEVO: Obtener nombre del video desde el JSON de indicadores
+        # 🆕 NUEVO: Obtener nombre del video Y configuración desde el JSON de indicadores
         nombre_video = metrics.get("nombre_video", "desconocido.mp4")
+        config_semaforo = metrics.get("config_semaforo", "sin-configurar")
+        
+        print(f"📊 Backend: Guardando indicadores para video '{nombre_video}' con configuración [{config_semaforo}]")
         
         # Obtener ubicación/avenida si está disponible
         avenida = metrics.get("ubicacion", "N/A")
@@ -236,7 +246,8 @@ def indicadores(user_id):
         
         flat = {
             "avenida": avenida,
-            "nombre_video": nombre_video,  # 🆕 NUEVO: Incluir nombre del video
+            "nombre_video": nombre_video,
+            "config_semaforo": config_semaforo,  # 🆕 NUEVO: ID de configuración
             "fecha": fecha_actual,
             
             # NID - Número de Infracciones Detectadas
@@ -268,29 +279,30 @@ def indicadores(user_id):
         }
         
         # DEBUG: Imprimir valores extraídos para verificar
-        print(f"📊 Indicadores extraídos para video '{nombre_video}':")
         print(f"  NID: {nid_valor}")
         print(f"  NIE: {nie_valor}")
         print(f"  TI: {ti_valor}")
         print(f"  TR: {tr_valor}")
         print(f"  TIR: {tir_valor}")
 
-        # 4) Guardar objeto plano en Firestore - NUEVA ESTRUCTURA POR VIDEO
-        # Ruta: usuarios/{user_id}/videos/{nombre_video}/indicadores/resumen
+        # 4) Guardar objeto plano en Firestore - NUEVA ESTRUCTURA POR VIDEO Y CONFIGURACIÓN
+        # Ruta: usuarios/{user_id}/videos/{nombre_video}/configuraciones/{config_semaforo}/indicadores/resumen
         doc_ref = (
             db.collection("usuarios")
               .document(user_id)
               .collection("videos")
               .document(nombre_video)
+              .collection("configuraciones")
+              .document(config_semaforo)
               .collection("indicadores")
               .document("resumen")
         )
         doc_ref.set(flat, merge=True)
         
         print(f"✔ Indicadores guardados en Firestore")
-        print(f"✔ Ruta: usuarios/{user_id}/videos/{nombre_video}/indicadores/resumen")
+        print(f"✔ Ruta: usuarios/{user_id}/videos/{nombre_video}/configuraciones/{config_semaforo}/indicadores/resumen")
 
-        return jsonify({"ok": True, "doc_id": ts, "video": nombre_video}), 200
+        return jsonify({"ok": True, "doc_id": ts, "video": nombre_video, "config": config_semaforo}), 200
 
     except Exception as e:
         import traceback

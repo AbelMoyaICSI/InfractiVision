@@ -71,20 +71,25 @@ def upload_infracciones_automatically():
             data = json.load(f)
         infracciones = data.get("infracciones", [])  # Extraer el array de infracciones
         
-        # Agrupar infracciones por nombre de video
-        infracciones_por_video = {}
+        # 🆕 NUEVO: Agrupar infracciones por nombre de video Y configuración de semáforo
+        infracciones_por_video_config = {}
         for inf in infracciones:
             nombre_video = inf.get("nombre_video", "desconocido.mp4")
-            if nombre_video not in infracciones_por_video:
-                infracciones_por_video[nombre_video] = []
-            infracciones_por_video[nombre_video].append(inf)
-        
-        print(f"📹 Infracciones agrupadas en {len(infracciones_por_video)} videos diferentes")
-        
-        for nombre_video, video_infracciones in infracciones_por_video.items():
-            print(f"\n🎥 Procesando {len(video_infracciones)} infracciones del video: {nombre_video}")
+            config_semaforo = inf.get("config_semaforo", "sin-configurar")
             
-            for inf in video_infracciones:
+            # Crear clave compuesta: video + config
+            key = (nombre_video, config_semaforo)
+            
+            if key not in infracciones_por_video_config:
+                infracciones_por_video_config[key] = []
+            infracciones_por_video_config[key].append(inf)
+        
+        print(f"📹 Infracciones agrupadas en {len(infracciones_por_video_config)} combinaciones video+configuración")
+        
+        for (nombre_video, config_semaforo), video_config_infracciones in infracciones_por_video_config.items():
+            print(f"\n🎥 Procesando {len(video_config_infracciones)} infracciones del video '{nombre_video}' con configuración [{config_semaforo}]")
+            
+            for inf in video_config_infracciones:
                 placa = inf["placa"]
                 ts    = inf["video_timestamp"].replace(":", "-")
                 doc_id = f"{placa}_{ts}"
@@ -102,7 +107,7 @@ def upload_infracciones_automatically():
                 url_p = bucket.blob(p_dst).public_url
                 url_v = bucket.blob(v_dst).public_url
 
-                # Registra en Firestore - NUEVA ESTRUCTURA POR VIDEO
+                # Registra en Firestore - NUEVA ESTRUCTURA: POR VIDEO Y CONFIGURACIÓN
                 reg = {
                     "avenida":         inf.get("ubicacion", ""),
                     "fecha":           inf.get("fecha", datetime.now().strftime("%Y-%m-%d")),
@@ -119,23 +124,26 @@ def upload_infracciones_automatically():
                     "url_placa":       url_p,
                     "url_vehiculo":    url_v,
                     "video_timestamp": inf["video_timestamp"],
-                    "nombre_video":    nombre_video,  # 🆕 NUEVO: Incluir nombre del video
+                    "nombre_video":    nombre_video,
+                    "config_semaforo": config_semaforo,  # 🆕 NUEVO: ID de configuración
                     "hostname":        ids["hostname"],
                     "username":        ids["username"]
                 }
-                # 🆕 NUEVA ESTRUCTURA: usuarios/{user_id}/videos/{nombre_video}/infracciones/{doc_id}
+                # 🆕 NUEVA ESTRUCTURA: usuarios/{user_id}/videos/{nombre_video}/configuraciones/{config_semaforo}/infracciones/{doc_id}
                 fs_client \
                   .collection("usuarios") \
                   .document(user_id) \
                   .collection("videos") \
                   .document(nombre_video) \
+                  .collection("configuraciones") \
+                  .document(config_semaforo) \
                   .collection("infracciones") \
                   .document(doc_id) \
                   .set(reg)
             
-            print(f"✔ {len(video_infracciones)} infracciones del video '{nombre_video}' migradas.")
+            print(f"✔ {len(video_config_infracciones)} infracciones migradas para '{nombre_video}' [{config_semaforo}]")
         
-        print(f"\n✔ Total: {len(infracciones)} infracciones migradas de {len(infracciones_por_video)} videos.")
+        print(f"\n✔ Total: {len(infracciones)} infracciones migradas de {len(infracciones_por_video_config)} combinaciones video+configuración")
 
     # ——— 2) Indicadores ———
     if os.path.exists(INDIC_PATH):
@@ -155,8 +163,11 @@ def upload_infracciones_automatically():
         indicadores_data = metrics.get("indicadores", {})
         resumen_global = metrics.get("resumen_global", {})
         
-        # 🆕 NUEVO: Obtener nombre del video desde el JSON de indicadores
+        # 🆕 NUEVO: Obtener nombre del video Y configuración desde el JSON de indicadores
         nombre_video = metrics.get("nombre_video", "desconocido.mp4")
+        config_semaforo = metrics.get("config_semaforo", "sin-configurar")
+        
+        print(f"\n📊 Procesando indicadores para video '{nombre_video}' con configuración [{config_semaforo}]")
         
         # Obtener ubicación/avenida del primer registro de infracciones si existe
         avenida = metrics.get("ubicacion", "N/A")
@@ -187,7 +198,8 @@ def upload_infracciones_automatically():
         
         flat = {
             "avenida": avenida,
-            "nombre_video": nombre_video,  # 🆕 NUEVO: Incluir nombre del video
+            "nombre_video": nombre_video,
+            "config_semaforo": config_semaforo,  # 🆕 NUEVO: ID de configuración
             "fecha": fecha_actual,
             
             # NID - Número de Infracciones Detectadas
@@ -220,7 +232,6 @@ def upload_infracciones_automatically():
         }
         
         # DEBUG: Imprimir valores extraídos para verificar
-        print(f"📊 Indicadores extraídos para video '{nombre_video}':")
         print(f"  NID: {nid_valor}")
         print(f"  NIE: {nie_valor}")
         print(f"  TI: {ti_valor}")
@@ -228,17 +239,19 @@ def upload_infracciones_automatically():
         print(f"  TR individuales: {tr_individuales}")
         print(f"  TIR: {tir_valor}")
 
-        # 🆕 NUEVA ESTRUCTURA: usuarios/{user_id}/videos/{nombre_video}/indicadores/resumen
+        # 🆕 NUEVA ESTRUCTURA: usuarios/{user_id}/videos/{nombre_video}/configuraciones/{config_semaforo}/indicadores/resumen
         fs_client \
           .collection("usuarios") \
           .document(user_id) \
           .collection("videos") \
           .document(nombre_video) \
+          .collection("configuraciones") \
+          .document(config_semaforo) \
           .collection("indicadores") \
           .document("resumen") \
           .set(flat, merge=True)
-        print(f"✔ Indicadores guardados en Firestore con estructura por video.")
-        print(f"✔ Ruta: usuarios/{user_id}/videos/{nombre_video}/indicadores/resumen")
+        print(f"✔ Indicadores guardados en Firestore con estructura por video+configuración.")
+        print(f"✔ Ruta: usuarios/{user_id}/videos/{nombre_video}/configuraciones/{config_semaforo}/indicadores/resumen")
     else:
         print("ℹ️ No se encontró indicadores_rendimiento.json, omito carga.")
 

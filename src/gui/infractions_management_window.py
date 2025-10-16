@@ -479,7 +479,7 @@ def show_migrations(refresh_callback=None, all_data_ref=None):
 
 
 
-def generate_performance_indicators_json(software_infractions, software_processing_times, nombre_video=None):
+def generate_performance_indicators_json(software_infractions, software_processing_times, nombre_video=None, config_semaforo=None):
     """
     Genera y guarda en data/indicadores_rendimiento.json
     los indicadores TI, TR y NID basados en las infracciones y tiempos.
@@ -489,6 +489,7 @@ def generate_performance_indicators_json(software_infractions, software_processi
         software_infractions: Lista de infracciones detectadas
         software_processing_times: Lista de tiempos de procesamiento
         nombre_video: Nombre del video procesado (opcional)
+        config_semaforo: ID de configuración de semáforo (ej: "10-3-15") (opcional)
     """
     import os
     import json
@@ -500,6 +501,7 @@ def generate_performance_indicators_json(software_infractions, software_processi
     print(f"  Infracciones recibidas: {len(software_infractions) if isinstance(software_infractions, list) else 0}")
     print(f"  Tiempos de procesamiento: {len(software_processing_times) if isinstance(software_processing_times, list) else 0}")
     print(f"  Nombre del video: {nombre_video}")
+    print(f"  Configuración semáforo: {config_semaforo}")
     if software_infractions and isinstance(software_infractions, list):
         print(f"  Primera infracción: {software_infractions[0] if software_infractions else 'N/A'}")
 
@@ -629,12 +631,21 @@ def generate_performance_indicators_json(software_infractions, software_processi
     if not video_name:
         video_name = "desconocido.mp4"
     
+    # 🆕 NUEVO: Obtener configuración de semáforo
+    config_semaforo_id = config_semaforo
+    if not config_semaforo_id and software_infractions:
+        # Intentar obtener del primer registro de infracción
+        config_semaforo_id = software_infractions[0].get("config_semaforo", "sin-configurar")
+    if not config_semaforo_id:
+        config_semaforo_id = "sin-configurar"
+    
     report = {
         "fecha_generacion": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         "periodo_analisis": f"{min(day_infractions.keys(), default='N/A')} - {max(day_infractions.keys(), default='N/A')}",
         "dias_analizados": sw_days,
         "ubicacion": avenida,  # Agregar ubicación/avenida
         "nombre_video": video_name,  # 🆕 NUEVO: Nombre del video procesado
+        "config_semaforo": config_semaforo_id,  # 🆕 NUEVO: Configuración de semáforo (ej: "10-3-15")
         "nota": "Datos de la sesión actual de procesamiento, no acumulados históricos",
         "indicadores": {
             "TI": {

@@ -1035,6 +1035,26 @@ class PreprocessingDialog:
     # NUEVO: Variable para controlar ventanas emergentes nocturnas
     _night_popup_active = False
     
+    @staticmethod
+    def generar_config_id(cycle_durations):
+        """
+        Genera un ID único para la configuración de semáforo basado en los tiempos.
+        
+        Args:
+            cycle_durations: Dict con 'green_time', 'yellow_time', 'red_time'
+        
+        Returns:
+            String en formato "verde-amarillo-rojo" (ejemplo: "10-3-15")
+        """
+        if not cycle_durations or not isinstance(cycle_durations, dict):
+            return "sin-configurar"
+        
+        verde = int(cycle_durations.get('green_time', 0))
+        amarillo = int(cycle_durations.get('yellow_time', 0))
+        rojo = int(cycle_durations.get('red_time', 0))
+        
+        return f"{verde}-{amarillo}-{rojo}"
+    
     def __init__(self, parent, video_path, player_instance, on_complete=None):
         """
         Inicializa el diálogo de preprocesamiento.
@@ -5287,10 +5307,15 @@ class PreprocessingDialog:
                 nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
                 print(f"📹 Nombre del video procesado: {nombre_video}")
                 
+                # 🆕 NUEVO: Generar ID de configuración de semáforo
+                config_semaforo = self.generar_config_id(self.cycle_durations) if hasattr(self, 'cycle_durations') else "sin-configurar"
+                print(f"⏱️ Configuración de semáforo: {config_semaforo}")
+                
                 generate_performance_indicators_json(
                     current_session_infractions,
                     individual_processing_times,  # Pasar tiempos individuales, no promedio
-                    nombre_video  # 🆕 NUEVO: Pasar nombre del video
+                    nombre_video,  # 🆕 NUEVO: Pasar nombre del video
+                    config_semaforo  # 🆕 NUEVO: Pasar configuración de semáforo
                 )
 
                 # — Subir indicadores en hilo aparte (SOLO si no es caso de segunda ventana nocturna)
@@ -5512,6 +5537,9 @@ class PreprocessingDialog:
             # 🆕 NUEVO: Obtener nombre del video procesado (DIRECTO desde self.video_path)
             nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
             
+            # 🆕 NUEVO: Generar ID de configuración de semáforo
+            config_semaforo = self.generar_config_id(self.cycle_durations) if hasattr(self, 'cycle_durations') else "sin-configurar"
+            
             entry = {
                 "placa":           plate,
                 "fecha":           now.strftime("%d/%m/%Y"),
@@ -5519,6 +5547,7 @@ class PreprocessingDialog:
                 "video_timestamp": timestamp,
                 "tiempo_video":    total_duration,  # Duración total del video
                 "nombre_video":    nombre_video,  # 🆕 NUEVO: Nombre del video procesado
+                "config_semaforo": config_semaforo,  # 🆕 NUEVO: ID de configuración de semáforo (ej: "10-3-15")
                 "ubicacion":       avenue_name,
                 "franja_horaria":  time_slot,
                 "tipo":            "Semáforo en rojo",
@@ -5633,6 +5662,9 @@ class PreprocessingDialog:
 
             # 🆕 NUEVO: Obtener nombre del video procesado (DIRECTO desde self.video_path)
             nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
+            
+            # 🆕 NUEVO: Generar ID de configuración de semáforo
+            config_semaforo = self.generar_config_id(self.cycle_durations) if hasattr(self, 'cycle_durations') else "sin-configurar"
 
             entry = {
                 "placa":           plate,
@@ -5640,6 +5672,7 @@ class PreprocessingDialog:
                 "hora":            now.strftime("%H:%M:%S"),
                 "video_timestamp": timestamp,
                 "nombre_video":    nombre_video,  # 🆕 NUEVO: Nombre del video procesado
+                "config_semaforo": config_semaforo,  # 🆕 NUEVO: ID de configuración de semáforo
                 "ubicacion":       avenue_name,
                 "franja_horaria":  time_slot,
                 "tipo":            "Semáforo en rojo",

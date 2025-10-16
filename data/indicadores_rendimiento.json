@@ -1,7 +1,10 @@
 {
-  "fecha_generacion": "08/10/2025 13:31:13",
-  "periodo_analisis": "Sin fecha - Sin fecha",
+  "fecha_generacion": "16/10/2025 14:19:55",
+  "periodo_analisis": "16/10/2025 - 16/10/2025",
   "dias_analizados": 1,
+  "ubicacion": "av. la marina",
+  "nombre_video": "VID4EDIT ‐ Hecho con Clipchamp.mp4",
+  "nota": "Datos de la sesión actual de procesamiento, no acumulados históricos",
   "indicadores": {
     "TI": {
       "descripcion": "Tasa de Infracciones Detectadas (Nivel Diario Agregado)",
@@ -11,10 +14,10 @@
         "fuente": "Registros PNP históricos"
       },
       "con_software": {
-        "detecciones_software_diarias": 1.0,
+        "detecciones_software_diarias": 2.0,
         "dias_analizados": 1
       },
-      "porcentaje_acierto": 23.62
+      "porcentaje_acierto": 100.0
     },
     "TR": {
       "descripcion": "Tiempo de Registro por Infracción Individual",
@@ -24,23 +27,37 @@
         "fuente": "Estimación basada en registros históricos de campo"
       },
       "con_software": {
-        "tiempo_promedio_minutos": 0.0,
-        "muestras_analizadas": 3
+        "tiempo_promedio_minutos": 0.59,
+        "tiempos_individuales": [
+          0.59,
+          0.59
+        ],
+        "muestras_analizadas": 2
       },
-      "reduccion_tiempo_porcentual": 99.97,
-      "veces_mas_rapido": 3286.39
+      "reduccion_tiempo_porcentual": 91.87,
+      "veces_mas_rapido": 12.3
     },
     "NID": {
       "descripcion": "Número de Infracciones Detectadas Correctamente (Clasificación por Confianza)",
       "unidad": "cantidad válida por día",
-      "infracciones_hoy": 0,
-      "promedio_diario": 1.0,
-      "periodo_analizado": "1 días"
+      "infracciones_hoy": 2,
+      "promedio_diario": 2.0,
+      "periodo_analizado": "1 días",
+      "total": 2
+    },
+    "NIE": {
+      "descripcion": "Número de Infracciones Incorrectamente Registradas",
+      "unidad": "cantidad no válida por día",
+      "infracciones_incorrectas": 0,
+      "total": 0
     }
   },
   "resumen_global": {
-    "ti_porcentaje_acierto": "23.6%",
-    "tiempo_registro_minutos": "0.00 min",
-    "infracciones_detectadas_hoy": 0
+    "ti_porcentaje_acierto": "100.0%",
+    "tiempo_registro_minutos": "0.59 min",
+    "infracciones_detectadas_hoy": 2,
+    "nid_total": 2,
+    "nie_total": 0,
+    "tir_total": 2
   }
 }
