@@ -479,11 +479,16 @@ def show_migrations(refresh_callback=None, all_data_ref=None):
 
 
 
-def generate_performance_indicators_json(software_infractions, software_processing_times):
+def generate_performance_indicators_json(software_infractions, software_processing_times, nombre_video=None):
     """
     Genera y guarda en data/indicadores_rendimiento.json
     los indicadores TI, TR y NID basados en las infracciones y tiempos.
     IR ha sido eliminado completamente del sistema.
+    
+    Args:
+        software_infractions: Lista de infracciones detectadas
+        software_processing_times: Lista de tiempos de procesamiento
+        nombre_video: Nombre del video procesado (opcional)
     """
     import os
     import json
@@ -494,6 +499,7 @@ def generate_performance_indicators_json(software_infractions, software_processi
     print(f"\n📊 DEBUG - generate_performance_indicators_json:")
     print(f"  Infracciones recibidas: {len(software_infractions) if isinstance(software_infractions, list) else 0}")
     print(f"  Tiempos de procesamiento: {len(software_processing_times) if isinstance(software_processing_times, list) else 0}")
+    print(f"  Nombre del video: {nombre_video}")
     if software_infractions and isinstance(software_infractions, list):
         print(f"  Primera infracción: {software_infractions[0] if software_infractions else 'N/A'}")
 
@@ -615,11 +621,20 @@ def generate_performance_indicators_json(software_infractions, software_processi
     # NOTA: Este reporte refleja SOLO los datos de la sesión actual, no acumulados históricos
     from datetime import datetime
     
+    # Obtener nombre del video desde las infracciones o del parámetro
+    video_name = nombre_video
+    if not video_name and software_infractions:
+        # Intentar obtener del primer registro de infracción
+        video_name = software_infractions[0].get("nombre_video", "desconocido.mp4")
+    if not video_name:
+        video_name = "desconocido.mp4"
+    
     report = {
         "fecha_generacion": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         "periodo_analisis": f"{min(day_infractions.keys(), default='N/A')} - {max(day_infractions.keys(), default='N/A')}",
         "dias_analizados": sw_days,
         "ubicacion": avenida,  # Agregar ubicación/avenida
+        "nombre_video": video_name,  # 🆕 NUEVO: Nombre del video procesado
         "nota": "Datos de la sesión actual de procesamiento, no acumulados históricos",
         "indicadores": {
             "TI": {

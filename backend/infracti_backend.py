@@ -175,10 +175,22 @@ def migrar_datos():
 @app.route("/indicadores/<user_id>", methods=["GET", "POST"])
 def indicadores(user_id):
     if request.method == "GET":
-        # Obtener indicadores desde Firestore
+        # Obtener indicadores desde Firestore (todos los videos del usuario)
         try:
-            docs = db.collection("usuarios").document(user_id).collection("indicadores").get()
-            indicadores_list = [doc.to_dict() for doc in docs]
+            # Obtener todos los documentos de videos del usuario
+            videos_ref = db.collection("usuarios").document(user_id).collection("videos")
+            videos = videos_ref.get()
+            
+            indicadores_list = []
+            for video_doc in videos:
+                nombre_video = video_doc.id
+                # Obtener indicadores de cada video
+                indicadores_doc = videos_ref.document(nombre_video).collection("indicadores").document("resumen").get()
+                if indicadores_doc.exists:
+                    data = indicadores_doc.to_dict()
+                    data["nombre_video"] = nombre_video
+                    indicadores_list.append(data)
+            
             return jsonify({"indicadores": indicadores_list}), 200
         except Exception as e:
             return jsonify({"status": "error", "msg": str(e)}), 500
@@ -203,6 +215,9 @@ def indicadores(user_id):
         indicadores_data = metrics.get("indicadores", {})
         resumen_global = metrics.get("resumen_global", {})
         
+        # 🆕 NUEVO: Obtener nombre del video desde el JSON de indicadores
+        nombre_video = metrics.get("nombre_video", "desconocido.mp4")
+        
         # Obtener ubicación/avenida si está disponible
         avenida = metrics.get("ubicacion", "N/A")
         
@@ -221,6 +236,7 @@ def indicadores(user_id):
         
         flat = {
             "avenida": avenida,
+            "nombre_video": nombre_video,  # 🆕 NUEVO: Incluir nombre del video
             "fecha": fecha_actual,
             
             # NID - Número de Infracciones Detectadas
@@ -252,23 +268,29 @@ def indicadores(user_id):
         }
         
         # DEBUG: Imprimir valores extraídos para verificar
-        print(f"📊 Indicadores extraídos:")
+        print(f"📊 Indicadores extraídos para video '{nombre_video}':")
         print(f"  NID: {nid_valor}")
         print(f"  NIE: {nie_valor}")
         print(f"  TI: {ti_valor}")
         print(f"  TR: {tr_valor}")
         print(f"  TIR: {tir_valor}")
 
-        # 4) Guardar objeto plano en Firestore
+        # 4) Guardar objeto plano en Firestore - NUEVA ESTRUCTURA POR VIDEO
+        # Ruta: usuarios/{user_id}/videos/{nombre_video}/indicadores/resumen
         doc_ref = (
             db.collection("usuarios")
               .document(user_id)
+              .collection("videos")
+              .document(nombre_video)
               .collection("indicadores")
-              .document(fecha_actual.replace("-", ""))
+              .document("resumen")
         )
-        doc_ref.set(flat)
+        doc_ref.set(flat, merge=True)
+        
+        print(f"✔ Indicadores guardados en Firestore")
+        print(f"✔ Ruta: usuarios/{user_id}/videos/{nombre_video}/indicadores/resumen")
 
-        return jsonify({"ok": True, "doc_id": ts}), 200
+        return jsonify({"ok": True, "doc_id": ts, "video": nombre_video}), 200
 
     except Exception as e:
         import traceback

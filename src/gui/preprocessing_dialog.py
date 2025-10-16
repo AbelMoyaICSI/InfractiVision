@@ -5283,9 +5283,14 @@ class PreprocessingDialog:
                 print(f"\n📊 Generando indicadores para {len(current_session_infractions)} infracciones de esta sesión ({num_nid_nuevas} NID + {num_nie_nuevas} NIE)...")
                 print(f"   Tiempos de procesamiento individuales: {individual_processing_times} segundos")
                 
+                # 🆕 NUEVO: Obtener nombre del video procesado (DIRECTO desde self.video_path)
+                nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
+                print(f"📹 Nombre del video procesado: {nombre_video}")
+                
                 generate_performance_indicators_json(
                     current_session_infractions,
-                    individual_processing_times  # Pasar tiempos individuales, no promedio
+                    individual_processing_times,  # Pasar tiempos individuales, no promedio
+                    nombre_video  # 🆕 NUEVO: Pasar nombre del video
                 )
 
                 # — Subir indicadores en hilo aparte (SOLO si no es caso de segunda ventana nocturna)
@@ -5504,12 +5509,16 @@ class PreprocessingDialog:
                         mins_total, secs_total = divmod(int(video_duration), 60)
                         total_duration = f"{mins_total:02d}:{secs_total:02d}"
             
+            # 🆕 NUEVO: Obtener nombre del video procesado (DIRECTO desde self.video_path)
+            nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
+            
             entry = {
                 "placa":           plate,
                 "fecha":           now.strftime("%d/%m/%Y"),
                 "hora":            now.strftime("%H:%M:%S"),
                 "video_timestamp": timestamp,
                 "tiempo_video":    total_duration,  # Duración total del video
+                "nombre_video":    nombre_video,  # 🆕 NUEVO: Nombre del video procesado
                 "ubicacion":       avenue_name,
                 "franja_horaria":  time_slot,
                 "tipo":            "Semáforo en rojo",
@@ -5622,11 +5631,15 @@ class PreprocessingDialog:
                 "justificacion": "No cumple criterios técnicos - Clasificada como NIE"
             }
 
+            # 🆕 NUEVO: Obtener nombre del video procesado (DIRECTO desde self.video_path)
+            nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
+
             entry = {
                 "placa":           plate,
                 "fecha":           now.strftime("%d/%m/%Y"),
                 "hora":            now.strftime("%H:%M:%S"),
                 "video_timestamp": timestamp,
+                "nombre_video":    nombre_video,  # 🆕 NUEVO: Nombre del video procesado
                 "ubicacion":       avenue_name,
                 "franja_horaria":  time_slot,
                 "tipo":            "Semáforo en rojo",

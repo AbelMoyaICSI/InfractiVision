@@ -70,51 +70,72 @@ def upload_infracciones_automatically():
         with open(INFRA_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
         infracciones = data.get("infracciones", [])  # Extraer el array de infracciones
+        
+        # Agrupar infracciones por nombre de video
+        infracciones_por_video = {}
         for inf in infracciones:
-            placa = inf["placa"]
-            ts    = inf["video_timestamp"].replace(":", "-")
-            doc_id = f"{placa}_{ts}"
-            folder = f"evidencias/{user_id}/{device_id}"
+            nombre_video = inf.get("nombre_video", "desconocido.mp4")
+            if nombre_video not in infracciones_por_video:
+                infracciones_por_video[nombre_video] = []
+            infracciones_por_video[nombre_video].append(inf)
+        
+        print(f"📹 Infracciones agrupadas en {len(infracciones_por_video)} videos diferentes")
+        
+        for nombre_video, video_infracciones in infracciones_por_video.items():
+            print(f"\n🎥 Procesando {len(video_infracciones)} infracciones del video: {nombre_video}")
+            
+            for inf in video_infracciones:
+                placa = inf["placa"]
+                ts    = inf["video_timestamp"].replace(":", "-")
+                doc_id = f"{placa}_{ts}"
+                folder = f"evidencias/{user_id}/{device_id}"
 
-            # Rutas a archivos locales
-            plate_src   = os.path.join(BASE_DIR, inf["plate_path"])
-            vehicle_src = os.path.join(BASE_DIR, inf["vehicle_path"])
+                # Rutas a archivos locales
+                plate_src   = os.path.join(BASE_DIR, inf["plate_path"])
+                vehicle_src = os.path.join(BASE_DIR, inf["vehicle_path"])
 
-            # Sube imágenes
-            p_dst = f"{folder}/placas/{doc_id}.jpg"
-            v_dst = f"{folder}/vehiculos/{doc_id}.jpg"
-            bucket.blob(p_dst).upload_from_filename(plate_src)
-            bucket.blob(v_dst).upload_from_filename(vehicle_src)
-            url_p = bucket.blob(p_dst).public_url
-            url_v = bucket.blob(v_dst).public_url
+                # Sube imágenes
+                p_dst = f"{folder}/placas/{doc_id}.jpg"
+                v_dst = f"{folder}/vehiculos/{doc_id}.jpg"
+                bucket.blob(p_dst).upload_from_filename(plate_src)
+                bucket.blob(v_dst).upload_from_filename(vehicle_src)
+                url_p = bucket.blob(p_dst).public_url
+                url_v = bucket.blob(v_dst).public_url
 
-            # Registra en Firestore - NUEVA ESTRUCTURA SIMPLIFICADA
-            reg = {
-                "avenida":         inf.get("ubicacion", ""),
-                "fecha":           inf.get("fecha", datetime.now().strftime("%Y-%m-%d")),
-                "placa":           placa,
-                "tipo":            inf.get("tipo", "Semáforo en rojo"),
-                "estado":          inf.get("estado", "Pendiente"),
-                "ubicacion":       inf.get("ubicacion", ""),
-                "hora":            inf.get("hora",  datetime.now().strftime("%H:%M:%S")),
-                "franja_horaria":  inf.get("franja_horaria", ""),
-                "confianza":       inf.get("confianza", 0.0),
-                "calidad":         inf.get("metadata_clasificacion", {}).get("calidad_deteccion", "alta"),
-                "justificacion":   inf.get("metadata_clasificacion", {}).get("justificacion", "Cumple criterios técnicos calibrados"),
-                "tiempo_procesamiento": inf.get("tiempo_procesamiento", 0.0),
-                "url_placa":       url_p,
-                "url_vehiculo":    url_v,
-                "video_timestamp": inf["video_timestamp"],
-                "hostname":        ids["hostname"],
-                "username":        ids["username"]
-            }
-            fs_client \
-              .collection("usuarios") \
-              .document(user_id) \
-              .collection("infracciones") \
-              .document(doc_id) \
-              .set(reg)
-        print("✔ Infracciones migradas.")
+                # Registra en Firestore - NUEVA ESTRUCTURA POR VIDEO
+                reg = {
+                    "avenida":         inf.get("ubicacion", ""),
+                    "fecha":           inf.get("fecha", datetime.now().strftime("%Y-%m-%d")),
+                    "placa":           placa,
+                    "tipo":            inf.get("tipo", "Semáforo en rojo"),
+                    "estado":          inf.get("estado", "Pendiente"),
+                    "ubicacion":       inf.get("ubicacion", ""),
+                    "hora":            inf.get("hora",  datetime.now().strftime("%H:%M:%S")),
+                    "franja_horaria":  inf.get("franja_horaria", ""),
+                    "confianza":       inf.get("confianza", 0.0),
+                    "calidad":         inf.get("metadata_clasificacion", {}).get("calidad_deteccion", "alta"),
+                    "justificacion":   inf.get("metadata_clasificacion", {}).get("justificacion", "Cumple criterios técnicos calibrados"),
+                    "tiempo_procesamiento": inf.get("tiempo_procesamiento", 0.0),
+                    "url_placa":       url_p,
+                    "url_vehiculo":    url_v,
+                    "video_timestamp": inf["video_timestamp"],
+                    "nombre_video":    nombre_video,  # 🆕 NUEVO: Incluir nombre del video
+                    "hostname":        ids["hostname"],
+                    "username":        ids["username"]
+                }
+                # 🆕 NUEVA ESTRUCTURA: usuarios/{user_id}/videos/{nombre_video}/infracciones/{doc_id}
+                fs_client \
+                  .collection("usuarios") \
+                  .document(user_id) \
+                  .collection("videos") \
+                  .document(nombre_video) \
+                  .collection("infracciones") \
+                  .document(doc_id) \
+                  .set(reg)
+            
+            print(f"✔ {len(video_infracciones)} infracciones del video '{nombre_video}' migradas.")
+        
+        print(f"\n✔ Total: {len(infracciones)} infracciones migradas de {len(infracciones_por_video)} videos.")
 
     # ——— 2) Indicadores ———
     if os.path.exists(INDIC_PATH):
@@ -134,9 +155,12 @@ def upload_infracciones_automatically():
         indicadores_data = metrics.get("indicadores", {})
         resumen_global = metrics.get("resumen_global", {})
         
+        # 🆕 NUEVO: Obtener nombre del video desde el JSON de indicadores
+        nombre_video = metrics.get("nombre_video", "desconocido.mp4")
+        
         # Obtener ubicación/avenida del primer registro de infracciones si existe
-        avenida = "N/A"
-        if os.path.exists(INFRA_FILE):
+        avenida = metrics.get("ubicacion", "N/A")
+        if avenida == "N/A" and os.path.exists(INFRA_FILE):
             with open(INFRA_FILE, "r", encoding="utf-8") as f:
                 infra_data = json.load(f)
                 infracciones = infra_data.get("infracciones", [])
@@ -163,6 +187,7 @@ def upload_infracciones_automatically():
         
         flat = {
             "avenida": avenida,
+            "nombre_video": nombre_video,  # 🆕 NUEVO: Incluir nombre del video
             "fecha": fecha_actual,
             
             # NID - Número de Infracciones Detectadas
@@ -195,7 +220,7 @@ def upload_infracciones_automatically():
         }
         
         # DEBUG: Imprimir valores extraídos para verificar
-        print(f"📊 Indicadores extraídos:")
+        print(f"📊 Indicadores extraídos para video '{nombre_video}':")
         print(f"  NID: {nid_valor}")
         print(f"  NIE: {nie_valor}")
         print(f"  TI: {ti_valor}")
@@ -203,15 +228,17 @@ def upload_infracciones_automatically():
         print(f"  TR individuales: {tr_individuales}")
         print(f"  TIR: {tir_valor}")
 
+        # 🆕 NUEVA ESTRUCTURA: usuarios/{user_id}/videos/{nombre_video}/indicadores/resumen
         fs_client \
           .collection("usuarios") \
           .document(user_id) \
+          .collection("videos") \
+          .document(nombre_video) \
           .collection("indicadores") \
-          .document(fecha_actual.replace("-", "")) \
+          .document("resumen") \
           .set(flat, merge=True)
-        print("✔ Indicadores guardados en Firestore con estructura simplificada.")
-        print(f"✔ Documento ID: {fecha_actual.replace('-', '')}")
-        print(f"✔ Ruta: usuarios/{user_id}/indicadores/{fecha_actual.replace('-', '')}")
+        print(f"✔ Indicadores guardados en Firestore con estructura por video.")
+        print(f"✔ Ruta: usuarios/{user_id}/videos/{nombre_video}/indicadores/resumen")
     else:
         print("ℹ️ No se encontró indicadores_rendimiento.json, omito carga.")
 
