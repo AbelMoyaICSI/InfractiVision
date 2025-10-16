@@ -4963,6 +4963,7 @@ class PreprocessingDialog:
     def _show_success_detection_popup(self, num_infractions):
         """VENTANA DE ÉXITO: Mostrar cuando SÍ se detectan infracciones"""
         print(f"🎉 MOSTRANDO VENTANA DE ÉXITO - {num_infractions} INFRACCIONES PROCESADAS")
+        print("🔍 DEBUG: Iniciando _show_success_detection_popup")
         
         # 🚦 PAUSAR SEMÁFORO INMEDIATAMENTE AL MOSTRAR VENTANA DE ÉXITO
         if hasattr(self.player, 'semaforo') and self.player.semaforo:
@@ -4984,14 +4985,21 @@ class PreprocessingDialog:
                 bg="#27ae60"
             )
         
+        print("🔍 DEBUG: Antes de crear popup")
         try:
             # Crear ventana emergente de éxito
+            print("🔍 DEBUG: Creando tk.Toplevel")
             popup = tk.Toplevel(self.dialog)
+            print("🔍 DEBUG: tk.Toplevel creado correctamente")
+            print("🔍 DEBUG: Configurando título...")
             popup.title("🎉 Procesamiento Exitoso")
+            print("🔍 DEBUG: Título configurado")
             
             # Tamaño MÁS GRANDE para ventana de éxito (responsivo)
+            print("🔍 DEBUG: Obteniendo dimensiones de pantalla...")
             screen_width = popup.winfo_screenwidth()
             screen_height = popup.winfo_screenheight()
+            print(f"🔍 DEBUG: Pantalla: {screen_width}x{screen_height}")
             
             if screen_width >= 1920:  # Pantalla grande
                 popup_width, popup_height = 700, 500
@@ -5105,9 +5113,15 @@ class PreprocessingDialog:
             # Enter también funciona
             popup.bind('<Return>', lambda e: close_success_popup())
             
+            print("🔍 DEBUG: Ventana de éxito creada completamente - RETORNANDO")
+            
         except Exception as e:
-            print(f"Error mostrando ventana de éxito: {e}")
+            print(f"❌ ERROR EN _show_success_detection_popup: {e}")
+            import traceback
+            traceback.print_exc()
             pass
+        
+        print("🔍 DEBUG: _show_success_detection_popup TERMINÓ - Regresando a _finalize_processing")
 
     def _enhance_night_visibility_fast(self, frame):
         """Versión optimizada para mejorar la visibilidad en escenas nocturnas"""
