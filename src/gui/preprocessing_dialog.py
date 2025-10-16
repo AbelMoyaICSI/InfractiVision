@@ -5072,9 +5072,14 @@ class PreprocessingDialog:
                 wraplength=popup_width-80)  # RESPONSIVO: texto se adapta al ancho
             final_label.pack(pady=(20, 20))
             
-            # BOTÓN SIN CONTADOR AUTOMÁTICO - Solo se cierra al hacer clic
+            # CONTADOR DE 10 SEGUNDOS CON BOTÓN DINÁMICO (RESTAURADO)
+            countdown_seconds = 10
+            countdown_active = True
+            
             def close_success_popup():
-                print("✅ CERRANDO VENTANA DE ÉXITO - USUARIO HIZO CLIC EN ACEPTAR")
+                nonlocal countdown_active
+                countdown_active = False
+                print("✅ CERRANDO VENTANA DE ÉXITO - CONTINUANDO")
                 try:
                     popup.destroy()
                     print("✅ VENTANA DE ÉXITO CERRADA")
@@ -5082,13 +5087,26 @@ class PreprocessingDialog:
                     print(f"Error cerrando ventana de éxito: {e}")
             
             continue_button = tk.Button(main_frame, 
-                text="✨ ACEPTAR", 
+                text=f"✨ ACEPTAR ({countdown_seconds}s)", 
                 font=('Arial', 12, 'bold'),
                 bg='#4CAF50', fg='white',
                 relief='raised', bd=3,
                 padx=30, pady=12,
                 command=close_success_popup)
             continue_button.pack(pady=(0, 10), anchor='center')
+            
+            def update_countdown():
+                nonlocal countdown_seconds, countdown_active
+                if countdown_active and countdown_seconds > 0:
+                    countdown_seconds -= 1
+                    continue_button.config(text=f"✨ ACEPTAR ({countdown_seconds}s)")
+                    popup.after(1000, update_countdown)
+                elif countdown_active and countdown_seconds <= 0:
+                    # Tiempo agotado, cerrar automáticamente
+                    close_success_popup()
+            
+            # Iniciar contador
+            popup.after(1000, update_countdown)
             
             # COMPORTAMIENTO AL HACER CLIC: Mostrar ventana principal atrás si existe
             def on_success_popup_click(event=None):
