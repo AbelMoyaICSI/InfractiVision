@@ -95,12 +95,29 @@ class VehicleDetector:
         """Configura parámetros adaptativos según hardware detectado"""
         score = self.hardware_info['score']
         
+        # 🔧 AJUSTE: Si NO hay GPU, forzar configuración CPU optimizada
+        has_gpu = self.hardware_info['gpu']['available']
+        
+        if not has_gpu:
+            # 🖥️ MODO CPU - Optimización agresiva para CPUs sin GPU
+            self.imgsz = 416  # Múltiplo de 32 óptimo para YOLO en CPU
+            self.conf_threshold = 0.25  # Reducido para detectar más vehículos
+            self.max_det = 50
+            self.batch_size = 1
+            print("�️  Configuración CPU OPTIMIZADA:")
+            print(f"   📏 Tamaño de imagen: {self.imgsz}px (múltiplo de 32 para YOLO)")
+            print(f"   🎯 Umbral confianza: {self.conf_threshold} (reducido para mejor detección)")
+            print(f"   ⚡ Max detecciones: {self.max_det}")
+            print(f"   💡 Procesamiento optimizado para CPU")
+            return
+        
+        # Resto de configuraciones para GPU
         if score >= 80:  # Hardware muy potente
             self.imgsz = 832
             self.conf_threshold = 0.25
             self.max_det = 150
             self.batch_size = 4
-            print("🔥 Configuración ULTRA: Hardware de gama alta detectado")
+            print("� Configuración ULTRA: Hardware de gama alta detectado")
         elif score >= 60:  # Hardware potente  
             self.imgsz = 640
             self.conf_threshold = 0.3
@@ -113,12 +130,12 @@ class VehicleDetector:
             self.max_det = 75
             self.batch_size = 1
             print("⚡ Configuración MEDIA: Hardware estándar detectado")
-        else:  # Hardware básico
-            self.imgsz = 320
-            self.conf_threshold = 0.5
+        else:  # Hardware básico con GPU
+            self.imgsz = 416
+            self.conf_threshold = 0.4
             self.max_det = 50
             self.batch_size = 1
-            print("💻 Configuración BÁSICA: Hardware limitado detectado")
+            print("💻 Configuración BÁSICA GPU")
         
         # Configuración adicional para GPU
         if self.using_gpu and self.hardware_info['gpu']['memory'] > 0:
@@ -181,15 +198,17 @@ class VehicleDetector:
         
         # 2. Procesar en tamaño adaptativo según hardware
         orig_shape = image_bgr.shape
-        if orig_shape[0] > self.imgsz or orig_shape[1] > self.imgsz:
-            scale = min(self.imgsz / orig_shape[0], self.imgsz / orig_shape[1])
-            new_shape = (int(orig_shape[1] * scale), int(orig_shape[0] * scale))
-            resized = cv2.resize(image_bgr, new_shape)
-            results = self.model.predict(resized, conf=conf, verbose=False, max_det=self.max_det)
-            scale_factor = (orig_shape[1] / new_shape[0], orig_shape[0] / new_shape[1])
-        else:
-            results = self.model.predict(image_bgr, conf=conf, verbose=False, max_det=self.max_det)
-            scale_factor = (1.0, 1.0)
+        
+        # 🔧 OPTIMIZACIÓN: Usar imgsz directamente en predict() para que YOLO ajuste internamente
+        results = self.model.predict(
+            image_bgr, 
+            conf=conf, 
+            verbose=False, 
+            max_det=self.max_det,
+            imgsz=self.imgsz,  # 🎯 CRÍTICO: Pasar el tamaño optimizado para CPU/GPU
+            device=self.device  # 🎯 Especificar dispositivo explícitamente
+        )
+        scale_factor = (1.0, 1.0)  # YOLO ya redimensiona internamente
         
         # 3. Extraer detecciones - MANTENER FORMATO DE 5 VALORES
         detections = []

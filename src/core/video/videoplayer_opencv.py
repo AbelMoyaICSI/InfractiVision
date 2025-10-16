@@ -83,10 +83,6 @@ class VideoPlayerOpenCV:
         self.registration_times = []
         self.plate_detection_history = {}
 
-        # Detección mejorada de hardware GPU/CPU
-        self.detect_hardware()
-        self.configure_hardware_settings()
-
                 # Directorio de vídeos
         self.video_dir = resource_path("videos")
         os.makedirs(self.video_dir, exist_ok=True)
