@@ -758,9 +758,15 @@ def get_reader():
     """Inicializa el lector de PaddleOCR si no existe"""
     global paddle_reader
     if paddle_reader is None:
-        print("Inicializando PaddleOCR...")
-        # PaddleOCR 3.2+ - parámetros simplificados
-        paddle_reader = PaddleOCR(lang='es')
+        print("Inicializando PaddleOCR optimizado para CPU...")
+        # PaddleOCR 3.2.0 - API NUEVA (no usa use_gpu, usa device)
+        # NOTA: Rendimiento será más lento que con GPU, pero funcional
+        paddle_reader = PaddleOCR(
+            lang='es',
+            # 🔧 NUEVA API 3.2.0: device='cpu' en vez de use_gpu=False
+            device='cpu'  # Opciones: 'cpu', 'gpu', 'cuda:0', etc.
+        )
+        print("⚠️ ADVERTENCIA: Ejecutando en CPU - La precisión puede ser menor que con GPU")
     return paddle_reader
 
 def preprocess_plate_image(plate_img):
