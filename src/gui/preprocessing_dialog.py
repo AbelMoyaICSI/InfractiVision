@@ -1035,32 +1035,6 @@ class PreprocessingDialog:
     # NUEVO: Variable para controlar ventanas emergentes nocturnas
     _night_popup_active = False
     
-    @staticmethod
-    def generar_config_id(cycle_durations):
-        """
-        Genera un ID único para la configuración de semáforo basado en los tiempos.
-        
-        Args:
-            cycle_durations: Dict con 'green'/'green_time', 'yellow'/'yellow_time', 'red'/'red_time'
-        
-        Returns:
-            String en formato "verde-amarillo-rojo" (ejemplo: "10-3-15")
-        """
-        if not cycle_durations or not isinstance(cycle_durations, dict):
-            return "sin-configurar"
-        
-        # 🔧 FIX: Soportar ambos formatos de configuración
-        # time_presets.json usa: 'green', 'yellow', 'red'
-        # Otros lugares pueden usar: 'green_time', 'yellow_time', 'red_time'
-        verde = int(cycle_durations.get('green', cycle_durations.get('green_time', 0)))
-        amarillo = int(cycle_durations.get('yellow', cycle_durations.get('yellow_time', 0)))
-        rojo = int(cycle_durations.get('red', cycle_durations.get('red_time', 0)))
-        
-        if verde == 0 and amarillo == 0 and rojo == 0:
-            return "sin-configurar"
-        
-        return f"{verde}-{amarillo}-{rojo}"
-    
     def __init__(self, parent, video_path, player_instance, on_complete=None):
         """
         Inicializa el diálogo de preprocesamiento.
@@ -1265,16 +1239,15 @@ class PreprocessingDialog:
     
     def create_synchronized_semaphore(self):
         """Crear semáforo visual sincronizado con el principal"""
-        # Título del semáforo (COMPACTO: 2 líneas)
+        # Título del semáforo
         title_label = tk.Label(
             self.semaphore_frame,
-            text="🚦 Estado\ndel Semáforo",  # COMPACTO: 2 líneas
-            font=("Arial", 9, "bold"),  # Fuente reducida
+            text="🚦 Estado del Semáforo",
+            font=("Arial", 12, "bold"),
             bg="#f0f0f0",
-            fg="#2c3e50",
-            justify="center"  # Centrado
+            fg="#2c3e50"
         )
-        title_label.pack(pady=(8, 3))  # Padding reducido
+        title_label.pack(pady=(10, 5))
         
         # Canvas para dibujar el semáforo
         self.semaphore_canvas = tk.Canvas(
@@ -1382,8 +1355,8 @@ class PreprocessingDialog:
         self.video_frame.pack(side="left", padx=(0, 10))
         self.video_frame.pack_propagate(False)
         
-        # Frame para el semáforo sincronizado (REDUCIDO para laptop)
-        self.semaphore_frame = ttk.Frame(video_container, width=90, height=360, relief="groove", borderwidth=2)
+        # Frame para el semáforo sincronizado
+        self.semaphore_frame = ttk.Frame(video_container, width=120, height=360, relief="groove", borderwidth=2)
         self.semaphore_frame.pack(side="left", fill="y")
         self.semaphore_frame.pack_propagate(False)
         
@@ -5118,11 +5091,7 @@ class PreprocessingDialog:
 
     def _complete_processing(self):
         """Finaliza el procesamiento y muestra los resultados"""
-        print(f"\n{'='*80}")
-        print(f"🎯 INICIANDO _complete_processing")
-        print(f"📋 Infracciones detectadas: {len(self.detected_infractions)}")
-        print(f"{'='*80}\n")
-        
+        print(f"📋 Procesando {len(self.detected_infractions)} infracciones")
         import os
         import json
         import time
@@ -5133,10 +5102,8 @@ class PreprocessingDialog:
 
         try:
             # PASO 1: Deduplicar placas
-            print(f"📋 PASO 1: Deduplicando {len(self.detected_infractions)} infracciones...")
             deduped = self._dedup_similar_plates(self.detected_infractions)
             self.detected_infractions = deduped
-            print(f"✅ Deduplicación completa: {len(deduped)} infracciones únicas")
 
             # Preparar medición de tiempo
             start_time = time.time()
@@ -5146,18 +5113,10 @@ class PreprocessingDialog:
                 self.player.registration_times = []
 
             # PASO 2: Mostrar cada detección en el panel lateral
-            print(f"\n📋 PASO 2: Creando cards en el panel lateral para {len(deduped)} infracciones...")
-            for idx, inf in enumerate(deduped, 1):
-                print(f"\n🔍 Procesando infracción {idx}/{len(deduped)}: {inf.get('plate', 'UNKNOWN')}")
-                
+            for inf in deduped:
                 if not all(k in inf and inf[k] is not None for k in ("plate_img", "plate", "vehicle_img")):
-                    print(f"⚠️ Infracción incompleta, saltando: faltan campos requeridos")
-                    print(f"   plate_img: {inf.get('plate_img') is not None}")
-                    print(f"   plate: {inf.get('plate') is not None}")
-                    print(f"   vehicle_img: {inf.get('vehicle_img') is not None}")
                     continue
                 plate = inf["plate"]
-                print(f"✅ Infracción completa, procesando placa: {plate}")
                 hist = getattr(self.player, "plate_detection_history", {})
                 detection_time = self.player.detection_start_time + (inf.get("time") or 0)
                 registration_time = time.time()
@@ -5324,19 +5283,9 @@ class PreprocessingDialog:
                 print(f"\n📊 Generando indicadores para {len(current_session_infractions)} infracciones de esta sesión ({num_nid_nuevas} NID + {num_nie_nuevas} NIE)...")
                 print(f"   Tiempos de procesamiento individuales: {individual_processing_times} segundos")
                 
-                # 🆕 NUEVO: Obtener nombre del video procesado (DIRECTO desde self.video_path)
-                nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
-                print(f"📹 Nombre del video procesado: {nombre_video}")
-                
-                # 🆕 NUEVO: Generar ID de configuración de semáforo
-                config_semaforo = self.generar_config_id(self.cycle_durations) if hasattr(self, 'cycle_durations') else "sin-configurar"
-                print(f"⏱️ Configuración de semáforo: {config_semaforo}")
-                
                 generate_performance_indicators_json(
                     current_session_infractions,
-                    individual_processing_times,  # Pasar tiempos individuales, no promedio
-                    nombre_video,  # 🆕 NUEVO: Pasar nombre del video
-                    config_semaforo  # 🆕 NUEVO: Pasar configuración de semáforo
+                    individual_processing_times  # Pasar tiempos individuales, no promedio
                 )
 
                 # — Subir indicadores en hilo aparte (SOLO si no es caso de segunda ventana nocturna)
@@ -5555,20 +5504,12 @@ class PreprocessingDialog:
                         mins_total, secs_total = divmod(int(video_duration), 60)
                         total_duration = f"{mins_total:02d}:{secs_total:02d}"
             
-            # 🆕 NUEVO: Obtener nombre del video procesado (DIRECTO desde self.video_path)
-            nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
-            
-            # 🆕 NUEVO: Generar ID de configuración de semáforo
-            config_semaforo = self.generar_config_id(self.cycle_durations) if hasattr(self, 'cycle_durations') else "sin-configurar"
-            
             entry = {
                 "placa":           plate,
                 "fecha":           now.strftime("%d/%m/%Y"),
                 "hora":            now.strftime("%H:%M:%S"),
                 "video_timestamp": timestamp,
                 "tiempo_video":    total_duration,  # Duración total del video
-                "nombre_video":    nombre_video,  # 🆕 NUEVO: Nombre del video procesado
-                "config_semaforo": config_semaforo,  # 🆕 NUEVO: ID de configuración de semáforo (ej: "10-3-15")
                 "ubicacion":       avenue_name,
                 "franja_horaria":  time_slot,
                 "tipo":            "Semáforo en rojo",
@@ -5681,19 +5622,11 @@ class PreprocessingDialog:
                 "justificacion": "No cumple criterios técnicos - Clasificada como NIE"
             }
 
-            # 🆕 NUEVO: Obtener nombre del video procesado (DIRECTO desde self.video_path)
-            nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
-            
-            # 🆕 NUEVO: Generar ID de configuración de semáforo
-            config_semaforo = self.generar_config_id(self.cycle_durations) if hasattr(self, 'cycle_durations') else "sin-configurar"
-
             entry = {
                 "placa":           plate,
                 "fecha":           now.strftime("%d/%m/%Y"),
                 "hora":            now.strftime("%H:%M:%S"),
                 "video_timestamp": timestamp,
-                "nombre_video":    nombre_video,  # 🆕 NUEVO: Nombre del video procesado
-                "config_semaforo": config_semaforo,  # 🆕 NUEVO: ID de configuración de semáforo
                 "ubicacion":       avenue_name,
                 "franja_horaria":  time_slot,
                 "tipo":            "Semáforo en rojo",
