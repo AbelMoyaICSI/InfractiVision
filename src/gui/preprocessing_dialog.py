@@ -4034,31 +4034,37 @@ class PreprocessingDialog:
                                 print(f"⚠️ Error mostrando análisis inteligente: {e}")
             print(f"Procesamiento completado: {len(self.detected_infractions)} vehículos infractores ({guardadas} imágenes guardadas)")
             
-            # CRÍTICO: Llamar a _complete_processing PRIMERO para crear las cards
-            # LUEGO mostrar la ventana de éxito y reproducir sonido
-            print(f"🔍 DEBUG: {len(self.detected_infractions)} infracciones detectadas")
+            # CRÍTICO: Seguir el flujo original del commit 8392064
+            # 1. Mostrar ventana de éxito PRIMERO (si hay detecciones)
+            # 2. Reproducir beep
+            # 3. DESPUÉS llamar _complete_processing con dialog.after()
             
-            if len(self.detected_infractions) > 0:
-                print("📋 HAY INFRACCIONES - Llamando a _complete_processing INMEDIATAMENTE...")
-                self._complete_processing()  # Crear cards PRIMERO
-                
-                # DESPUÉS de crear cards, mostrar ventana de éxito
-                print("🎯 Cards creadas, ahora mostrando ventana de éxito...")
+            if len(self.detected_infractions) == 0:
+                # Sin detecciones
+                if getattr(self, 'is_night', False):
+                    # Modo nocturno sin detecciones
+                    print("🌙 MODO NOCTURNO SIN DETECCIONES - VENTANA SE MANTIENE ABIERTA")
+                    self.no_cloud_migration = True
+                    if hasattr(self, 'dialog') and self.dialog.winfo_exists():
+                        self.dialog.after(0, lambda: self._show_night_no_detection_info())
+                    return  # Salir sin llamar _complete_processing
+                else:
+                    # Modo diurno sin detecciones
+                    if hasattr(self, 'dialog') and self.dialog.winfo_exists():
+                        self.dialog.after(0, lambda: self._generate_intelligent_analysis_message(guardadas))
+            else:
+                # HAY DETECCIONES: Mostrar ventana de éxito y reproducir sonido
                 self._show_success_detection_popup(len(self.detected_infractions))
                 self._play_success_sound()
-            elif not getattr(self, 'is_night', False):
-                # Modo diurno sin detecciones - también procesar
-                print("☀️ MODO DIURNO SIN DETECCIONES - Llamando a _complete_processing...")
-                self._complete_processing()
-                # Mostrar análisis inteligente si no hay detecciones
-                if len(self.detected_infractions) == 0 and guardadas == 0:
-                    try:
-                        self._generate_intelligent_analysis_message(guardadas)
-                    except Exception as e:
-                        print(f"⚠️ Error mostrando análisis inteligente: {e}")
+            
+            # Llamar a _complete_processing SOLO si NO es ventana nocturna sin detecciones
+            if len(self.detected_infractions) > 0 or not getattr(self, 'is_night', False):
+                # Solo procesar si hay detecciones O no es nocturno
+                if hasattr(self, 'dialog') and self.dialog.winfo_exists():
+                    self.dialog.after(0, self._complete_processing)  # PROGRAMADO con after()
             else:
-                # Es nocturno sin detecciones - NO cerrar automáticamente
-                print("🌙 MODO NOCTURNO SIN DETECCIONES - VENTANA SE MANTIENE ABIERTA HASTA QUE USUARIO PRESIONE ACEPTAR")
+                # Es nocturno sin detecciones - ya se manejó arriba
+                print("🌙 MODO NOCTURNO SIN DETECCIONES CONFIRMADO")
         except Exception as e:
             print(f"Error en _finalize_processing: {e}")
             import traceback

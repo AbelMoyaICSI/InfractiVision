@@ -1,6 +1,33 @@
 {
   "infracciones": [
     {
+      "placa": "T6T-463",
+      "fecha": "16/10/2025",
+      "hora": "17:03:15",
+      "video_timestamp": "00:18",
+      "tiempo_video": "03:04",
+      "nombre_video": "VID4EDIT ‐ Hecho con Clipchamp.mp4",
+      "config_semaforo": "12-5-30",
+      "ubicacion": "Av. la marina",
+      "franja_horaria": "09:00 - 10:00",
+      "tipo": "Semáforo en rojo",
+      "estado": "Pendiente",
+      "plate_path": "C:\\Users\\HOUSE\\Desktop\\InfractiVision\\data\\output\\placas\\plate_T6T-463.jpg",
+      "vehicle_path": "C:\\Users\\HOUSE\\Desktop\\InfractiVision\\data\\output\\autos\\vehicle_T6T-463.jpg",
+      "clasificacion": "NID",
+      "confianza": 0.99,
+      "tiempo_procesamiento": 18.13,
+      "metadata_clasificacion": {
+        "placa_final": "T6T-463",
+        "confianza": 0.99,
+        "calidad_deteccion": "alta",
+        "justificacion": "Cumple criterios técnicos calibrados"
+      },
+      "sistema_version": "InfractiVision_v2.0_Optimized",
+      "hostname": "DESKTOP-NK75JMQ",
+      "username": "HOUSE"
+    },
+    {
       "placa": "TAS-968",
       "fecha": "16/10/2025",
       "hora": "16:58:20",

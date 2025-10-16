@@ -1,10 +1,10 @@
 {
-  "fecha_generacion": "16/10/2025 16:58:20",
+  "fecha_generacion": "16/10/2025 17:03:15",
   "periodo_analisis": "16/10/2025 - 16/10/2025",
   "dias_analizados": 1,
-  "ubicacion": "Av.Grau 123",
-  "nombre_video": "Traffic IP Camera video (DEMO 1).mp4",
-  "config_semaforo": "10-3-15",
+  "ubicacion": "Av. la marina",
+  "nombre_video": "VID4EDIT ‐ Hecho con Clipchamp.mp4",
+  "config_semaforo": "12-5-30",
   "nota": "Datos de la sesión actual de procesamiento, no acumulados históricos",
   "indicadores": {
     "TI": {
@@ -15,7 +15,7 @@
         "fuente": "Registros PNP históricos"
       },
       "con_software": {
-        "detecciones_software_diarias": 4.0,
+        "detecciones_software_diarias": 1.0,
         "dias_analizados": 1
       },
       "porcentaje_acierto": 100.0
@@ -28,25 +28,22 @@
         "fuente": "Estimación basada en registros históricos de campo"
       },
       "con_software": {
-        "tiempo_promedio_minutos": 0.38,
+        "tiempo_promedio_minutos": 0.3,
         "tiempos_individuales": [
-          0.38,
-          0.31,
-          0.44,
-          0.37
+          0.3
         ],
-        "muestras_analizadas": 4
+        "muestras_analizadas": 1
       },
-      "reduccion_tiempo_porcentual": 94.78,
-      "veces_mas_rapido": 19.15
+      "reduccion_tiempo_porcentual": 95.8,
+      "veces_mas_rapido": 23.83
     },
     "NID": {
       "descripcion": "Número de Infracciones Detectadas Correctamente (Clasificación por Confianza)",
       "unidad": "cantidad válida por día",
-      "infracciones_hoy": 4,
-      "promedio_diario": 4.0,
+      "infracciones_hoy": 1,
+      "promedio_diario": 1.0,
       "periodo_analizado": "1 días",
-      "total": 4
+      "total": 1
     },
     "NIE": {
       "descripcion": "Número de Infracciones Incorrectamente Registradas",
@@ -57,10 +54,10 @@
   },
   "resumen_global": {
     "ti_porcentaje_acierto": "100.0%",
-    "tiempo_registro_minutos": "0.38 min",
-    "infracciones_detectadas_hoy": 4,
-    "nid_total": 4,
+    "tiempo_registro_minutos": "0.30 min",
+    "infracciones_detectadas_hoy": 1,
+    "nid_total": 1,
     "nie_total": 0,
-    "tir_total": 4
+    "tir_total": 1
   }
 }
