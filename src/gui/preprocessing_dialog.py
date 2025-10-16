@@ -4987,8 +4987,7 @@ class PreprocessingDialog:
             if os.path.exists(icon_path):
                 popup.iconbitmap(icon_path)
             
-            # CENTRADO PERFECTO
-            popup.update_idletasks()
+            # CENTRADO PERFECTO - SIN update_idletasks para evitar eventos de resize
             x = (screen_width - popup_width) // 2
             y = (screen_height - popup_height) // 2
             popup.geometry(f"{popup_width}x{popup_height}+{x}+{y}")
