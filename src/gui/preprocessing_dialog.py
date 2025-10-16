@@ -1041,7 +1041,7 @@ class PreprocessingDialog:
         Genera un ID único para la configuración de semáforo basado en los tiempos.
         
         Args:
-            cycle_durations: Dict con 'green_time', 'yellow_time', 'red_time'
+            cycle_durations: Dict con 'green'/'green_time', 'yellow'/'yellow_time', 'red'/'red_time'
         
         Returns:
             String en formato "verde-amarillo-rojo" (ejemplo: "10-3-15")
@@ -1049,9 +1049,15 @@ class PreprocessingDialog:
         if not cycle_durations or not isinstance(cycle_durations, dict):
             return "sin-configurar"
         
-        verde = int(cycle_durations.get('green_time', 0))
-        amarillo = int(cycle_durations.get('yellow_time', 0))
-        rojo = int(cycle_durations.get('red_time', 0))
+        # 🔧 FIX: Soportar ambos formatos de configuración
+        # time_presets.json usa: 'green', 'yellow', 'red'
+        # Otros lugares pueden usar: 'green_time', 'yellow_time', 'red_time'
+        verde = int(cycle_durations.get('green', cycle_durations.get('green_time', 0)))
+        amarillo = int(cycle_durations.get('yellow', cycle_durations.get('yellow_time', 0)))
+        rojo = int(cycle_durations.get('red', cycle_durations.get('red_time', 0)))
+        
+        if verde == 0 and amarillo == 0 and rojo == 0:
+            return "sin-configurar"
         
         return f"{verde}-{amarillo}-{rojo}"
     
