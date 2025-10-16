@@ -5117,7 +5117,11 @@ class PreprocessingDialog:
 
     def _complete_processing(self):
         """Finaliza el procesamiento y muestra los resultados"""
-        print(f"📋 Procesando {len(self.detected_infractions)} infracciones")
+        print(f"\n{'='*80}")
+        print(f"🎯 INICIANDO _complete_processing")
+        print(f"📋 Infracciones detectadas: {len(self.detected_infractions)}")
+        print(f"{'='*80}\n")
+        
         import os
         import json
         import time
@@ -5128,8 +5132,10 @@ class PreprocessingDialog:
 
         try:
             # PASO 1: Deduplicar placas
+            print(f"📋 PASO 1: Deduplicando {len(self.detected_infractions)} infracciones...")
             deduped = self._dedup_similar_plates(self.detected_infractions)
             self.detected_infractions = deduped
+            print(f"✅ Deduplicación completa: {len(deduped)} infracciones únicas")
 
             # Preparar medición de tiempo
             start_time = time.time()
@@ -5139,10 +5145,18 @@ class PreprocessingDialog:
                 self.player.registration_times = []
 
             # PASO 2: Mostrar cada detección en el panel lateral
-            for inf in deduped:
+            print(f"\n📋 PASO 2: Creando cards en el panel lateral para {len(deduped)} infracciones...")
+            for idx, inf in enumerate(deduped, 1):
+                print(f"\n🔍 Procesando infracción {idx}/{len(deduped)}: {inf.get('plate', 'UNKNOWN')}")
+                
                 if not all(k in inf and inf[k] is not None for k in ("plate_img", "plate", "vehicle_img")):
+                    print(f"⚠️ Infracción incompleta, saltando: faltan campos requeridos")
+                    print(f"   plate_img: {inf.get('plate_img') is not None}")
+                    print(f"   plate: {inf.get('plate') is not None}")
+                    print(f"   vehicle_img: {inf.get('vehicle_img') is not None}")
                     continue
                 plate = inf["plate"]
+                print(f"✅ Infracción completa, procesando placa: {plate}")
                 hist = getattr(self.player, "plate_detection_history", {})
                 detection_time = self.player.detection_start_time + (inf.get("time") or 0)
                 registration_time = time.time()
