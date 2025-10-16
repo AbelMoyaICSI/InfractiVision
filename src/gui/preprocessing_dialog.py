@@ -1035,6 +1035,46 @@ class PreprocessingDialog:
     # NUEVO: Variable para controlar ventanas emergentes nocturnas
     _night_popup_active = False
     
+    @staticmethod
+    def generar_config_id(semaforo=None, cycle_durations=None):
+        """
+        Genera un ID único para la configuración del semáforo basado en sus tiempos.
+        
+        Args:
+            semaforo: Objeto semáforo con atributos green_duration, yellow_duration, red_duration (opcional)
+            cycle_durations: Dict con tiempos {'green': X, 'yellow': Y, 'red': Z} (opcional)
+        
+        Returns:
+            str: ID en formato "verde-amarillo-rojo" (ej: "10-3-15") o "sin-configurar"
+        
+        Examples:
+            >>> generar_config_id(semaforo)  # semaforo con 10s verde, 3s amarillo, 15s rojo
+            "10-3-15"
+            >>> generar_config_id(cycle_durations={'green': 12, 'yellow': 3, 'red': 12})
+            "12-3-12"
+        """
+        try:
+            # Método 1: Intentar desde el objeto semáforo
+            if semaforo and hasattr(semaforo, 'green_duration') and hasattr(semaforo, 'yellow_duration') and hasattr(semaforo, 'red_duration'):
+                green = int(semaforo.green_duration)
+                yellow = int(semaforo.yellow_duration)
+                red = int(semaforo.red_duration)
+                if green > 0 and yellow > 0 and red > 0:  # Validar que no sean 0
+                    return f"{green}-{yellow}-{red}"
+            
+            # Método 2: Intentar desde cycle_durations
+            if cycle_durations and isinstance(cycle_durations, dict):
+                green = int(cycle_durations.get('green', 0))
+                yellow = int(cycle_durations.get('yellow', 0))
+                red = int(cycle_durations.get('red', 0))
+                if green > 0 and yellow > 0 and red > 0:  # Validar que no sean 0
+                    return f"{green}-{yellow}-{red}"
+            
+            return "sin-configurar"
+        except Exception as e:
+            print(f"⚠️ Error generando config_id: {e}")
+            return "sin-configurar"
+    
     def __init__(self, parent, video_path, player_instance, on_complete=None):
         """
         Inicializa el diálogo de preprocesamiento.
@@ -5282,9 +5322,19 @@ class PreprocessingDialog:
                 print(f"\n📊 Generando indicadores para {len(current_session_infractions)} infracciones de esta sesión ({num_nid_nuevas} NID + {num_nie_nuevas} NIE)...")
                 print(f"   Tiempos de procesamiento individuales: {individual_processing_times} segundos")
                 
+                # 🆕 OBTENER NOMBRE DEL VIDEO Y CONFIGURACIÓN DEL SEMÁFORO
+                nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
+                # Usar AMBOS métodos: semáforo Y cycle_durations para obtener configuración
+                config_semaforo = self.generar_config_id(
+                    semaforo=self.player.semaforo if hasattr(self.player, 'semaforo') else None,
+                    cycle_durations=self.cycle_durations if hasattr(self, 'cycle_durations') else None
+                )
+                
                 generate_performance_indicators_json(
                     current_session_infractions,
-                    individual_processing_times  # Pasar tiempos individuales, no promedio
+                    individual_processing_times,  # Pasar tiempos individuales, no promedio
+                    nombre_video=nombre_video,     # 🆕 Nombre del video
+                    config_semaforo=config_semaforo  # 🆕 ID de configuración del semáforo
                 )
 
                 # — Subir indicadores en hilo aparte (SOLO si no es caso de segunda ventana nocturna)
@@ -5503,6 +5553,14 @@ class PreprocessingDialog:
                         mins_total, secs_total = divmod(int(video_duration), 60)
                         total_duration = f"{mins_total:02d}:{secs_total:02d}"
             
+            # 🆕 OBTENER NOMBRE DEL VIDEO Y CONFIGURACIÓN DEL SEMÁFORO
+            nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
+            # Usar AMBOS métodos: semáforo Y cycle_durations para obtener configuración
+            config_semaforo = self.generar_config_id(
+                semaforo=self.player.semaforo if hasattr(self.player, 'semaforo') else None,
+                cycle_durations=self.cycle_durations if hasattr(self, 'cycle_durations') else None
+            )
+            
             entry = {
                 "placa":           plate,
                 "fecha":           now.strftime("%d/%m/%Y"),
@@ -5515,6 +5573,9 @@ class PreprocessingDialog:
                 "estado":          "Pendiente",
                 "plate_path":      os.path.join(resource_path("data/output/placas"), f"plate_{plate}.jpg"),
                 "vehicle_path":    os.path.join(resource_path("data/output/autos"), f"vehicle_{plate}.jpg"),
+                # 🆕 NUEVOS CAMPOS PARA ESTRUCTURA FIRESTORE POR VIDEO Y CONFIGURACIÓN
+                "nombre_video":    nombre_video,      # Nombre del video procesado
+                "config_semaforo": config_semaforo,   # ID de configuración (ej: "10-3-15")
                 # NUEVOS CAMPOS PARA TESIS NID/NIE
                 "clasificacion":   inf.get("clasificacion", "NID"),  # Por defecto NID si no está especificado
                 "confianza":       round(real_confidence, 3),
@@ -5621,6 +5682,14 @@ class PreprocessingDialog:
                 "justificacion": "No cumple criterios técnicos - Clasificada como NIE"
             }
 
+            # 🆕 OBTENER NOMBRE DEL VIDEO Y CONFIGURACIÓN DEL SEMÁFORO
+            nombre_video = os.path.basename(self.video_path) if hasattr(self, 'video_path') and self.video_path else "desconocido.mp4"
+            # Usar AMBOS métodos: semáforo Y cycle_durations para obtener configuración
+            config_semaforo = self.generar_config_id(
+                semaforo=self.player.semaforo if hasattr(self.player, 'semaforo') else None,
+                cycle_durations=self.cycle_durations if hasattr(self, 'cycle_durations') else None
+            )
+            
             entry = {
                 "placa":           plate,
                 "fecha":           now.strftime("%d/%m/%Y"),
@@ -5634,6 +5703,9 @@ class PreprocessingDialog:
                 "confianza":       round(real_confidence, 3),
                 "tiempo_procesamiento": round(inf.get("timestamp", inf.get("time", 0)), 2),
                 "metadata_clasificacion": metadata_clasificacion,
+                # 🆕 NUEVOS CAMPOS PARA ESTRUCTURA FIRESTORE POR VIDEO Y CONFIGURACIÓN
+                "nombre_video":    nombre_video,      # Nombre del video procesado
+                "config_semaforo": config_semaforo,   # ID de configuración (ej: "10-3-15")
                 "sistema_version": inf.get("sistema_version", "InfractiVision_v2.0"),
                 "hostname":        socket.gethostname(),
                 "username":        getpass.getuser()
