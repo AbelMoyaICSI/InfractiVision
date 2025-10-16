@@ -5182,8 +5182,10 @@ class PreprocessingDialog:
                 else:
                     print(f"⚠️ Placa {plate} visible en panel pero NO en gestión (NIE incorrecta)")
 
-            # PASO 3: Filtrar solo NID para gestión y guardar infracciones localmente
+            # PASO 3: Filtrar NID y NIE por separado
             nid_infractions = []
+            nie_infractions = []
+            
             for inf in deduped:
                 plate = inf["plate"]
                 # Usar confianza SIIV real guardada en la infracción
@@ -5194,9 +5196,17 @@ class PreprocessingDialog:
                 )
                 if classification == "NID":
                     nid_infractions.append(inf)
+                else:
+                    nie_infractions.append(inf)
             
-            print(f"📋 FILTRADO: {len(deduped)} total → {len(nid_infractions)} NID para gestión")
+            print(f"📋 FILTRADO: {len(deduped)} total → {len(nid_infractions)} NID + {len(nie_infractions)} NIE")
+            
+            # Guardar infracciones NID en el JSON principal
             self._save_infractions_to_json(nid_infractions)
+            
+            # Guardar infracciones NIE en un archivo separado
+            if nie_infractions:
+                self._save_nie_infractions_to_json(nie_infractions)
             
             # NUEVO: PASO 3.5: Generar métricas solo con NID válidas
             self._generate_thesis_metrics(nid_infractions)
@@ -5225,10 +5235,57 @@ class PreprocessingDialog:
                 with open(indicators_file, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
 
-                # — Regenerar JSON plano pasándole las listas correctas
+                # — Regenerar JSON plano pasándole SOLO LAS INFRACCIONES NUEVAS de esta sesión
+                # Leer las que acabamos de guardar para obtener el formato JSON completo
+                infractions_file = resource_path("data/infracciones.json")
+                nie_file = resource_path("data/nie_infracciones.json")
+                
+                # Leer TODAS las infracciones guardadas
+                saved_infractions = []
+                if os.path.exists(infractions_file):
+                    try:
+                        with open(infractions_file, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            if isinstance(data, dict) and 'infracciones' in data:
+                                saved_infractions = data['infracciones']
+                            elif isinstance(data, list):
+                                saved_infractions = data
+                    except Exception as e:
+                        print(f"⚠️ Error leyendo infracciones guardadas: {e}")
+                
+                saved_nie = []
+                if os.path.exists(nie_file):
+                    try:
+                        with open(nie_file, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            if isinstance(data, dict) and 'infracciones' in data:
+                                saved_nie = data['infracciones']
+                            elif isinstance(data, list):
+                                saved_nie = data
+                    except Exception as e:
+                        print(f"⚠️ Error leyendo NIE guardadas: {e}")
+                
+                # Filtrar SOLO las infracciones de esta sesión (las primeras N que acabamos de agregar)
+                num_nid_nuevas = len(nid_infractions)
+                num_nie_nuevas = len(nie_infractions)
+                
+                current_session_nid = saved_infractions[:num_nid_nuevas] if saved_infractions else []
+                current_session_nie = saved_nie[:num_nie_nuevas] if saved_nie else []
+                current_session_infractions = current_session_nid + current_session_nie
+                
+                # Extraer tiempos individuales de procesamiento de cada infracción (en segundos)
+                individual_processing_times = [
+                    inf.get('tiempo_procesamiento', 0) 
+                    for inf in current_session_infractions 
+                    if inf.get('tiempo_procesamiento', 0) > 0
+                ]
+                
+                print(f"\n📊 Generando indicadores para {len(current_session_infractions)} infracciones de esta sesión ({num_nid_nuevas} NID + {num_nie_nuevas} NIE)...")
+                print(f"   Tiempos de procesamiento individuales: {individual_processing_times} segundos")
+                
                 generate_performance_indicators_json(
-                    deduped,
-                    PreprocessingDialog.recorded_processing_times
+                    current_session_infractions,
+                    individual_processing_times  # Pasar tiempos individuales, no promedio
                 )
 
                 # — Subir indicadores en hilo aparte (SOLO si no es caso de segunda ventana nocturna)
@@ -5322,6 +5379,8 @@ class PreprocessingDialog:
         """
         import json
         import os
+        import getpass
+        import socket
         from datetime import datetime
 
         # Asegurar existencia del directorio
@@ -5462,7 +5521,10 @@ class PreprocessingDialog:
                 "confianza":       round(real_confidence, 3),
                 "tiempo_procesamiento": round(inf.get("timestamp", inf.get("time", inf.get("tiempo_procesamiento", 0))), 2),
                 "metadata_clasificacion": metadata_clasificacion,
-                "sistema_version": inf.get("sistema_version", "InfractiVision_v2.0")
+                "sistema_version": inf.get("sistema_version", "InfractiVision_v2.0"),
+                # Campos de trazabilidad
+                "hostname":        socket.gethostname(),
+                "username":        getpass.getuser()
             }
             if getattr(self, "is_night", False):
                 entry["modo_nocturno"] = True
@@ -5482,6 +5544,117 @@ class PreprocessingDialog:
             print(f"💾 Stack actualizado en '{infractions_file}'")
         except Exception as e:
             print(f"Error guardando infracciones en JSON: {e}")
+
+    def _save_nie_infractions_to_json(self, infractions):
+        """
+        Guarda las infracciones NIE (incorrectamente registradas) detectadas en data/nie_infracciones.json,
+        ACUMULÁNDOLAS como stack/pila (nuevas infracciones al principio).
+        """
+        import json
+        import os
+        import getpass
+        import socket
+        from datetime import datetime
+
+        # Asegurar existencia del directorio
+        data_dir = resource_path("data")
+        os.makedirs(data_dir, exist_ok=True)
+        nie_file = os.path.join(data_dir, "nie_infracciones.json")
+
+        # PASO 1: Cargar NIE existentes (si las hay)
+        existing_nie = []
+        if os.path.exists(nie_file):
+            try:
+                with open(nie_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and 'infracciones' in data:
+                        existing_nie = data['infracciones']
+                    elif isinstance(data, list):
+                        existing_nie = data
+                print(f"📋 Cargadas {len(existing_nie)} NIE existentes")
+            except Exception as e:
+                print(f"⚠️ Error cargando NIE existentes: {e}, iniciando lista vacía")
+                existing_nie = []
+
+        # Nombre de la avenida y franja horaria
+        avenue_name = getattr(self.player, "current_avenue", "Desconocida")
+        time_slot = self.cycle_durations.get("time_slot", "No especificada") if self.cycle_durations else "No especificada"
+
+        # PASO 2: Procesar nuevas NIE
+        nuevas_nie = []
+        for inf in infractions:
+            plate = inf.get("plate", "")
+            if not plate:
+                continue
+
+            now = datetime.now()
+            
+            # Calcular timestamp
+            processing_time = inf.get("time", inf.get("processing_time", inf.get("timestamp", 0)))
+            if isinstance(processing_time, (int, float)) and processing_time > 0:
+                total_seconds = int(processing_time)
+                mins, secs = divmod(total_seconds, 60)
+                timestamp = f"{mins:02d}:{secs:02d}"
+            else:
+                frame_number = inf.get("frame", 0)
+                fps = getattr(self.player, 'fps', 30) or 30
+                total_seconds = int(frame_number / fps) if frame_number > 0 else 0
+                mins, secs = divmod(total_seconds, 60)
+                timestamp = f"{mins:02d}:{secs:02d}"
+
+            # Clasificación y confianza
+            classification, quality_score, _ = self.player.classify_detection_quality(plate)
+            
+            if 'confidence' in inf:
+                raw_confidence = inf['confidence']
+                clamped_confidence = max(0.0, min(1.0, raw_confidence))
+                classification, card_confidence, _ = self.player.classify_detection_quality(
+                    plate, detection_confidence=clamped_confidence
+                )
+                real_confidence = clamped_confidence
+            else:
+                real_confidence = quality_score
+
+            metadata_clasificacion = {
+                "placa_final": plate,
+                "confianza": round(real_confidence, 3),
+                "calidad_deteccion": "baja",
+                "justificacion": "No cumple criterios técnicos - Clasificada como NIE"
+            }
+
+            entry = {
+                "placa":           plate,
+                "fecha":           now.strftime("%d/%m/%Y"),
+                "hora":            now.strftime("%H:%M:%S"),
+                "video_timestamp": timestamp,
+                "ubicacion":       avenue_name,
+                "franja_horaria":  time_slot,
+                "tipo":            "Semáforo en rojo",
+                "estado":          "Rechazada",
+                "clasificacion":   "NIE",
+                "confianza":       round(real_confidence, 3),
+                "tiempo_procesamiento": round(inf.get("timestamp", inf.get("time", 0)), 2),
+                "metadata_clasificacion": metadata_clasificacion,
+                "sistema_version": inf.get("sistema_version", "InfractiVision_v2.0"),
+                "hostname":        socket.gethostname(),
+                "username":        getpass.getuser()
+            }
+
+            nuevas_nie.append(entry)
+
+        # PASO 3: ACUMULAR como stack/pila
+        nie_finales = nuevas_nie + existing_nie
+        
+        # GUARDAR
+        output_data = {"infracciones": nie_finales}
+        
+        try:
+            with open(nie_file, "w", encoding="utf-8") as f:
+                json.dump(output_data, f, indent=2, ensure_ascii=False)
+            print(f"📝 NIE ACUMULADAS: {len(nuevas_nie)} nuevas + {len(existing_nie)} anteriores = {len(nie_finales)} totales")
+            print(f"💾 Stack NIE actualizado en '{nie_file}'")
+        except Exception as e:
+            print(f"Error guardando NIE en JSON: {e}")
 
     def _generate_thesis_metrics(self, infractions):
         """

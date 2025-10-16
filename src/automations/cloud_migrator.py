@@ -88,39 +88,25 @@ def upload_infracciones_automatically():
             url_p = bucket.blob(p_dst).public_url
             url_v = bucket.blob(v_dst).public_url
 
-            # Registra en Firestore - TODOS LOS CAMPOS
+            # Registra en Firestore - NUEVA ESTRUCTURA SIMPLIFICADA
             reg = {
-                # Campos básicos
+                "avenida":         inf.get("ubicacion", ""),
+                "fecha":           inf.get("fecha", datetime.now().strftime("%Y-%m-%d")),
                 "placa":           placa,
-                "fecha":           inf.get("fecha", datetime.now().strftime("%d/%m/%Y")),
-                "hora":            inf.get("hora",  datetime.now().strftime("%H:%M:%S")),
-                "video_timestamp": inf["video_timestamp"],
-                "ubicacion":       inf.get("ubicacion", ""),
                 "tipo":            inf.get("tipo", "Semáforo en rojo"),
                 "estado":          inf.get("estado", "Pendiente"),
-                
-                # Campos nuevos de la estructura actualizada
-                "tiempo_video":    inf.get("tiempo_video", ""),
+                "ubicacion":       inf.get("ubicacion", ""),
+                "hora":            inf.get("hora",  datetime.now().strftime("%H:%M:%S")),
                 "franja_horaria":  inf.get("franja_horaria", ""),
-                "clasificacion":   inf.get("clasificacion", ""),
                 "confianza":       inf.get("confianza", 0.0),
+                "calidad":         inf.get("metadata_clasificacion", {}).get("calidad_deteccion", "alta"),
+                "justificacion":   inf.get("metadata_clasificacion", {}).get("justificacion", "Cumple criterios técnicos calibrados"),
                 "tiempo_procesamiento": inf.get("tiempo_procesamiento", 0.0),
-                "sistema_version": inf.get("sistema_version", ""),
-                
-                # Metadata de clasificación (aplanado)
-                "metadata_placa_final": inf.get("metadata_clasificacion", {}).get("placa_final", ""),
-                "metadata_confianza": inf.get("metadata_clasificacion", {}).get("confianza", 0.0),
-                "metadata_calidad": inf.get("metadata_clasificacion", {}).get("calidad_deteccion", ""),
-                "metadata_justificacion": inf.get("metadata_clasificacion", {}).get("justificacion", ""),
-                
-                # Campos del sistema
-                "device_id":       device_id,
-                "user_id":         user_id,
-                "username":        ids["username"],
+                "url_placa":       url_p,
+                "url_vehiculo":    url_v,
+                "video_timestamp": inf["video_timestamp"],
                 "hostname":        ids["hostname"],
-                "plate_url":       url_p,
-                "vehicle_url":     url_v,
-                "uploaded_at":     datetime.utcnow()
+                "username":        ids["username"]
             }
             fs_client \
               .collection("usuarios") \
@@ -142,38 +128,94 @@ def upload_infracciones_automatically():
         with open(INDIC_PATH, "r", encoding="utf-8") as f:
             metrics = json.load(f)
 
+        # NUEVA ESTRUCTURA SIMPLIFICADA DE INDICADORES
+        # Extraer datos principales
+        fecha_actual = datetime.now().strftime("%Y-%m-%d")
+        indicadores_data = metrics.get("indicadores", {})
+        resumen_global = metrics.get("resumen_global", {})
+        
+        # Obtener ubicación/avenida del primer registro de infracciones si existe
+        avenida = "N/A"
+        if os.path.exists(INFRA_FILE):
+            with open(INFRA_FILE, "r", encoding="utf-8") as f:
+                infra_data = json.load(f)
+                infracciones = infra_data.get("infracciones", [])
+                if infracciones:
+                    avenida = infracciones[0].get("ubicacion", "N/A")
+        
+        # Extraer valores reales de la estructura de indicadores
+        nid_data = indicadores_data.get("NID", {})
+        nie_data = indicadores_data.get("NIE", {})
+        ti_data = indicadores_data.get("TI", {})
+        tr_data = indicadores_data.get("TR", {})
+        
+        # Calcular valores (usar 'total' si existe, si no usar 'infracciones_hoy')
+        nid_valor = nid_data.get("total", nid_data.get("infracciones_hoy", 0))
+        nie_valor = nie_data.get("total", nie_data.get("infracciones_incorrectas", 0)) if nie_data else 0
+        ti_valor = ti_data.get("porcentaje_acierto", 0)
+        
+        # TR: Extraer tiempos individuales y promedio
+        tr_con_software = tr_data.get("con_software", {})
+        tr_promedio = tr_con_software.get("tiempo_promedio_minutos", 0)
+        tr_individuales = tr_con_software.get("tiempos_individuales", [])
+        
+        tir_valor = nid_valor + nie_valor
+        
         flat = {
-            "user_id":      user_id,
-            "device_id":    device_id,
-            "username":     ids["username"],   # 👈 agregado
-            "hostname":     ids["hostname"],   # 👈 agregado
-            "fecha_subida": ts_blob,
-            "storage_url":  storage_url
+            "avenida": avenida,
+            "fecha": fecha_actual,
+            
+            # NID - Número de Infracciones Detectadas
+            "NID": nid_valor,
+            "descripcion_NID": "Número de Infracciones correctamente detectadas y registradas",
+            
+            # NIE - Número de Infracciones incorrectamente registradas (si existe)
+            "NIE": nie_valor,
+            "descripcion_NIE": "Número de Infracciones incorrectamente registradas",
+            
+            # TI - Tasa de Infracciones
+            "TI": ti_valor,
+            "descripcion_TI": "Tasa de Infracciones correctamente detectadas (% de acierto)",
+            
+            # TR - Tiempo de Registro (promedio e individuales)
+            "TR_promedio": tr_promedio,
+            "TR_individuales": tr_individuales,
+            "descripcion_TR": "Tiempo de Registro por infracción - Promedio y tiempos individuales (minutos)",
+            
+            # TIR - Total de Infracciones Reales (NID + NIE)
+            "TIR": tir_valor,
+            "descripcion_TIR": "Total de Infracciones Reales (NID + NIE)",
+            
+            # Campos adicionales
+            "promedio_infracciones_diarias": nid_data.get("promedio_diario", 0),
+            "dias_analizados": metrics.get("dias_analizados", 0),
+            "total_muestras_analizadas": tr_data.get("con_software", {}).get("muestras_analizadas", 0),
+            
+            "url_evidencia": storage_url
         }
-        for key, val in metrics.items():
-            if key not in ("indicadores", "resumen_global"):
-                flat[key] = val
-
-        for sec, secdict in metrics.get("indicadores", {}).items():
-            for subk, subv in secdict.items():
-                if isinstance(subv, dict):
-                    for inner_k, inner_v in subv.items():
-                        flat[f"indicadores_{sec}_{subk}_{inner_k}"] = inner_v
-                else:
-                    flat[f"indicadores_{sec}_{subk}"] = subv
-
-        for subk, subv in metrics.get("resumen_global", {}).items():
-            flat[f"resumen_{subk}"] = subv
+        
+        # DEBUG: Imprimir valores extraídos para verificar
+        print(f"📊 Indicadores extraídos:")
+        print(f"  NID: {nid_valor}")
+        print(f"  NIE: {nie_valor}")
+        print(f"  TI: {ti_valor}")
+        print(f"  TR promedio: {tr_promedio}")
+        print(f"  TR individuales: {tr_individuales}")
+        print(f"  TIR: {tir_valor}")
 
         fs_client \
           .collection("usuarios") \
           .document(user_id) \
           .collection("indicadores") \
-          .document(ts_blob) \
+          .document(fecha_actual.replace("-", "")) \
           .set(flat, merge=True)
-        print("✔ Indicadores guardados en Firestore de forma plana.")
+        print("✔ Indicadores guardados en Firestore con estructura simplificada.")
+        print(f"✔ Documento ID: {fecha_actual.replace('-', '')}")
+        print(f"✔ Ruta: usuarios/{user_id}/indicadores/{fecha_actual.replace('-', '')}")
     else:
         print("ℹ️ No se encontró indicadores_rendimiento.json, omito carga.")
 
 if __name__ == "__main__":
+    print("🚀 Iniciando migración automática de infracciones e indicadores...")
     upload_infracciones_automatically()
+    print("✅ Migración completada.")

@@ -91,34 +91,23 @@ def migrar_json_completo():
                 ts = infraccion["video_timestamp"].replace(":", "-")
                 doc_id = f"{placa}_{ts}"
                 
-                # Preparar datos completos para Firestore
+                # Preparar datos completos para Firestore - NUEVA ESTRUCTURA SIMPLIFICADA
                 reg = {
-                    # Campos básicos
-                    "placa": placa,
+                    "avenida": infraccion.get("ubicacion", ""),
                     "fecha": infraccion.get("fecha", ""),
-                    "hora": infraccion.get("hora", ""),
-                    "video_timestamp": infraccion["video_timestamp"],
-                    "ubicacion": infraccion.get("ubicacion", ""),
+                    "placa": placa,
                     "tipo": infraccion.get("tipo", "Semáforo en rojo"),
                     "estado": infraccion.get("estado", "Pendiente"),
-                    
-                    # Campos nuevos
-                    "tiempo_video": infraccion.get("tiempo_video", ""),
+                    "ubicacion": infraccion.get("ubicacion", ""),
+                    "hora": infraccion.get("hora", ""),
                     "franja_horaria": infraccion.get("franja_horaria", ""),
-                    "clasificacion": infraccion.get("clasificacion", ""),
                     "confianza": infraccion.get("confianza", 0.0),
+                    "calidad": infraccion.get("metadata_clasificacion", {}).get("calidad_deteccion", "alta"),
+                    "justificacion": infraccion.get("metadata_clasificacion", {}).get("justificacion", "Cumple criterios técnicos calibrados"),
                     "tiempo_procesamiento": infraccion.get("tiempo_procesamiento", 0.0),
-                    "sistema_version": infraccion.get("sistema_version", ""),
-                    
-                    # Metadata aplanado
-                    "metadata_placa_final": infraccion.get("metadata_clasificacion", {}).get("placa_final", ""),
-                    "metadata_confianza": infraccion.get("metadata_clasificacion", {}).get("confianza", 0.0),
-                    "metadata_calidad": infraccion.get("metadata_clasificacion", {}).get("calidad_deteccion", ""),
-                    "metadata_justificacion": infraccion.get("metadata_clasificacion", {}).get("justificacion", ""),
-                    
-                    # Sistema
-                    "user_id": user_id,
-                    "migrated_at": datetime.utcnow()
+                    "video_timestamp": infraccion["video_timestamp"],
+                    "hostname": infraccion.get("hostname", ""),
+                    "username": infraccion.get("username", "")
                 }
                 
                 # Guardar en Firestore
@@ -208,37 +197,74 @@ def indicadores(user_id):
         blob.upload_from_string(json.dumps(metrics, ensure_ascii=False, indent=2), content_type="application/json")
         storage_url = blob.public_url
 
-        # 3) Aplanar en dos niveles
+        # NUEVA ESTRUCTURA SIMPLIFICADA DE INDICADORES
+        # Extraer datos principales
+        fecha_actual = datetime.utcnow().strftime("%Y-%m-%d")
+        indicadores_data = metrics.get("indicadores", {})
+        resumen_global = metrics.get("resumen_global", {})
+        
+        # Obtener ubicación/avenida si está disponible
+        avenida = metrics.get("ubicacion", "N/A")
+        
+        # Extraer valores reales de la estructura de indicadores
+        nid_data = indicadores_data.get("NID", {})
+        nie_data = indicadores_data.get("NIE", {})
+        ti_data = indicadores_data.get("TI", {})
+        tr_data = indicadores_data.get("TR", {})
+        
+        # Calcular valores (usar 'total' si existe, si no usar 'infracciones_hoy')
+        nid_valor = nid_data.get("total", nid_data.get("infracciones_hoy", 0))
+        nie_valor = nie_data.get("total", nie_data.get("infracciones_incorrectas", 0)) if nie_data else 0
+        ti_valor = ti_data.get("porcentaje_acierto", 0)
+        tr_valor = tr_data.get("con_software", {}).get("tiempo_promedio_minutos", 0)
+        tir_valor = nid_valor + nie_valor
+        
         flat = {
-            "user_id":      user_id,
-            "fecha_subida": ts,
-            "storage_url":  storage_url
+            "avenida": avenida,
+            "fecha": fecha_actual,
+            
+            # NID - Número de Infracciones Detectadas
+            "NID": nid_valor,
+            "descripcion_NID": "Número de Infracciones correctamente detectadas y registradas",
+            
+            # NIE - Número de Infracciones incorrectamente registradas (si existe)
+            "NIE": nie_valor,
+            "descripcion_NIE": "Número de Infracciones incorrectamente registradas",
+            
+            # TI - Tasa de Infracciones
+            "TI": ti_valor,
+            "descripcion_TI": "Tasa de Infracciones correctamente detectadas y registradas (%)",
+            
+            # TR - Tiempo de Registro
+            "TR": tr_valor,
+            "descripcion_TR": "Tiempo de Registro por infracción (minutos)",
+            
+            # TIR - Total de Infracciones Reales (NID + NIE)
+            "TIR": tir_valor,
+            "descripcion_TIR": "Total de Infracciones Reales (NID + NIE)",
+            
+            # Campos adicionales
+            "promedio_infracciones_diarias": nid_data.get("promedio_diario", 0),
+            "dias_analizados": metrics.get("dias_analizados", 0),
+            "total_muestras_analizadas": tr_data.get("con_software", {}).get("muestras_analizadas", 0),
+            
+            "url_evidencia": storage_url
         }
-        # Campos de nivel superior
-        for key, val in metrics.items():
-            if key not in ("indicadores", "resumen_global"):
-                flat[key] = val
-
-        # indicadores.TI.*, indicadores.TR.*, indicadores.IR.* con dos niveles
-        for sec, secdict in metrics.get("indicadores", {}).items():
-            for subk, subv in secdict.items():
-                if isinstance(subv, dict):
-                    # Desciende un nivel más
-                    for inner_k, inner_v in subv.items():
-                        flat[f"indicadores_{sec}_{subk}_{inner_k}"] = inner_v
-                else:
-                    flat[f"indicadores_{sec}_{subk}"] = subv
-
-        # resumen_global.* (ya todo escalar)
-        for subk, subv in metrics.get("resumen_global", {}).items():
-            flat[f"resumen_{subk}"] = subv
+        
+        # DEBUG: Imprimir valores extraídos para verificar
+        print(f"📊 Indicadores extraídos:")
+        print(f"  NID: {nid_valor}")
+        print(f"  NIE: {nie_valor}")
+        print(f"  TI: {ti_valor}")
+        print(f"  TR: {tr_valor}")
+        print(f"  TIR: {tir_valor}")
 
         # 4) Guardar objeto plano en Firestore
         doc_ref = (
             db.collection("usuarios")
               .document(user_id)
               .collection("indicadores")
-              .document(ts)
+              .document(fecha_actual.replace("-", ""))
         )
         doc_ref.set(flat)
 

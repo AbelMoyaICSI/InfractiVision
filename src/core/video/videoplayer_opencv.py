@@ -247,8 +247,14 @@ class VideoPlayerOpenCV:
         # ✅ SCROLLING CON RUEDA DEL MOUSE
         self._bind_mousewheel(self.plates_canvas)
         
+        # ✨ HABILITAR CARACTERÍSTICAS DE SCROLL INTELIGENTE
+        self._enable_smart_scroll_features()
+        
         # Agregar evento para responsive design
         self.parent.bind("<Configure>", self._on_window_resize)
+        
+        # ✨ INICIALIZAR SISTEMA RESPONSIVE AUTOMÁTICAMENTE
+        self.parent.after(100, self._initialize_responsive_layout)
         
         # Inicializar variables para las placas detectadas
         self.detected_plates_widgets = []
@@ -329,19 +335,85 @@ class VideoPlayerOpenCV:
         )
 
     def _on_plates_inner_configure(self, event):
-        self.plates_canvas.configure(
-            scrollregion=self.plates_canvas.bbox("all")
-        )
+        """Configuración inteligente del scroll cuando cambia el contenido"""
+        try:
+            # Actualizar región de scroll
+            self.plates_canvas.configure(scrollregion=self.plates_canvas.bbox("all"))
+            
+            # Auto-scroll inteligente: ir al final si hay nuevas cards
+            if hasattr(self, '_auto_scroll_enabled') and self._auto_scroll_enabled:
+                self._smart_auto_scroll()
+                
+        except Exception as e:
+            print(f"Error en scroll configuración: {e}")
     
     def _on_plates_canvas_configure(self, event):
-        """Actualizar ancho del frame interno cuando cambie el canvas"""
-        canvas_width = event.width
-        self.plates_canvas.itemconfig(self.plates_canvas_window, width=canvas_width-20)  # -20 para scrollbar
+        """Actualizar ancho del frame interno cuando cambie el canvas - RESPONSIVE"""
+        try:
+            canvas_width = event.width
+            if canvas_width <= 1:
+                return
+                
+            # Calcular ancho disponible considerando scrollbar y padding
+            scrollbar_width = 20
+            padding = 10
+            available_width = max(150, canvas_width - scrollbar_width - padding)
+            
+            # Actualizar ancho del frame interno
+            self.plates_canvas.itemconfig(self.plates_canvas_window, width=available_width)
+            
+            # Debug opcional para monitor de ancho
+            # print(f"Canvas adaptado: {available_width}px disponibles de {canvas_width}px totales")
+            
+        except Exception as e:
+            print(f"Error configurando canvas responsive: {e}")
+    
+    def _smart_auto_scroll(self):
+        """Auto-scroll inteligente: va al final solo si el usuario no está scrolleando manualmente"""
+        try:
+            # Verificar si el usuario está en el final (cerca del 90% hacia abajo)
+            scroll_top, scroll_bottom = self.plates_canvas.yview()
+            
+            # Si el usuario está cerca del final, hacer auto-scroll
+            if scroll_bottom >= 0.9:
+                self.plates_canvas.yview_moveto(1.0)  # Ir al final
+                
+        except Exception as e:
+            print(f"Error en auto-scroll: {e}")
+    
+    def _enable_smart_scroll_features(self):
+        """Habilita características de scroll inteligente"""
+        # Auto-scroll habilitado por defecto
+        self._auto_scroll_enabled = True
+        self._manual_scroll_timer = None
+        
+        # Detectar scroll manual para pausar auto-scroll temporalmente
+        def on_manual_scroll(*args):
+            self._auto_scroll_enabled = False
+            
+            # Reactivar auto-scroll después de 3 segundos de inactividad
+            if self._manual_scroll_timer:
+                self.parent.after_cancel(self._manual_scroll_timer)
+            self._manual_scroll_timer = self.parent.after(3000, self._reactivate_auto_scroll)
+        
+        # Vincular scroll manual
+        self.plates_scrollbar.config(command=on_manual_scroll)
+    
+    def _reactivate_auto_scroll(self):
+        """Reactiva el auto-scroll después de inactividad"""
+        self._auto_scroll_enabled = True
+        self._manual_scroll_timer = None
     
     def _bind_mousewheel(self, canvas):
-        """Vincular eventos de rueda del mouse para scrolling"""
+        """Vincular eventos de rueda del mouse para scrolling mejorado"""
         def _on_mousewheel(event):
-            # Scroll con rueda del mouse
+            # Pausar auto-scroll cuando el usuario hace scroll manual
+            self._auto_scroll_enabled = False
+            if hasattr(self, '_manual_scroll_timer') and self._manual_scroll_timer:
+                self.parent.after_cancel(self._manual_scroll_timer)
+            self._manual_scroll_timer = self.parent.after(3000, self._reactivate_auto_scroll)
+            
+            # Scroll con rueda del mouse (más suave)
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         
         def _bind_to_mousewheel(event):
@@ -1878,14 +1950,13 @@ class VideoPlayerOpenCV:
         self._after_id = self.parent.after(10, self.update_frames)
 
     def format_tr(self, timestamp):
-        """Convierte timestamp a formato TR: mm:ss min (Xs)"""
-        if timestamp is None:
-            return "TR: --:-- min (0s)"
+        """Convierte timestamp (segundos) a formato TR en minutos decimales"""
+        if timestamp is None or timestamp <= 0:
+            return "TR: 0.00min (0s)"
         
         total_seconds = int(timestamp)
-        minutes = total_seconds // 60
-        seconds = total_seconds % 60
-        return f"TR: {minutes:02d}:{seconds:02d} min ({total_seconds}s)"
+        mins_decimal = timestamp / 60.0  # Conversión correcta a minutos
+        return f"TR: {mins_decimal:.2f}min ({total_seconds}s)"
     
     def validate_conf(self, confidence):
         """Valida y normaliza valor de confianza [0,1]"""
@@ -1914,10 +1985,19 @@ class VideoPlayerOpenCV:
     class PlateCard:
         """Clase reutilizable para cards de placas compactos y responsive"""
         
-        SIDEBAR_W = 360
-        IMG_W = 150
-        IMG_H = 95
-        IMG_W_MIN = 120
+        # Configuración responsive mejorada
+        SIDEBAR_W_LARGE = 380
+        SIDEBAR_W_MEDIUM = 300  
+        SIDEBAR_W_SMALL = 220
+        
+        # Tamaños de imagen adaptativos
+        IMG_W_LARGE = 140
+        IMG_H_LARGE = 90
+        IMG_W_MEDIUM = 120
+        IMG_H_MEDIUM = 75
+        IMG_W_SMALL = 100
+        IMG_H_SMALL = 60
+        
         MAX_CARD_H = 140
         
         def __init__(self, parent, plate_text, classification, timestamp, confidence, 
@@ -1934,18 +2014,102 @@ class VideoPlayerOpenCV:
             self.create_card()
         
         def create_card(self):
-            """Crea el card compacto con grid layout"""
-            # Card principal
+            """Crea el card compacto con grid layout responsive"""
+            # Detectar tamaño del panel padre para configuración responsive
+            self.detect_panel_size()
+            
+            # Card principal con padding dinámico calculado
             self.card_frame = tk.Frame(
                 self.parent,
                 relief='solid',
                 borderwidth=1,
                 bg="#f8f9fa" if self.classification == "NID" else "#fff5f5",
-                padx=8,
-                pady=6
+                padx=self.padding_x,
+                pady=self.padding_y
             )
-            self.card_frame.pack(fill="x", padx=10, pady=4)
             
+            # Usar márgenes dinámicos calculados
+            self.card_frame.pack(fill="x", padx=self.margin_x, pady=self.margin_y)
+            
+            # Decidir layout basado en el ancho real disponible
+            if self.panel_width < 260:  # Umbral dinámico para layout vertical
+                self.create_vertical_layout()
+            else:
+                self.create_horizontal_layout()
+            
+            self.create_text_content()
+            self.create_image_content()
+            self.setup_responsive_behavior()
+        
+        def detect_panel_size(self):
+            """Sistema de media queries progresivo como CSS - detecta tamaño y calcula valores dinámicamente"""
+            try:
+                # Intentar obtener el ancho actual del panel
+                panel_width = self.parent.winfo_width()
+                if panel_width <= 1:  # Si no está inicializado, usar el master
+                    panel_width = self.parent.master.winfo_width() if hasattr(self.parent, 'master') else 250
+                
+                # 🎯 SISTEMA DE MEDIA QUERIES PROGRESIVO (como CSS)
+                self.panel_width = panel_width
+                
+                # Calcular valores dinámicamente basado en el ancho real
+                self._calculate_responsive_values(panel_width)
+                    
+            except Exception as e:
+                # Fallback a valores por defecto
+                self.panel_width = 280
+                self._calculate_responsive_values(280)
+        
+        def _calculate_responsive_values(self, width):
+            """Calcula valores responsive dinámicamente como media queries de CSS"""
+            
+            # 📐 BREAKPOINTS PROGRESIVOS (como CSS)
+            if width >= 380:        # XL - Monitores grandes
+                self.panel_size = 'xl'
+                scale_factor = 1.0
+            elif width >= 320:      # L - Pantallas estándar
+                self.panel_size = 'large'
+                scale_factor = 0.9
+            elif width >= 280:      # M - Pantallas medianas
+                self.panel_size = 'medium'
+                scale_factor = 0.8
+            elif width >= 240:      # S - Pantallas pequeñas
+                self.panel_size = 'small'
+                scale_factor = 0.7
+            else:                   # XS - Pantallas muy pequeñas
+                self.panel_size = 'xs'
+                scale_factor = 0.6
+            
+            # 🎨 CÁLCULO DINÁMICO DE TAMAÑOS (proporcional al ancho)
+            base_img_w, base_img_h = 140, 90
+            self.img_w = max(60, int(base_img_w * scale_factor))
+            self.img_h = max(40, int(base_img_h * scale_factor))
+            
+            # 🔤 TAMAÑOS DE FUENTE DINÁMICOS
+            self.font_title = max(8, int(12 * scale_factor))
+            self.font_normal = max(7, int(10 * scale_factor))  
+            self.font_small = max(6, int(9 * scale_factor))
+            
+            # 📏 PADDING Y MÁRGENES DINÁMICOS
+            self.padding_x = max(2, int(8 * scale_factor))
+            self.padding_y = max(1, int(6 * scale_factor))
+            self.margin_x = max(1, int(10 * scale_factor))
+            self.margin_y = max(1, int(4 * scale_factor))
+            
+            # 📝 WRAPLENGTH DINÁMICO MEJORADO para evitar desbordamiento
+            # Usar un porcentaje más conservador y ajustar según el tamaño del panel
+            if self.panel_size in ['xs', 'small']:
+                self.wraplength = max(60, int(width * 0.65))   # 65% para pantallas pequeñas
+            elif self.panel_size in ['medium']:
+                self.wraplength = max(80, int(width * 0.70))   # 70% para pantallas medianas  
+            else:
+                self.wraplength = max(100, int(width * 0.75))  # 75% para pantallas grandes
+            
+            # 📊 DEBUG OPCIONAL
+            # print(f"📱 Media Query: {width}px → {self.panel_size} (scale: {scale_factor:.1f}) font: {self.font_title}/{self.font_normal}px img: {self.img_w}x{self.img_h}px")
+        
+        def create_horizontal_layout(self):
+            """Layout horizontal: texto a la izquierda, imagen a la derecha"""
             # Grid configuración
             self.card_frame.columnconfigure(0, weight=1)  # Texto expansible
             self.card_frame.columnconfigure(1, weight=0)  # Imagen fija
@@ -1957,73 +2121,100 @@ class VideoPlayerOpenCV:
             
             # Frame de imagen (columna 1)
             self.img_frame = tk.Frame(self.card_frame, bg=self.card_frame['bg'], 
-                                    width=self.IMG_W, height=self.IMG_H)
+                                    width=self.img_w, height=self.img_h)
             self.img_frame.grid(row=0, column=1, sticky="ne", padx=0, pady=2)
             self.img_frame.grid_propagate(False)
             
-            self.create_text_content()
-            self.create_image_content()
-            self.setup_responsive_behavior()
+        def create_vertical_layout(self):
+            """Layout vertical: texto arriba, imagen compacta abajo (para paneles muy pequeños)"""
+            # Grid configuración
+            self.card_frame.columnconfigure(0, weight=1)
+            self.card_frame.rowconfigure(0, weight=1)  # Texto
+            self.card_frame.rowconfigure(1, weight=0)  # Imagen
+            
+            # Frame de texto (fila 0)
+            self.text_frame = tk.Frame(self.card_frame, bg=self.card_frame['bg'])
+            self.text_frame.grid(row=0, column=0, sticky="ew", padx=2, pady=2)
+            
+            # Frame de imagen compacta (fila 1)
+            self.img_frame = tk.Frame(self.card_frame, bg=self.card_frame['bg'], 
+                                    width=self.img_w, height=self.img_h)
+            self.img_frame.grid(row=1, column=0, sticky="ew", padx=2, pady=(0, 2))
+            self.img_frame.grid_propagate(False)
         
         def create_text_content(self):
-            """Crea el contenido de texto compacto"""
-            initial_wraplength = self.SIDEBAR_W - self.IMG_W - 40
+            """Crea el contenido de texto con valores dinámicos calculados"""            
+            # 1. Título de placa (texto adaptativo según espacio)
+            if self.panel_size in ['xs', 'small']:
+                plate_text = self.plate_text  # Solo la placa, sin "Placa:"
+            else:
+                plate_text = f"Placa: {self.plate_text}"  # Texto completo
             
-            # 1. Título de placa (compacto)
             self.plate_label = tk.Label(
                 self.text_frame,
-                text=f"Placa: {self.plate_text}",
-                font=("Segoe UI", 12, "bold"),
+                text=plate_text,
+                font=("Segoe UI", self.font_title, "bold"),
                 bg=self.text_frame['bg'],
                 fg="#2c3e50",
                 anchor="w",
                 justify="left",
-                wraplength=initial_wraplength
+                wraplength=self.wraplength
             )
             self.plate_label.pack(fill="x", pady=0)
             
-            # 2. Estado NID/NIE (compacto)
+            # 2. Estado NID/NIE (progresivamente compacto)
             symbol = "✅" if self.classification == "NID" else "❌"
-            status_text = f"{symbol} {self.classification}"
+            
+            if self.panel_size in ['xs']:
+                status_text = symbol  # Solo emoji en espacios muy pequeños
+            elif self.panel_size in ['small']:
+                status_text = f"{symbol} {self.classification}"  # Emoji + tipo
+            else:
+                status_text = f"{symbol} {self.classification}"  # Versión completa
+                
             status_color = "#27ae60" if self.classification == "NID" else "#e74c3c"
             
             self.status_label = tk.Label(
                 self.text_frame,
                 text=status_text,
-                font=("Segoe UI", 10, "bold"),
+                font=("Segoe UI", self.font_normal, "bold"),
                 bg=self.text_frame['bg'],
                 fg=status_color,
                 anchor="w",
                 justify="left",
-                wraplength=initial_wraplength
+                wraplength=self.wraplength
             )
             self.status_label.pack(fill="x", pady=0)
             
-            # 3. TR CORREGIDO - CONVERSIÓN DECIMAL A MM:SS CORRECTA
+            # 3. TR - Progresivamente compacto
             if self.timestamp is not None:
-                # CORREGIR: self.timestamp puede ser decimal (ej: 29.53 segundos)
-                total_seconds = int(float(self.timestamp))  # Convertir decimal a entero
-                mins = total_seconds // 60
-                secs = total_seconds % 60
-                # FORMATO CORRECTO: MM:SS con conversión matemática real
-                tr_text = f"TR: {mins}:{secs:02d}min ({total_seconds}s)"
+                total_seconds = int(float(self.timestamp))
+                mins_decimal = self.timestamp / 60.0
+                
+                # Formato progresivo según espacio disponible
+                if self.panel_size in ['xs']:
+                    tr_text = f"{mins_decimal:.2f}min"  # Solo valor
+                elif self.panel_size in ['small']:
+                    tr_text = f"TR: {mins_decimal:.2f}min"  # TR + valor
+                else:
+                    tr_text = f"TR: {mins_decimal:.2f}min ({total_seconds}s)"  # Completo
             else:
-                tr_text = "TR: --:--min (0s)"
+                tr_text = "0.00min" if self.panel_size in ['xs'] else ("TR: 0.00min" if self.panel_size in ['small'] else "TR: 0.00min (0s)")
                 
             self.tr_label = tk.Label(
                 self.text_frame,
                 text=tr_text,
-                font=("Segoe UI", 10),
+                font=("Segoe UI", self.font_normal),
                 bg=self.text_frame['bg'],
                 fg="#7f8c8d",
                 anchor="w",
                 justify="left",
-                wraplength=initial_wraplength
+                wraplength=self.wraplength
             )
             self.tr_label.pack(fill="x", pady=0)
             
-            # 4. Confianza con color por umbral
-            validated_conf = max(0.0, min(1.0, self.confidence))  # Clamp [0,1]
+            # 4. Confianza - Progresivamente compacta
+            validated_conf = max(0.0, min(1.0, self.confidence))
             if validated_conf >= 0.85:
                 conf_color = "#27ae60"  # Verde
             elif validated_conf >= 0.70:
@@ -2031,37 +2222,70 @@ class VideoPlayerOpenCV:
             else:
                 conf_color = "#e74c3c"  # Rojo
             
+            # Formato progresivo
+            if self.panel_size in ['xs']:
+                conf_text = f"{validated_conf:.2f}"  # Solo valor
+            elif self.panel_size in ['small']:
+                conf_text = f"Conf: {validated_conf:.2f}"  # Abreviado
+            else:
+                conf_text = f"{self.classification} - Conf: {validated_conf:.2f}"  # Completo
+            
             self.conf_label = tk.Label(
                 self.text_frame,
-                text=f"{self.classification} - Conf: {validated_conf:.2f}",
-                font=("Segoe UI", 10),
+                text=conf_text,
+                font=("Segoe UI", self.font_normal),
                 bg=self.text_frame['bg'],
                 fg=conf_color,
                 anchor="w",
                 justify="left",
-                wraplength=initial_wraplength
+                wraplength=self.wraplength
             )
             self.conf_label.pack(fill="x", pady=0)
             
-            # 5. Razón (máx 3 líneas con elipsis)
-            truncated_reason = self.truncate_reason_text(self.razon_text, initial_wraplength)
+            # 5. Razón - 🎯 MULTILÍNEA INTELIGENTE 
+            # Cálculo progresivo de caracteres máximos según tamaño del panel
+            if self.panel_size in ['xs']:
+                max_chars = 0  # No mostrar razón en pantallas muy pequeñas
+                max_lines = 0
+            elif self.panel_size in ['small']:
+                max_chars = 50  # Línea única corta
+                max_lines = 1
+            elif self.panel_size in ['medium']:
+                max_chars = 80  # Hasta 2 líneas
+                max_lines = 2  
+            elif self.panel_size in ['large']:
+                max_chars = 120  # Hasta 3 líneas
+                max_lines = 3
+            else:  # xl
+                max_chars = 160  # Hasta 4 líneas
+                max_lines = 4
+            
             reason_color = "#2ecc71" if self.classification == "NID" else "#c0392b"
             
-            self.reason_label = tk.Label(
-                self.text_frame,
-                text=truncated_reason,
-                font=("Segoe UI", 9, "italic"),
-                bg=self.text_frame['bg'],
-                fg=reason_color,
-                anchor="nw",
-                justify="left",
-                wraplength=initial_wraplength
-            )
-            self.reason_label.pack(fill="x", pady=(2, 0))
+            # Mostrar razón solo si hay espacio suficiente
+            if max_chars > 0 and self.razon_text and self.razon_text.strip():
+                # Usar truncamiento inteligente para multilíneas
+                truncated_reason = self.truncate_reason_multiline(self.razon_text, self.wraplength, max_chars, max_lines)
+                
+                self.reason_label = tk.Label(
+                    self.text_frame,
+                    text=truncated_reason,
+                    font=("Segoe UI", self.font_small, "italic"),
+                    bg=self.text_frame['bg'],
+                    fg=reason_color,
+                    anchor="nw",
+                    justify="left",
+                    wraplength=self.wraplength
+                )
+                self.reason_label.pack(fill="x", pady=(1, 0))
+            else:
+                # En espacios muy reducidos, omitir la razón
+                self.reason_label = None
             
-            # Lista para actualizar wraplength
-            self.text_labels = [self.plate_label, self.status_label, self.tr_label, 
-                               self.conf_label, self.reason_label]
+            # Lista para actualizar wraplength (incluyendo reason_label solo si existe)
+            self.text_labels = [self.plate_label, self.status_label, self.tr_label, self.conf_label]
+            if hasattr(self, 'reason_label') and self.reason_label is not None:
+                self.text_labels.append(self.reason_label)
         
         def create_image_content(self):
             """Crea el contenido de imagen con degradado automático"""
@@ -2110,22 +2334,21 @@ class VideoPlayerOpenCV:
             self.placeholder_label.pack(expand=True, fill="both")
         
         def calculate_image_size(self, orig_w, orig_h):
-            """Calcula tamaño de imagen con degradado automático"""
-            # Empezar con tamaño por defecto
-            target_w, target_h = self.IMG_W, self.IMG_H
+            """Calcula tamaño de imagen responsive basado en el tamaño del panel"""
+            # Usar los tamaños ya determinados por detect_panel_size
+            target_w, target_h = self.img_w, self.img_h
             
-            # Si el card es muy alto, reducir imagen gradualmente
-            card_height = self.estimate_card_height()
-            if card_height > self.MAX_CARD_H:
-                reduction_steps = (card_height - self.MAX_CARD_H) // 10
-                target_w = max(self.IMG_W_MIN, self.IMG_W - (reduction_steps * 10))
-                
             # Mantener aspect ratio
             aspect_ratio = orig_w / orig_h
             if target_w / target_h > aspect_ratio:
                 target_w = int(target_h * aspect_ratio)
             else:
                 target_h = int(target_w / aspect_ratio)
+                
+            # Asegurar que no sea menor que el mínimo
+            min_size = 60 if self.panel_size == 'small' else 80
+            target_w = max(min_size, target_w)
+            target_h = max(min_size, target_h)
                 
             return target_w, target_h
         
@@ -2136,36 +2359,190 @@ class VideoPlayerOpenCV:
             text_lines = len(self.razon_text) // 50 + 4  # Estimación de líneas
             return base_height + (text_lines * 15)
         
-        def truncate_reason_text(self, text, wraplength):
-            """Trunca texto de razón a máximo 3 líneas"""
-            if len(text) <= 120:  # Aproximadamente 3 líneas
-                return text
+        def truncate_reason_text(self, text, wraplength, max_chars=120):
+            """Trunca texto inteligentemente con mejor manejo de wrapping multil\u00ednea"""
+            if not text:
+                return ""
             
-            # Truncar por palabras
-            words = text.split()
+            # Limpiar texto de caracteres especiales
+            clean_text = text.replace('\n', ' ').replace('\r', ' ').strip()
+            
+            # Ajustar max_chars según el tamaño del panel para mejor responsive
+            if self.panel_size in ['xs']:
+                max_chars = min(max_chars, 60)   # Muy restrictivo para pantallas pequeñas
+            elif self.panel_size in ['small']:
+                max_chars = min(max_chars, 80)   # Moderado para pantallas pequeñas
+            elif self.panel_size in ['medium']:
+                max_chars = min(max_chars, 100)  # Standard para pantallas medianas
+            # Para 'large' y 'xl' usar max_chars original
+            
+            # Si el texto ya cabe, devolverlo tal como está
+            if len(clean_text) <= max_chars:
+                return clean_text
+            
+            # Truncar por palabras completas para evitar cortes
+            words = clean_text.split()
             truncated = ""
+            
             for word in words:
-                test_text = truncated + " " + word if truncated else word
-                if len(test_text) > 117:  # Dejar espacio para "..."
-                    return truncated + "..."
+                # Calcular si agregar la siguiente palabra excede el límite  
+                test_text = f"{truncated} {word}".strip() if truncated else word
+                
+                # Si agregar la palabra excede el límite, parar aquí
+                if len(test_text) > max_chars - 3:  # -3 para "..."
+                    if truncated:  # Si ya tenemos algo truncado
+                        return f"{truncated}..."
+                    else:  # Si ni siquiera la primera palabra cabe, cortar por caracteres
+                        return f"{word[:max_chars-3]}..."
+                
                 truncated = test_text
+            
+            # Si llegamos aquí, todo el texto cabe
             return truncated
         
+        def truncate_reason_multiline(self, text, wraplength, max_chars, max_lines):
+            """🎯 Truncamiento inteligente multilínea para razones largas"""
+            if not text or max_chars == 0:
+                return ""
+            
+            # Limpiar texto
+            clean_text = text.replace('\n', ' ').replace('\r', ' ').strip()
+            
+            # Si el texto ya cabe en una línea
+            if len(clean_text) <= max_chars:
+                return clean_text
+            
+            # Calcular caracteres por línea (considerando wraplength) 
+            chars_per_line = min(max_chars // max_lines, wraplength // 8)  # ~8px por carácter
+            chars_per_line = max(15, chars_per_line)  # Mínimo 15 caracteres por línea
+            
+            words = clean_text.split()
+            lines = []
+            current_line = ""
+            
+            for word in words:
+                # Verificar si agregar la palabra excede la línea actual
+                test_line = f"{current_line} {word}".strip() if current_line else word
+                
+                if len(test_line) <= chars_per_line:
+                    current_line = test_line
+                else:
+                    # La palabra no cabe, terminar línea actual
+                    if current_line:
+                        lines.append(current_line)
+                        current_line = word
+                    else:
+                        # Ni siquiera la palabra sola cabe, truncarla
+                        lines.append(f"{word[:chars_per_line-3]}...")
+                        current_line = ""
+                    
+                    # Si ya alcanzamos el máximo de líneas
+                    if len(lines) >= max_lines:
+                        # Si hay línea actual sin agregar, truncarla con "..."
+                        if current_line:
+                            lines[max_lines-1] = f"{lines[max_lines-1][:-3]}..." if len(lines[max_lines-1]) > 3 else lines[max_lines-1]
+                        break
+            
+            # Agregar la última línea si no alcanzamos el límite
+            if current_line and len(lines) < max_lines:
+                lines.append(current_line)
+            elif len(lines) == max_lines and current_line:
+                # Si hay texto pendiente y ya alcanzamos máximo de líneas, truncar la última
+                lines[max_lines-1] = f"{lines[max_lines-1]}..."
+            
+            # Unir líneas con saltos
+            result = '\n'.join(lines)
+            
+            # Verificación final de longitud total
+            if len(result) > max_chars + (max_lines * 2):  # +2 por los \n
+                # Si aún es muy largo, truncar más agresivamente
+                return self.truncate_reason_text(clean_text, wraplength, max_chars)
+            
+            return result
+        
         def setup_responsive_behavior(self):
-            """Configura comportamiento responsive"""
-            def update_wraplength(event=None):
+            """Configura comportamiento responsive con media queries dinámicas"""
+            def update_responsive_layout(event=None):
                 try:
-                    card_width = self.card_frame.winfo_width()
-                    if card_width > 1:
-                        new_wraplength = max(150, card_width - self.IMG_W - 50)
+                    # Obtener ancho actual del card/contenedor
+                    current_width = self.card_frame.winfo_width()
+                    if current_width <= 1:
+                        return
+                    
+                    # Recalcular valores si cambió significativamente el ancho
+                    width_diff = abs(current_width - getattr(self, 'last_width', 0))
+                    if width_diff > 10:  # Solo recalcular si cambió más de 10px
+                        
+                        # Recalcular valores dinámicos
+                        old_panel_size = self.panel_size
+                        self._calculate_responsive_values(current_width)
+                        
+                        # Actualizar wraplength de todos los labels existentes
                         for label in self.text_labels:
-                            if label.winfo_exists():
-                                label.config(wraplength=new_wraplength)
-                except:
+                            if label and label.winfo_exists():
+                                label.config(wraplength=self.wraplength)
+                        
+                        # 🔧 MEJORA: Re-truncar texto de razón con multilínea inteligente
+                        if hasattr(self, 'reason_label') and self.reason_label is not None:
+                            if self.reason_label.winfo_exists():
+                                # Recalcular parámetros basado en el nuevo tamaño del panel
+                                if self.panel_size in ['xs']:
+                                    max_chars, max_lines = 0, 0  # No mostrar
+                                elif self.panel_size in ['small']:
+                                    max_chars, max_lines = 50, 1  # Una línea corta
+                                elif self.panel_size in ['medium']:
+                                    max_chars, max_lines = 80, 2  # Dos líneas
+                                elif self.panel_size in ['large']:
+                                    max_chars, max_lines = 120, 3  # Tres líneas
+                                else:  # xl
+                                    max_chars, max_lines = 160, 4  # Cuatro líneas
+                                
+                                # Re-truncar con multilínea inteligente
+                                if max_chars > 0:
+                                    new_truncated = self.truncate_reason_multiline(
+                                        self.razon_text, self.wraplength, max_chars, max_lines
+                                    )
+                                    self.reason_label.config(text=new_truncated)
+                                else:
+                                    # Ocultar razón en pantallas muy pequeñas
+                                    self.reason_label.config(text="")
+                        
+                        # Actualizar fuentes si cambió el breakpoint
+                        if old_panel_size != self.panel_size:
+                            self._update_font_sizes()
+                        
+                        # Recordar ancho actual
+                        self.last_width = current_width
+                        
+                        # Debug opcional
+                        # print(f"🔄 Card media query: {current_width}px → {self.panel_size} (font: {self.font_title}px)")
+                        
+                except Exception as e:
+                    # Debug opcional en caso de error
+                    # print(f"⚠️ Error en responsive behavior: {e}")
                     pass
             
-            self.card_frame.bind("<Configure>", update_wraplength)
-            self.card_frame.after(100, update_wraplength)
+            # Vincular evento de redimensionado
+            self.card_frame.bind("<Configure>", update_responsive_layout)
+            # Aplicar layout inicial después de un breve delay
+            self.card_frame.after(150, update_responsive_layout)
+        
+        def _update_font_sizes(self):
+            """Actualiza los tamaños de fuente de todos los labels"""
+            try:
+                if hasattr(self, 'plate_label') and self.plate_label.winfo_exists():
+                    self.plate_label.config(font=("Segoe UI", self.font_title, "bold"))
+                if hasattr(self, 'status_label') and self.status_label.winfo_exists():
+                    self.status_label.config(font=("Segoe UI", self.font_normal, "bold"))
+                if hasattr(self, 'tr_label') and self.tr_label.winfo_exists():
+                    self.tr_label.config(font=("Segoe UI", self.font_normal))
+                if hasattr(self, 'conf_label') and self.conf_label.winfo_exists():
+                    self.conf_label.config(font=("Segoe UI", self.font_normal))
+                if hasattr(self, 'reason_label') and self.reason_label and self.reason_label.winfo_exists():
+                    self.reason_label.config(font=("Segoe UI", self.font_small, "italic"))
+            except Exception as e:
+                # Silent fail para evitar errores durante redimensionado
+                pass
 
     def _safe_add_plate_to_panel(self, plate_img, plate_text, timestamp=None, confidence=None, vehicle_img=None):
         """
@@ -2339,10 +2716,9 @@ class VideoPlayerOpenCV:
                 self._update_plate_history(plate_text, timestamp, plate_path, vehicle_path, 
                                           classification, quality_score, classification_metadata)
                 
-                # CRÍTICO: Actualizar región de desplazamiento y vista
+                # ✨ SCROLL INTELIGENTE: Actualizar región y mostrar nueva card
                 self.plates_inner_frame.update_idletasks()
-                self.plates_canvas.configure(scrollregion=self.plates_canvas.bbox("all"))
-                self.plates_canvas.yview_moveto(1.0)  # Mostrar la última placa añadida
+                self._ensure_card_visibility(card.card_frame)
                 
                 print(f"Card añadido exitosamente: {plate_text}")
                 
@@ -2431,45 +2807,201 @@ class VideoPlayerOpenCV:
             print(f"Error actualizando historial de {plate_text}: {e}")
 
     def _create_metrics_panel(self):
-        """Panel de indicadores justo debajo del título 'Placas Detectadas' - SIN DUPLICAR"""
+        """Panel de indicadores responsive justo debajo del título 'Placas Detectadas'"""
         # Crear panel de indicadores justo después del título
-        self.indicators_panel = tk.Frame(self.plates_frame, bg="#34495e", height=60)
+        self.indicators_panel = tk.Frame(self.plates_frame, bg="#34495e")
         self.indicators_panel.pack(side="top", fill="x", padx=5, pady=5, after=self.plates_title)
-        self.indicators_panel.pack_propagate(False)
         
-        # ✅ CORRECTO: Frame para los 3 indicadores DIRECTAMENTE (sin título duplicado)
+        # Frame principal para los indicadores con layout responsive
         self.metrics_frame = tk.Frame(self.indicators_panel, bg="#34495e")
-        self.metrics_frame.pack(side="top", fill="x", padx=5, pady=8)  # Más espacio arriba
+        self.metrics_frame.pack(side="top", fill="x", padx=2, pady=3)
         
-        # INDICADORES COMO ESTABAN ORIGINALMENTE
+        # Crear los indicadores con configuración responsive inicial
+        self._create_responsive_indicators()
+        
+        # Configurar comportamiento responsive para el panel de métricas
+        self._setup_metrics_responsive_behavior()
+    
+    def _create_responsive_indicators(self):
+        """Crea los indicadores con configuración responsive"""
+        # Detectar tamaño del panel para configuración inicial
+        panel_width = self._get_panel_width()
+        
+        if panel_width >= 350:  # Panel grande
+            self._create_large_indicators()
+        elif panel_width >= 280:  # Panel mediano
+            self._create_medium_indicators()
+        else:  # Panel pequeño
+            self._create_small_indicators()
+    
+    def _get_panel_width(self):
+        """Obtiene el ancho actual del panel de placas"""
+        try:
+            width = self.plates_frame.winfo_width()
+            return width if width > 1 else 300  # Default si no está inicializado
+        except:
+            return 300
+    
+    def _create_large_indicators(self):
+        """Indicadores para panel grande - una fila, texto completo"""
         self.ti_label = tk.Label(
             self.metrics_frame, text="TI:0.0%",
             bg="#3498db", fg="white", font=("Arial", 10, "bold"),
             padx=4, pady=2, relief="flat", width=8
         )
-        self.ti_label.pack(side="left", padx=1)
+        self.ti_label.pack(side="left", padx=2)
         
         self.tr_label = tk.Label(
-            self.metrics_frame, text="TR:0.00min",
-            bg="#e67e22", fg="white", font=("Arial", 10, "bold"),
-            padx=4, pady=2, relief="flat", width=12
+            self.metrics_frame, text="TR TOTAL:0.00min",
+            bg="#e67e22", fg="white", font=("Arial", 9, "bold"),
+            padx=4, pady=2, relief="flat", width=14
         )
-        self.tr_label.pack(side="left", padx=1)
+        self.tr_label.pack(side="left", padx=2)
         
         self.nid_label = tk.Label(
             self.metrics_frame, text="NID: 0 correctas",
             bg="#27ae60", fg="white", font=("Arial", 10, "bold"),
             padx=4, pady=2, relief="flat", width=12
         )
-        self.nid_label.pack(side="left", padx=1)
+        self.nid_label.pack(side="left", padx=2)
         
-        # NUEVO: Indicador NIE debajo del panel de placas
         self.nie_label = tk.Label(
             self.metrics_frame, text="NIE:0",
             bg="#f39c12", fg="white", font=("Arial", 10, "bold"),
             padx=4, pady=2, relief="flat", width=8
         )
+        self.nie_label.pack(side="left", padx=2)
+    
+    def _create_medium_indicators(self):
+        """Indicadores para panel mediano - texto compacto"""
+        self.ti_label = tk.Label(
+            self.metrics_frame, text="TI:0.0%",
+            bg="#3498db", fg="white", font=("Arial", 9, "bold"),
+            padx=3, pady=1, relief="flat", width=6
+        )
+        self.ti_label.pack(side="left", padx=1)
+        
+        self.tr_label = tk.Label(
+            self.metrics_frame, text="TR:0.00min",
+            bg="#e67e22", fg="white", font=("Arial", 8, "bold"),
+            padx=3, pady=1, relief="flat", width=10
+        )
+        self.tr_label.pack(side="left", padx=1)
+        
+        self.nid_label = tk.Label(
+            self.metrics_frame, text="NID:0",
+            bg="#27ae60", fg="white", font=("Arial", 9, "bold"),
+            padx=3, pady=1, relief="flat", width=6
+        )
+        self.nid_label.pack(side="left", padx=1)
+        
+        self.nie_label = tk.Label(
+            self.metrics_frame, text="NIE:0",
+            bg="#f39c12", fg="white", font=("Arial", 9, "bold"),
+            padx=3, pady=1, relief="flat", width=6
+        )
         self.nie_label.pack(side="left", padx=1)
+    
+    def _create_small_indicators(self):
+        """Indicadores para panel pequeño - dos filas, muy compacto"""
+        # Primera fila: TI y TR
+        self.metrics_row1 = tk.Frame(self.metrics_frame, bg="#34495e")
+        self.metrics_row1.pack(side="top", fill="x", pady=1)
+        
+        self.ti_label = tk.Label(
+            self.metrics_row1, text="TI:0.0%",
+            bg="#3498db", fg="white", font=("Arial", 8, "bold"),
+            padx=2, pady=1, relief="flat", width=8
+        )
+        self.ti_label.pack(side="left", padx=1, expand=True, fill="x")
+        
+        self.tr_label = tk.Label(
+            self.metrics_row1, text="TR:0.00min",
+            bg="#e67e22", fg="white", font=("Arial", 8, "bold"),
+            padx=2, pady=1, relief="flat", width=8
+        )
+        self.tr_label.pack(side="right", padx=1, expand=True, fill="x")
+        
+        # Segunda fila: NID y NIE
+        self.metrics_row2 = tk.Frame(self.metrics_frame, bg="#34495e")
+        self.metrics_row2.pack(side="top", fill="x", pady=1)
+        
+        self.nid_label = tk.Label(
+            self.metrics_row2, text="NID:0",
+            bg="#27ae60", fg="white", font=("Arial", 8, "bold"),
+            padx=2, pady=1, relief="flat", width=8
+        )
+        self.nid_label.pack(side="left", padx=1, expand=True, fill="x")
+        
+        self.nie_label = tk.Label(
+            self.metrics_row2, text="NIE:0",
+            bg="#f39c12", fg="white", font=("Arial", 8, "bold"),
+            padx=2, pady=1, relief="flat", width=8
+        )
+        self.nie_label.pack(side="right", padx=1, expand=True, fill="x")
+    
+    def _setup_metrics_responsive_behavior(self):
+        """Configura el comportamiento responsive del panel de métricas"""
+        def update_metrics_layout(event=None):
+            try:
+                panel_width = self._get_panel_width()
+                if panel_width <= 1:
+                    return
+                
+                # Determinar si necesita cambiar el layout
+                current_layout = getattr(self, '_current_metrics_layout', 'medium')
+                
+                if panel_width >= 350 and current_layout != 'large':
+                    self._recreate_metrics_layout('large')
+                elif 280 <= panel_width < 350 and current_layout != 'medium':
+                    self._recreate_metrics_layout('medium')
+                elif panel_width < 280 and current_layout != 'small':
+                    self._recreate_metrics_layout('small')
+                    
+            except Exception as e:
+                # Debug opcional
+                # print(f"⚠️ Error actualizando layout de métricas: {e}")
+                pass
+        
+        # Vincular al evento de redimensionado del panel principal
+        self.plates_frame.bind("<Configure>", update_metrics_layout)
+        self.plates_frame.after(200, update_metrics_layout)
+    
+    def _recreate_metrics_layout(self, layout_type):
+        """Recrea el layout de métricas para el tamaño especificado"""
+        try:
+            # Limpiar el frame actual
+            for widget in self.metrics_frame.winfo_children():
+                widget.destroy()
+            
+            # Crear el nuevo layout
+            if layout_type == 'large':
+                self._create_large_indicators()
+            elif layout_type == 'medium':
+                self._create_medium_indicators()
+            else:
+                self._create_small_indicators()
+            
+            # Recordar el layout actual
+            self._current_metrics_layout = layout_type
+            
+            # Actualizar los valores actuales
+            self._refresh_current_metrics()
+            
+            # Debug opcional
+            # print(f"📊 Métricas adaptadas a layout: {layout_type}")
+            
+        except Exception as e:
+            print(f"⚠️ Error recreando layout de métricas: {e}")
+    
+    def _refresh_current_metrics(self):
+        """Refresca los valores actuales en las métricas después de recrear el layout"""
+        try:
+            # Trigger update si ya hay datos
+            if hasattr(self, 'detected_plates_widgets') and self.detected_plates_widgets:
+                self._update_metrics_panel()
+        except:
+            pass
 
     def _update_metrics_panel(self):
         """Actualiza los indicadores CON CÁLCULOS CORREGIDOS PARA CUALQUIER VIDEO"""
@@ -2513,13 +3045,27 @@ class VideoPlayerOpenCV:
             # 📊 TI (Tasa de Infracciones) - mantener cálculo actual
             ti = self._calculate_infraction_rate()
             
-            # 📈 ACTUALIZAR ETIQUETAS COMO ESTABAN ORIGINALMENTE
-            self.ti_label.config(text=f"TI:{ti:.1f}%")
-            self.tr_label.config(text=f"TR:{tr_total:.2f}min")
-            self.nid_label.config(text=f"NID: {nid_count} correctas")
+            # 📈 ACTUALIZAR ETIQUETAS SEGÚN EL LAYOUT RESPONSIVE
+            current_layout = getattr(self, '_current_metrics_layout', 'medium')
             
-            # NUEVO: Actualizar indicador NIE
-            if hasattr(self, "nie_label"):
+            # Formato de texto adaptativo
+            if current_layout == 'large':
+                # Texto completo para paneles grandes
+                self.ti_label.config(text=f"TI:{ti:.1f}%")
+                self.tr_label.config(text=f"TR TOTAL:{tr_total:.2f}min")
+                self.nid_label.config(text=f"NID: {nid_count} correctas")
+                self.nie_label.config(text=f"NIE:{nie_count}")
+            elif current_layout == 'medium':
+                # Texto compacto para paneles medianos
+                self.ti_label.config(text=f"TI:{ti:.1f}%")
+                self.tr_label.config(text=f"TR:{tr_total:.2f}min")
+                self.nid_label.config(text=f"NID:{nid_count}")
+                self.nie_label.config(text=f"NIE:{nie_count}")
+            else:  # small
+                # Texto muy compacto para paneles pequeños
+                self.ti_label.config(text=f"TI:{ti:.1f}%")
+                self.tr_label.config(text=f"TR:{tr_total:.2f}min")
+                self.nid_label.config(text=f"NID:{nid_count}")
                 self.nie_label.config(text=f"NIE:{nie_count}")
             
             # DEBUG: Mostrar valores actualizados
@@ -2714,16 +3260,19 @@ class VideoPlayerOpenCV:
         except Exception as e:
             print(f"Error en _on_plates_canvas_configure: {e}")
 
-    def _on_plates_inner_configure(self, event):
-        """Actualiza la región scrollable cuando cambia el contenido del frame interno"""
+    def _ensure_card_visibility(self, new_card_frame=None):
+        """Asegura que las cards nuevas sean visibles con scroll inteligente"""
         try:
-            # Actualizar la región de desplazamiento
+            # Actualizar región de scroll primero
             self.plates_canvas.configure(scrollregion=self.plates_canvas.bbox("all"))
             
-            # Forzar actualización del canvas
-            self.plates_canvas.update()
+            # Si hay una nueva card y auto-scroll está activo, scrollear hacia ella
+            if new_card_frame and hasattr(self, '_auto_scroll_enabled') and self._auto_scroll_enabled:
+                # Pequeño delay para asegurar que la card esté renderizada
+                self.parent.after(100, lambda: self._smart_auto_scroll())
+                
         except Exception as e:
-            print(f"Error en _on_plates_inner_configure: {e}")
+            print(f"Error asegurando visibilidad de card: {e}")
 
     def _cam_load_async(self, path):
         cap_tmp = cv2.VideoCapture(path)
@@ -3702,8 +4251,70 @@ class VideoPlayerOpenCV:
             self.system_info_label.config(text="🔧 Sistema: Detectando...")
             print(f"Error actualizando info del sistema: {e}")
 
+    def _initialize_responsive_layout(self):
+        """Detecta automáticamente el tamaño de pantalla y aplica el layout correcto al inicializar"""
+        try:
+            # Obtener tamaño de pantalla
+            screen_width = self.parent.winfo_screenwidth()
+            screen_height = self.parent.winfo_screenheight()
+            
+            print(f"🖥️ Pantalla detectada: {screen_width}x{screen_height}")
+            
+            # Aplicar layout según el tamaño de pantalla
+            if screen_width < 1366:  # Laptops pequeños
+                print("📱 Aplicando layout para laptop pequeño")
+                self._apply_small_screen_layout()
+            elif screen_width < 1600:  # Pantallas medianas (la mayoría de laptops)
+                print("💻 Aplicando layout para pantalla mediana")
+                self._apply_medium_screen_layout()
+            else:  # Monitores grandes
+                print("🖥️ Aplicando layout para pantalla grande")
+                self._apply_large_screen_layout()
+                
+        except Exception as e:
+            print(f"⚠️ Error inicializando responsive layout: {e}")
+            # En caso de error, aplicar layout mediano por defecto
+            self._apply_medium_screen_layout()
+
+    def _adjust_video_frame_responsive(self, window_width, window_height):
+        """🎬 Ajustar video frame de manera responsive según tamaño de ventana"""
+        try:
+            # Calcular proporciones responsive para el video
+            if window_width < 1000:  # Pantallas pequeñas
+                video_width = int(window_width * 0.55)  # 55% de la ventana
+                video_height = int(video_width * 9 / 16)  # Mantener aspecto 16:9
+                panels_width = 280  # Panel de placas más estrecho
+            elif window_width < 1400:  # Pantallas medianas  
+                video_width = int(window_width * 0.6)   # 60% de la ventana
+                video_height = int(video_width * 9 / 16)
+                panels_width = 320  # Panel moderado
+            else:  # Pantallas grandes
+                video_width = int(window_width * 0.65)  # 65% de la ventana
+                video_height = int(video_width * 9 / 16)
+                panels_width = 380  # Panel completo
+            
+            # Asegurar que no sea demasiado alto
+            max_height = int(window_height * 0.7)  # Máximo 70% de altura
+            if video_height > max_height:
+                video_height = max_height
+                video_width = int(video_height * 16 / 9)
+            
+            # Aplicar nuevas dimensiones al video frame
+            if hasattr(self, 'video_frame'):
+                self.video_frame.config(width=video_width, height=video_height)
+                
+            # Aplicar nuevas dimensiones al panel de placas
+            if hasattr(self, 'plates_frame'):
+                self.plates_frame.config(width=panels_width)
+            
+            # Debug opcional
+            # print(f"🎬 Video responsive: {video_width}x{video_height}, Panel: {panels_width}px")
+            
+        except Exception as e:
+            print(f"Error en video responsive: {e}")
+
     def _on_window_resize(self, event):
-        """Función responsive para ajustar el layout según el tamaño de ventana"""
+        """Función responsive para ajustar el layout según el tamaño de ventana dinamicamente"""
         try:
             # Solo aplicar si el evento es de la ventana principal
             if event.widget != self.parent:
@@ -3712,45 +4323,64 @@ class VideoPlayerOpenCV:
             window_width = event.width
             window_height = event.height
             
-            # Ajustar tamaño de fuente según el ancho de ventana
-            if window_width < 1200:  # Pantalla pequeña
-                # Reducir tamaño de botones y texto
+            # Obtener tamaño de pantalla para comparar
+            screen_width = self.parent.winfo_screenwidth()
+            
+            # 🎬 NUEVO: Ajustar video frame de manera responsive
+            self._adjust_video_frame_responsive(window_width, window_height)
+            
+            # Umbrales ajustados para mejor responsive design
+            if screen_width < 1366 or window_width < 1000:  # Laptops pequeños
                 self._apply_small_screen_layout()
-            elif window_width < 1600:  # Pantalla mediana
-                # Tamaño estándar
+            elif screen_width < 1600 or window_width < 1400:  # Pantallas medianas
                 self._apply_medium_screen_layout()
-            else:  # Pantalla grande
-                # Tamaño grande
+            else:  # Monitores grandes
                 self._apply_large_screen_layout()
+            
+            # Debug opcional
+            # print(f"🔄 Resize: {window_width}x{window_height} en pantalla {screen_width}px")
                 
         except Exception as e:
             print(f"Error en responsive design: {e}")
 
     def _apply_small_screen_layout(self):
-        """Layout para pantallas pequeñas (<1200px)"""
+        """Layout para pantallas pequeñas (<1366px) - Laptops"""
         try:
-            # Botones más compactos
+            # Botones muy compactos para laptops
             small_btn_style = {
-                "font": ("Arial", 10),
-                "width": 25,
+                "font": ("Arial", 9),
+                "width": 28,
                 "pady": 2
             }
             
             self.load_button.config(**small_btn_style)
             self.btn_preprocesar.config(**small_btn_style)
-            self.play_pause_button.config(font=("Arial", 10, "bold"), width=15)
+            self.play_pause_button.config(font=("Arial", 9, "bold"), width=12)
             
-            # Texto explicativo compacto pero sin cortar palabras
+            # Texto explicativo muy compacto
             if hasattr(self, 'play_pause_help_label'):
                 self.play_pause_help_label.config(
-                    font=("Arial", 7, "italic"),
-                    wraplength=110,  # Ancho suficiente para palabras completas
-                    width=14
+                    font=("Arial", 6, "italic"),
+                    wraplength=100,
+                    width=12
                 )
             
-            # Panel de placas más estrecho
+            # Panel de placas más estrecho para laptops
             if hasattr(self, 'plates_frame'):
-                self.plates_frame.config(width=250)
+                self.plates_frame.config(width=220)
+            
+            # Ajustar canvas interno para laptops
+            if hasattr(self, 'plates_canvas_window'):
+                self.plates_canvas.itemconfig(self.plates_canvas_window, width=200)
+            
+            # Ajustar márgenes para laptops
+            self._adjust_margins_and_spacing()
+            
+            # Forzar actualización del panel de métricas
+            if hasattr(self, '_setup_metrics_responsive_behavior'):
+                self.plates_frame.after(100, lambda: self._recreate_metrics_layout('small'))
+            
+            print("📱 Layout compacto aplicado para laptop")
                 
         except Exception as e:
             print(f"Error en layout pequeño: {e}")
@@ -3758,60 +4388,118 @@ class VideoPlayerOpenCV:
     def _apply_medium_screen_layout(self):
         """Layout para pantallas medianas (1200-1600px)"""
         try:
-            # Tamaños estándar
+            # Tamaños estándar para pantallas medianas
             medium_btn_style = {
-                "font": ("Arial", 12),
-                "width": 36,
-                "pady": 5
+                "font": ("Arial", 11),
+                "width": 32,
+                "pady": 4
             }
             
             self.load_button.config(**medium_btn_style)
             self.btn_preprocesar.config(**medium_btn_style)
-            self.play_pause_button.config(font=("Arial", 12, "bold"), width=20)
+            self.play_pause_button.config(font=("Arial", 11, "bold"), width=18)
             
-            # Texto explicativo tamaño normal con mejor wrapping
+            # Texto explicativo tamaño normal
             if hasattr(self, 'play_pause_help_label'):
                 self.play_pause_help_label.config(
-                    font=("Arial", 11, "italic"),
-                    wraplength=140,  # Más ancho para evitar cortes
-                    width=18
+                    font=("Arial", 9, "italic"),
+                    wraplength=130,
+                    width=16
                 )
             
             # Panel de placas tamaño estándar
             if hasattr(self, 'plates_frame'):
-                self.plates_frame.config(width=320)
+                self.plates_frame.config(width=300)
+            
+            # Ajustar canvas interno
+            if hasattr(self, 'plates_canvas_window'):
+                self.plates_canvas.itemconfig(self.plates_canvas_window, width=280)
+            
+            # Ajustar márgenes para pantallas medianas
+            self._adjust_margins_and_spacing()
+            
+            # Forzar actualización del panel de métricas
+            if hasattr(self, '_setup_metrics_responsive_behavior'):
+                self.plates_frame.after(100, lambda: self._recreate_metrics_layout('medium'))
+            
+            print("💻 Layout estándar aplicado para pantalla mediana")
                 
         except Exception as e:
             print(f"Error en layout mediano: {e}")
 
     def _apply_large_screen_layout(self):
-        """Layout para pantallas grandes (>1600px)"""
+        """Layout para pantallas grandes (>1600px) - Monitores externos"""
         try:
-            # Tamaños grandes
+            # Tamaños grandes para monitores
             large_btn_style = {
-                "font": ("Arial", 14),
-                "width": 40,
-                "pady": 8
+                "font": ("Arial", 13),
+                "width": 38,
+                "pady": 6
             }
             
             self.load_button.config(**large_btn_style)
             self.btn_preprocesar.config(**large_btn_style)
-            self.play_pause_button.config(font=("Arial", 14, "bold"), width=25)
+            self.play_pause_button.config(font=("Arial", 13, "bold"), width=22)
             
-            # Texto explicativo más grande con wrapping generoso
+            # Texto explicativo más grande
             if hasattr(self, 'play_pause_help_label'):
                 self.play_pause_help_label.config(
-                    font=("Arial", 12, "italic"),
-                    wraplength=160,  # Ancho generoso
-                    width=20
+                    font=("Arial", 11, "italic"),
+                    wraplength=150,
+                    width=18
                 )
             
-            # Panel de placas más ancho
+            # Panel de placas más ancho para monitores
             if hasattr(self, 'plates_frame'):
-                self.plates_frame.config(width=400)
+                self.plates_frame.config(width=380)
+            
+            # Ajustar canvas interno para monitores
+            if hasattr(self, 'plates_canvas_window'):
+                self.plates_canvas.itemconfig(self.plates_canvas_window, width=360)
+            
+            # Ajustar márgenes para monitores grandes
+            self._adjust_margins_and_spacing()
+            
+            # Forzar actualización del panel de métricas
+            if hasattr(self, '_setup_metrics_responsive_behavior'):
+                self.plates_frame.after(100, lambda: self._recreate_metrics_layout('large'))
+            
+            print("🖥️ Layout expandido aplicado para monitor grande")
                 
         except Exception as e:
             print(f"Error en layout grande: {e}")
+
+    def _adjust_margins_and_spacing(self):
+        """Ajusta automáticamente márgenes y espaciado para evitar desbordamientos"""
+        try:
+            # Obtener dimensiones actuales
+            screen_width = self.parent.winfo_screenwidth()
+            screen_height = self.parent.winfo_screenheight()
+            
+            # Ajustar padding del frame principal según el tamaño de pantalla
+            if screen_width < 1366:  # Laptops pequeños
+                # Márgenes mínimos para maximizar espacio
+                if hasattr(self, 'frame'):
+                    self.frame.pack_configure(padx=2, pady=2)
+                if hasattr(self, 'btn_frame'):
+                    self.btn_frame.pack_configure(pady=8)
+            elif screen_width < 1600:  # Pantallas medianas
+                # Márgenes estándar
+                if hasattr(self, 'frame'):
+                    self.frame.pack_configure(padx=5, pady=5)
+                if hasattr(self, 'btn_frame'):
+                    self.btn_frame.pack_configure(pady=12)
+            else:  # Pantallas grandes
+                # Márgenes generosos
+                if hasattr(self, 'frame'):
+                    self.frame.pack_configure(padx=8, pady=8)
+                if hasattr(self, 'btn_frame'):
+                    self.btn_frame.pack_configure(pady=15)
+            
+            print(f"📐 Márgenes ajustados para pantalla {screen_width}px")
+                    
+        except Exception as e:
+            print(f"⚠️ Error ajustando márgenes: {e}")
 
     def toggle_beep(self):
         """Habilitar/deshabilitar beep de infracciones"""

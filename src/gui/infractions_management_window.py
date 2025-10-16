@@ -490,6 +490,13 @@ def generate_performance_indicators_json(software_infractions, software_processi
     import requests
     from datetime import datetime
 
+    # DEBUG: Imprimir datos recibidos
+    print(f"\n📊 DEBUG - generate_performance_indicators_json:")
+    print(f"  Infracciones recibidas: {len(software_infractions) if isinstance(software_infractions, list) else 0}")
+    print(f"  Tiempos de procesamiento: {len(software_processing_times) if isinstance(software_processing_times, list) else 0}")
+    if software_infractions and isinstance(software_infractions, list):
+        print(f"  Primera infracción: {software_infractions[0] if software_infractions else 'N/A'}")
+
     # Garantizar que recibimos listas
     if not isinstance(software_infractions, (list, tuple)):
         software_infractions = []
@@ -500,13 +507,27 @@ def generate_performance_indicators_json(software_infractions, software_processi
         else:
             software_processing_times = []
 
-    # 1) Agrupar por día para cálculos (eliminamos IR del sistema)
+    # 1) Agrupar por día para cálculos y contar NID/NIE
     day_infractions = {}
+    nid_count = 0
+    nie_count = 0
+    
     for inf in software_infractions:
         fecha = inf.get("fecha", "Sin fecha")
         placa = inf.get("placa", "")
-        grp = day_infractions.setdefault(fecha, {"total": 0, "placas": {}})
+        clasificacion = inf.get("clasificacion", "NID")  # Por defecto NID
+        
+        grp = day_infractions.setdefault(fecha, {"total": 0, "placas": {}, "nid": 0, "nie": 0})
         grp["total"] += 1
+        
+        # Contar NID y NIE
+        if clasificacion == "NID":
+            nid_count += 1
+            grp["nid"] += 1
+        elif clasificacion == "NIE":
+            nie_count += 1
+            grp["nie"] += 1
+        
         if placa:
             grp["placas"].setdefault(placa, 0)
             grp["placas"][placa] += 1
@@ -520,10 +541,11 @@ def generate_performance_indicators_json(software_infractions, software_processi
     }
     police_times_min = [7, 6, 5, 10, 8]  # en minutos
 
-    # ——— INDICADOR TI: Tasa de infracciones COMO PORCENTAJE ———
-    # NUEVA OPERACIONALIZACIÓN: TI = (GE detecciones / GC registros) × 100
+    # ——— INDICADOR TI: Tasa de Infracciones (PORCENTAJE DE ACIERTO) ———
+    # TI = (NID / Total infracciones) × 100
+    # Refleja qué porcentaje de infracciones detectadas son correctas (NID)
     
-    # Datos GC (Grupo Control - registros manuales de campo)
+    # Datos GC (Grupo Control - registros manuales de campo) - solo para comparación
     pnp_total = sum(m["total"] for m in pnp_data.values())
     pnp_days = sum(m["dias"] for m in pnp_data.values())
     pnp_daily = pnp_total / pnp_days if pnp_days else 0
@@ -533,47 +555,72 @@ def generate_performance_indicators_json(software_infractions, software_processi
     sw_inf = len(software_infractions)
     sw_daily = sw_inf / sw_days if sw_days else 0
     
-    # TI como porcentaje de acierto (software vs campo)
-    if pnp_daily > 0:
-        ti_percentage = (sw_daily / pnp_daily) * 100
-        ti_percentage = min(ti_percentage, 100.0)  # Máximo 100%
+    # TI como porcentaje de acierto de ESTA SESIÓN
+    # TI = (NID correctas / Total detectadas) × 100
+    total_detectadas = nid_count + nie_count
+    if total_detectadas > 0:
+        ti_percentage = (nid_count / total_detectadas) * 100
     else:
         ti_percentage = 0.0
 
-    # ——— INDICADOR TR: Tiempo de registro EN MINUTOS ———
-    # NUEVA OPERACIONALIZACIÓN: TR en minutos, no segundos
+    # ——— INDICADOR TR: Tiempo de registro EN MINUTOS (INDIVIDUAL) ———
+    # TR son los tiempos individuales de cada infracción, NO un promedio
+    # Cada video puede tener múltiples TR: [1.23min, 0.34min, 2.45min, etc.]
     
     pnp_sec = (sum(police_times_min) / len(police_times_min) * 60) if police_times_min else 0
-    sw_sec = (sum(software_processing_times) / len(software_processing_times)) if software_processing_times else 0
     
-    # Convertir a minutos para la nueva operacionalización
-    pnp_min = pnp_sec / 60.0  # PNP en minutos
-    sw_min = sw_sec / 60.0    # Software en minutos
+    # Convertir tiempos individuales de segundos a minutos
+    if software_processing_times:
+        sw_times_min = [t / 60.0 for t in software_processing_times]  # Lista de tiempos en minutos
+        sw_min = sum(sw_times_min) / len(sw_times_min)  # Promedio para comparación
+    else:
+        sw_times_min = []
+        sw_min = 0.0
+    
+    # PNP en minutos
+    pnp_min = pnp_sec / 60.0
 
     tr_reduction_pct = ((pnp_min - sw_min) / pnp_min * 100) if pnp_min else 0
     tr_speedup = pnp_min / sw_min if sw_min else 0
 
     # ——— INDICADOR NID: Número de Infracciones Detectadas (DIARIO) ———
-    # NUEVO INDICADOR: Conteo diario de infracciones
-    from datetime import datetime
+    # IMPORTANTE: Esta función recibe SOLO las infracciones de la sesión actual
+    # Los valores reflejan lo procesado HOY, no datos históricos acumulados
     
-    today = datetime.now().strftime("%Y-%m-%d")
-    nid_today = 0
+    # Usar el contador REAL de infracciones clasificadas como NID de esta sesión
+    nid_today = nid_count  # Ya contamos las NID de esta sesión
+    nie_today = nie_count  # Ya contamos las NIE de esta sesión
     
-    # Contar infracciones de hoy
-    for inf in software_infractions:
-        fecha = inf.get("fecha", "")
-        if fecha and today in fecha:
-            nid_today += 1
+    # Promedio diario basado en los días analizados en esta sesión
+    nid_daily_avg = nid_count / sw_days if sw_days > 0 else nid_count
     
-    # Si no hay infracciones de hoy, usar promedio diario como referencia
-    nid_daily_avg = sw_daily if sw_daily > 0 else len(software_infractions)
+    # Obtener ubicación/avenida de la primera infracción si existe
+    avenida = "N/A"
+    if software_infractions:
+        avenida = software_infractions[0].get("ubicacion", "N/A")
+
+    # DEBUG: Imprimir valores calculados
+    print(f"\n📊 DEBUG - Valores calculados (SESIÓN ACTUAL):")
+    print(f"  NID esta sesión: {nid_count}")
+    print(f"  NIE esta sesión: {nie_count}")
+    print(f"  NID hoy: {nid_today}")
+    print(f"  NID promedio diario: {nid_daily_avg}")
+    print(f"  TI porcentaje: {ti_percentage:.2f}%")
+    print(f"  TR software (min): Promedio={sw_min:.2f}, Individual={sw_times_min}")
+    print(f"  Días analizados en sesión: {sw_days}")
+    print(f"  Total infracciones en sesión: {sw_inf}")
+    print(f"  TIR (NID + NIE): {nid_count + nie_count}")
 
     # ——— Montar el JSON de salida con NUEVA OPERACIONALIZACIÓN (SIN IR) ———
+    # NOTA: Este reporte refleja SOLO los datos de la sesión actual, no acumulados históricos
+    from datetime import datetime
+    
     report = {
         "fecha_generacion": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
         "periodo_analisis": f"{min(day_infractions.keys(), default='N/A')} - {max(day_infractions.keys(), default='N/A')}",
         "dias_analizados": sw_days,
+        "ubicacion": avenida,  # Agregar ubicación/avenida
+        "nota": "Datos de la sesión actual de procesamiento, no acumulados históricos",
         "indicadores": {
             "TI": {
                 "descripcion": "Tasa de Infracciones Detectadas (Nivel Diario Agregado)",
@@ -597,6 +644,7 @@ def generate_performance_indicators_json(software_infractions, software_processi
                 },
                 "con_software": {
                     "tiempo_promedio_minutos": round(sw_min, 2),
+                    "tiempos_individuales": [round(t, 2) for t in sw_times_min],  # Array de TRs individuales
                     "muestras_analizadas": len(software_processing_times)
                 },
                 "reduccion_tiempo_porcentual": round(tr_reduction_pct, 2),
@@ -607,13 +655,23 @@ def generate_performance_indicators_json(software_infractions, software_processi
                 "unidad": "cantidad válida por día",
                 "infracciones_hoy": nid_today,
                 "promedio_diario": round(nid_daily_avg, 0),
-                "periodo_analizado": f"{sw_days} días"
+                "periodo_analizado": f"{sw_days} días",
+                "total": nid_count
+            },
+            "NIE": {
+                "descripcion": "Número de Infracciones Incorrectamente Registradas",
+                "unidad": "cantidad no válida por día",
+                "infracciones_incorrectas": nie_count,
+                "total": nie_count
             },
         },
         "resumen_global": {
             "ti_porcentaje_acierto": f"{ti_percentage:.1f}%",
             "tiempo_registro_minutos": f"{sw_min:.2f} min",
             "infracciones_detectadas_hoy": nid_today,
+            "nid_total": nid_count,
+            "nie_total": nie_count,
+            "tir_total": nid_count + nie_count
         },
     }
 
@@ -622,17 +680,37 @@ def generate_performance_indicators_json(software_infractions, software_processi
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
+    
+    print(f"✅ Indicadores guardados localmente en: {out_path}")
 
     # 5) Enviar automáticamente al backend / Firestore
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as cf:
-            user_id = json.load(cf).get("user_id", "")
+            config_data = json.load(cf)
+            user_id = config_data.get("user_id", "")
+        
+        if not user_id:
+            print("⚠️ No se encontró user_id en la configuración, saltando envío al backend")
+            return
+        
         url = f"https://infracti-backend-627388491148.us-central1.run.app/indicadores/{user_id}"
-        resp = requests.post(url, json=report, timeout=10)
+        print(f"📤 Enviando indicadores al backend: {url}")
+        print(f"   Datos: NID={nid_count}, NIE={nie_count}, TI={ti_percentage:.2f}%, TR={sw_min:.2f}min")
+        
+        resp = requests.post(url, json=report, timeout=15)
         resp.raise_for_status()
-        print("✅ Indicadores enviados correctamente a Firestore")
+        print("✅ Indicadores enviados correctamente a Firestore via Backend")
+        print(f"   Respuesta del servidor: {resp.status_code}")
+    except FileNotFoundError as e:
+        print(f"⚠️ No se encontró archivo de configuración: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Error de red enviando indicadores al backend: {e}")
+        print(f"   URL: {url if 'url' in locals() else 'N/A'}")
+        print("   Los indicadores se guardaron localmente y se pueden migrar manualmente")
     except Exception as e:
-        print(f"⚠️ Error enviando indicadores al backend: {e}")
+        print(f"⚠️ Error inesperado enviando indicadores: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def create_infractions_window(window: tk.Toplevel, back_callback):
@@ -1533,52 +1611,26 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                 font=("Arial", 11, "bold"), bg="#F2F2F2", fg=clasificacion_color
             ).pack(anchor="w")
             
-            # CORREGIDO: Tiempo de procesamiento (TR) - FORMATO EXACTO COMO PANEL DE PLACAS
-            # Buscar tiempo de procesamiento en diferentes campos posibles
-            timestamp_value = None
+            # TR: Tiempo de Registro (tiempo_procesamiento en minutos)
+            # Este valor DEBE coincidir con TR_individuales migrado a Firestore
+            tiempo_proc = inf.get('tiempo_procesamiento', 0)
             
-            # 1. Intentar obtener de campos específicos de procesamiento
-            for field in ['tiempo_procesamiento', 'tr_seconds', 'processing_time', 'video_timestamp']:
-                value = inf.get(field)
-                if value and value != '00:00':
-                    # Si es string formato MM:SS, convertir a segundos
-                    if isinstance(value, str) and ':' in value:
-                        try:
-                            mins_part, secs_part = map(int, value.split(':'))
-                            timestamp_value = mins_part * 60 + secs_part
-                            break
-                        except:
-                            continue
-                    # Si es número, usar directamente
-                    elif isinstance(value, (int, float)) and value > 0:
-                        timestamp_value = int(value)
-                        break
-            
-            # 2. Si no encontró valor específico, usar tiempo_video como fallback
-            if timestamp_value is None or timestamp_value <= 0:
-                tiempo_video = inf.get('tiempo_video', '00:00')
-                if tiempo_video and tiempo_video != '00:00' and ':' in tiempo_video:
-                    try:
-                        mins_vid, secs_vid = map(int, tiempo_video.split(':'))
-                        timestamp_value = mins_vid * 60 + secs_vid
-                    except:
-                        timestamp_value = None
-            
-            # CORREGIDO: Solo UN campo TR (tiempo de procesamiento)
-            if timestamp_value is not None and timestamp_value > 0:
-                # CORREGIR: timestamp_value puede ser decimal (ej: 29.53 segundos)
-                total_seconds = int(float(timestamp_value))  # Convertir decimal a entero
+            if tiempo_proc and tiempo_proc > 0:
+                # Convertir segundos a minutos
+                total_seconds = int(float(tiempo_proc))
+                mins_dec = tiempo_proc / 60.0  # Minutos decimales (ej: 0.37)
                 mins = total_seconds // 60
                 secs = total_seconds % 60
-                # FORMATO SIMPLIFICADO: Solo TR (sin redundancia)
-                tr_text = f"TR: {mins}:{secs:02d}min ({total_seconds}s)"
+                
+                # FORMATO: TR: 0.37min (22s) - coincide con Firestore
+                tr_text = f"TR: {mins_dec:.2f}min ({total_seconds}s)"
                 tk.Label(
                     text_right, text=tr_text,
                     font=("Arial", 10), bg="#F2F2F2", fg="#7f8c8d"
                 ).pack(anchor="w")
             else:
                 # Mostrar formato de fallback
-                tr_text = "TR: --:--min (0s)"
+                tr_text = "TR: 0.00min (0s)"
                 tk.Label(
                     text_right, text=tr_text,
                     font=("Arial", 10), bg="#F2F2F2", fg="#7f8c8d"
