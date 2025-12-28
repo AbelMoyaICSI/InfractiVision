@@ -75,6 +75,10 @@ class SmartPlateCorrector:
         
         # 📋 BASE DE DATOS DE PLACAS CONOCIDAS (pequeña para rapidez)
         self.known_plates = self._load_known_plates()
+        
+        # === INTELIGENCIA REGIONAL: TRUJILLO ===
+        self.regional_context = "Trujillo"
+        self.regional_codes = ["T"]
     
     def _add_to_cache(self, key, result):
         """⚡ Agregar resultado al cache con gestión optimizada"""
@@ -126,6 +130,10 @@ class SmartPlateCorrector:
         # 🎯 NIVEL 1: Corrección por patrón de formato
         format_corrected = self._correct_by_format_pattern(best_plate)
         if format_corrected != best_plate:
+            # Inteligencia Regional: Si estamos en Trujillo y el 1er char parece una T/I/7, forzar T
+            if self.regional_context == "Trujillo" and format_corrected[0] in ['T', 'I', '7', '1', 'L']:
+                format_corrected = 'T' + format_corrected[1:]
+                
             corrections.append(f"Formato: {best_plate} → {format_corrected}")
             best_plate = format_corrected
             best_confidence += 0.1  # Bonus por corrección de formato
@@ -429,25 +437,59 @@ class PlateClassificationSystem:
         }
         
     def _analyze_consensus(self, plate_texts):
-        """Analiza consenso entre múltiples detecciones."""
+        """
+        🚀 SUPER-CONSENSO: Analiza consenso CARÁCTER A CARÁCTER para máxima precisión.
+        Este método permite que una PC lenta y una rápida lleguen al mismo resultado.
+        """
         if len(plate_texts) < self.min_consensus_frames:
             return {'has_consensus': False, 'reason': 'insuficientes_frames'}
             
-        # Encontrar la placa más común o con menor distancia promedio
-        from collections import Counter
-        text_counts = Counter(plate_texts)
-        most_common = text_counts.most_common(1)[0]
+        # 1. Normalizar todas las placas (quitar guiones y espacios)
+        normalized_plates = [p.replace('-', '').replace(' ', '').upper() for p in plate_texts]
         
-        # Si hay una placa dominante, usarla
-        if most_common[1] >= len(plate_texts) * 0.6:  # 60% de consenso
-            return {
-                'has_consensus': True,
-                'best_text': most_common[0],
-                'consensus_frames': most_common[1]
-            }
+        # 2. Votación por posición (Votación Temporal de Caracteres)
+        # Encontramos la longitud más común
+        from collections import Counter
+        len_counts = Counter(len(p) for p in normalized_plates)
+        target_len = len_counts.most_common(1)[0][0]
+        
+        # Filtrar placas que no tengan la longitud objetivo (evita ruido)
+        valid_normalized = [p for p in normalized_plates if len(p) == target_len]
+        if not valid_normalized:
+            return {'has_consensus': False, 'reason': 'variación_longitud_excesiva'}
             
-        # Si no hay dominante, buscar por distancia Levenshtein
-        best_candidate = None
+        final_chars = []
+        for i in range(target_len):
+            # Obtener todos los caracteres detectados en esta posición exacta
+            chars_at_pos = [p[i] for p in valid_normalized]
+            char_votes = Counter(chars_at_pos)
+            
+            # --- Lógica de Inteligencia Regional (Trujillo) ---
+            # Si estamos en la 1ra posición y hay duda, priorizar 'T'
+            if i == 0 and 'T' in char_votes and self.regional_context == "Trujillo":
+                best_char = 'T'
+            else:
+                best_char = char_votes.most_common(1)[0][0]
+                
+            final_chars.append(best_char)
+            
+        best_text = "".join(final_chars)
+        
+        # 3. Formatear la placa resultante (ej: ABC123 -> ABC-123)
+        if len(best_text) == 6:
+            formatted_text = f"{best_text[:3]}-{best_text[3:]}"
+        else:
+            formatted_text = best_text # Dejar como está para otros formatos
+            
+        # Calcular porcentaje de confianza del consenso
+        consensus_frames = sum(1 for p in normalized_plates if p == best_text)
+        
+        return {
+            'has_consensus': True,
+            'best_text': formatted_text,
+            'consensus_frames': consensus_frames,
+            'total_frames': len(plate_texts)
+        }
         min_avg_distance = float('inf')
         
         for candidate in set(plate_texts):
@@ -764,15 +806,14 @@ class IntelligentTrafficOptimizer:
     
     def get_processing_segments(self):
         """
-        Retorna solo los segmentos que requieren procesamiento de infracciones.
+        Retorna TODOS los segmentos en orden para un procesamiento secuencial fluido.
         
         Returns:
-            List[Tuple]: Lista de (start_frame, end_frame) para segmentos críticos
+            List[Tuple]: Lista de (start_frame, end_frame, skip_rate, phase)
         """
         return [
-            (segment['start_frame'], segment['end_frame'])
-            for segment in self.processing_plan
-            if segment.get('is_infraction_zone', False)
+            (s['start_frame'], s['end_frame'], s['skip_rate'], s['phase'])
+            for s in self.processing_plan
         ]
     
     def get_segment_config(self, frame_index):
@@ -822,7 +863,8 @@ class IntelligentVehicleTracker:
         
         # Configuración del tracker
         self.max_distance_threshold = 100  # Distancia máxima para asociar detecciones
-        self.history_length = 10  # Mantener N frames de historial
+        self.history_length = 15  # Aumentado para mejor análisis de mejores tomas
+        self.best_frame_per_track = {}  # track_id -> {'frame': img, 'conf': C, 'idx': I}
         
     def update_tracks(self, detections, frame_index, current_semaphore_state):
         """
@@ -881,7 +923,7 @@ class IntelligentVehicleTracker:
                 'center': detection_center,
                 'front': detection_front,
                 'confidence': confidence,
-                'in_polygon': self._is_point_in_polygon(detection_front),
+                'in_polygon': self.is_vehicle_in_polygon_robust((x1, y1, x2, y2)),
                 'semaphore_state': current_semaphore_state
             })
             track_data['last_seen'] = frame_index
@@ -890,6 +932,31 @@ class IntelligentVehicleTracker:
             if len(track_data['positions']) > self.history_length:
                 track_data['positions'] = track_data['positions'][-self.history_length:]
             
+            # ACTUALIZACIÓN DE MEJOR TOMA (BEST POSE)
+            # Criterio: Mayor confianza de detección + Centralidad + Tamaño del BBox
+            if current_semaphore_state == "red":
+                if best_track_id not in self.best_frame_per_track:
+                    self.best_frame_per_track[best_track_id] = []
+                
+                # Calcular puntaje de "calidad de pose"
+                # (Centralidad en imagen + Tamaño BBox + Confianza)
+                bbox_area = (x2 - x1) * (y2 - y1)
+                pose_score = float(confidence) * (bbox_area / 10000.0) # Normalizar un poco
+                
+                self.best_frame_per_track[best_track_id].append({
+                    'score': pose_score,
+                    'frame_idx': frame_index,
+                    'bbox': (x1, y1, x2, y2),
+                    'conf': confidence
+                })
+                
+                # Mantener solo las mejores 5 tomas potenciales para elegir al final
+                self.best_frame_per_track[best_track_id] = sorted(
+                    self.best_frame_per_track[best_track_id], 
+                    key=lambda x: x['score'], 
+                    reverse=True
+                )[:5]
+
             matched_tracks.add(best_track_id)
             
             # VALIDACIÓN DE INFRACCIÓN: Solo en semáforo ROJO
@@ -900,6 +967,12 @@ class IntelligentVehicleTracker:
         
         # Limpiar tracks antiguos (no vistos en muchos frames)
         self._cleanup_old_tracks(frame_index)
+        
+        # ELIMINAR RESULTADOS OBSOLETOS DE MEJORES TOMAS
+        tracks_to_keep = set(self.vehicle_tracks.keys())
+        for tid in list(self.best_frame_per_track.keys()):
+            if tid not in tracks_to_keep:
+                del self.best_frame_per_track[tid]
         
         return current_infractions
     
@@ -984,7 +1057,8 @@ class IntelligentVehicleTracker:
                 'entry_frame': frame_index,
                 'last_outside_frame': last_outside_frame,
                 'semaphore_state': semaphore_state,
-                'validation': validation_method
+                'validation': validation_method,
+                'crossing_point': current_pos['front']  # Punto exacto del parachoques al cruzar
             }
             
             # Marcar como ya procesado para evitar duplicados
@@ -993,14 +1067,50 @@ class IntelligentVehicleTracker:
             return infraction_data
             
         return None
-    
+
+    def is_vehicle_in_polygon_robust(self, car_bbox):
+        """
+        Versión robusta de detección dentro del polígono (basada en el player principal).
+        """
+        if not self.polygon_points or len(self.polygon_points) < 3:
+            return False
+        
+        x1, y1, x2, y2 = car_bbox
+        center_x = (x1 + x2) // 2
+        center_y = (y1 + y2) // 2
+        
+        polygon = np.array(self.polygon_points, np.int32)
+        
+        # 1. Centro
+        if cv2.pointPolygonTest(polygon, (int(center_x), int(center_y)), False) >= 0:
+            return True
+        
+        # 2. Otros puntos críticos (como en videoplayer_opencv.py)
+        front_x = (x1 + x2 * 3) // 4
+        front_y = center_y
+        rear_x = (x1 * 3 + x2) // 4
+        rear_y = center_y
+        
+        if cv2.pointPolygonTest(polygon, (int(front_x), int(front_y)), False) >= 0:
+            return True
+        if cv2.pointPolygonTest(polygon, (int(rear_x), int(rear_y)), False) >= 0:
+            return True
+        
+        # 3. Esquinas
+        corners = [(x1, y1), (x2, y1), (x1, y2), (x2, y2)]
+        for cx, cy in corners:
+            if cv2.pointPolygonTest(polygon, (int(cx), int(cy)), False) >= 0:
+                return True
+                
+        return False
+
     def _is_point_in_polygon(self, point):
         """Verifica si un punto está dentro del polígono de detección."""
         if not self.polygon_points or len(self.polygon_points) < 3:
             return False
             
         polygon_np = np.array(self.polygon_points, np.int32)
-        return cv2.pointPolygonTest(polygon_np, point, False) >= 0
+        return cv2.pointPolygonTest(polygon_np, (int(point[0]), int(point[1])), False) >= 0
     
     def _cleanup_old_tracks(self, current_frame):
         """Elimina tracks que no se han visto en muchos frames."""
@@ -1105,6 +1215,20 @@ class PreprocessingDialog:
         self.total_frames = 0
         self.result_queue = queue.Queue()
         
+        # 🔴 VISUALES PERSISTENTES E INFRAESTRUCTURA DE MONITOR
+        self.visual_feedback_items = []      # Lista de {'type', 'pos', 'frame_expiry', 'bbox'}
+        self.feedback_lock = threading.Lock()
+        self.last_plate_crop = None          # Para el monitor lateral al ladito
+        self.plate_monitor_ready = False     # Flag de UI lista
+        self.detected_plates_global = set()  # Registro único de placas
+        self.plate_registry_lock = threading.Lock()
+        
+        # 🚀 INFRAESTRUCTURA DE ANÁLISIS ASÍNCRONO (FASE 2)
+        self.analysis_queue = queue.Queue()
+        self.analysis_active = False
+        self.analysis_worker_thread = None
+        self.completed_analysis_count = 0
+        self.analysis_results_lock = threading.Lock()
         # 🚀 SISTEMA DE VISUALIZACIÓN FLUIDA (NO AFECTA PROCESAMIENTO)
         try:
             self.display_buffer = deque(maxlen=90)  # Buffer circular para 3 segundos a 30fps
@@ -1400,9 +1524,25 @@ class PreprocessingDialog:
         self.semaphore_frame.pack(side="left", fill="y")
         self.semaphore_frame.pack_propagate(False)
         
-        # Label para mostrar el frame actual
-        self.video_label = ttk.Label(self.video_frame)
-        self.video_label.pack(fill="both", expand=True)
+        # Label para mostrar el frame actual (Contenedor con Monitor)
+        display_container = ttk.Frame(self.video_frame)
+        display_container.pack(fill="both", expand=True)
+        
+        self.video_label = ttk.Label(display_container)
+        self.video_label.pack(side="left", fill="both", expand=True)
+        
+        # MONITOR LATERAL (AL LADITO)
+        self.monitor_side = tk.Frame(display_container, width=150, background="#111")
+        self.monitor_side.pack(side="right", fill="y", padx=2)
+        self.monitor_side.pack_propagate(False)
+        
+        tk.Label(self.monitor_side, text="PLACA DETECTADA", font=("Arial", 8, "bold"), fg="white", bg="#111").pack(pady=5)
+        self.plate_monitor_img = tk.Label(self.monitor_side, bg="#000")
+        self.plate_monitor_img.pack(pady=5, padx=5, fill="x")
+        self.plate_monitor_text = tk.Label(self.monitor_side, text="---", font=("Arial", 12, "bold"), fg="#00FF00", bg="#111")
+        self.plate_monitor_text.pack(pady=5)
+        
+        self.plate_monitor_ready = True
         
         # Crear semáforo visual sincronizado
         self.create_synchronized_semaphore()
@@ -1514,23 +1654,48 @@ class PreprocessingDialog:
                     result_type, data = result
                     
                     if result_type == "frame_update":
-                        frame, segment_id, processed_frames, total_frames = data
+                        # data: (display, segment_id, processed, total_frames, abs_f)
+                        frame, segment_id, processed_in_segment, segment_length, absolute_frame = data
+                        
                         # Actualizar el frame actual y mostrarlo inmediatamente
                         self.current_frame = frame
                         self._update_video_frame(frame)
                         
                         # Actualizar información de progreso para este segmento
-                        segment_progress = (processed_frames / total_frames) * 100
-                        segment_contribution = segment_progress / self.total_segments
+                        segment_progress = (processed_in_segment / segment_length) * 100 if segment_length > 0 else 0
                         
                         # Actualizar progreso global considerando segmentos completados
                         base_progress = (self.completed_segments / self.total_segments) * 100
                         segment_part = (1 / self.total_segments) * (segment_progress / 100) * 100
                         self.progress_value = min(base_progress + segment_part, 99.9)  # No llegar a 100% hasta terminar
                         
+                        # ⚡ ACTUALIZAR ACELERACIÓN VISUAL EN TIEMPO REAL
+                        curr_state = self._get_semaphore_state_for_frame(absolute_frame)
+                        self._update_visual_acceleration(curr_state, absolute_frame)
+                        
                         # Actualizar texto de progreso SIN CONTADOR (se actualiza en segment_complete)
-                        self.details_label.config(text=f"Procesando segmento {segment_id+1}/{self.total_segments} | Frame {processed_frames}/{total_frames}")
+                        self.details_label.config(text=f"Procesando segmento {segment_id+1}/{self.total_segments} | Frame {absolute_frame}/{segment_length}")
                     
+                    elif result_type == "plate_monitor_status":
+                        status_text, plate_img = data
+                        # Actualizar solo el texto (amarillo para "procesando")
+                        if hasattr(self, 'plate_monitor_text'):
+                            self.plate_monitor_text.config(text=status_text, foreground="yellow")
+                        
+                        # Actualizar imagen si se proporciona (el crop de la fase 1)
+                        if plate_img is not None:
+                            self._update_monitor_image(plate_img)
+
+                    elif result_type == "plate_monitor_update":
+                        plate_img, plate_text = data
+                        # Actualizar el monitor lateral con el resultado final (verde)
+                        if hasattr(self, 'plate_monitor_ready') and self.plate_monitor_ready:
+                            try:
+                                self._update_monitor_image(plate_img)
+                                self.plate_monitor_text.config(text=plate_text, foreground="#4CAF50")
+                            except Exception as e:
+                                print(f"Error actualizando monitor de placas: {e}")
+
                     elif result_type == "segment_complete":
                         segment_id, infractions = data
                         # Añadir las infracciones detectadas
@@ -1699,13 +1864,13 @@ class PreprocessingDialog:
         
         # Determinar velocidad objetivo según el estado
         if semaphore_state == "green":
-            self.target_visual_speed = 4.0  # 4x más rápido visualmente
+            self.target_visual_speed = 3.0  # 3x más rápido visualmente (Estricto)
             self.visual_acceleration_active = True
-            status = "🟢 VERDE - Acelerando x4"
+            status = "🟢 VERDE - Acelerando x3"
         elif semaphore_state == "yellow":
-            self.target_visual_speed = 2.5  # 2.5x más rápido visualmente  
+            self.target_visual_speed = 1.5  # 1.5x más rápido visualmente (Parcial)
             self.visual_acceleration_active = True
-            status = "🟡 AMARILLO - Acelerando x2.5"
+            status = "🟡 AMARILLO - Acelerando x1.5"
         elif semaphore_state == "red":
             self.target_visual_speed = 1.0  # Velocidad normal para análisis
             self.visual_acceleration_active = False
@@ -1805,6 +1970,102 @@ class PreprocessingDialog:
             # Deshabilitar sistema fluido si hay errores continuos
             self.display_enabled = False
     
+    def _update_monitor_image(self, plate_img):
+        """Helper para actualizar la imagen en el monitor lateral"""
+        if plate_img is None or not hasattr(self, 'plate_monitor_img'):
+            return
+        try:
+            # Redimensionar para que quepa en el monitor (ancho ~140)
+            h, w = plate_img.shape[:2]
+            new_w = 140
+            new_h = int(h * (new_w / w))
+            plate_resized = cv2.resize(plate_img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+            
+            # Convertir a PhotoImage
+            img_pil = Image.fromarray(cv2.cvtColor(plate_resized, cv2.COLOR_BGR2RGB))
+            img_tk = ImageTk.PhotoImage(image=img_pil)
+            
+            self.plate_monitor_img.config(image=img_tk)
+            self.plate_monitor_img.image = img_tk # Mantener referencia
+        except Exception as e:
+            print(f"Error en _update_monitor_image: {e}")
+
+    def _analysis_worker(self):
+        """🧠 Hilo trabajador para análisis profundo de placas (Fase 2)"""
+        print("🧠 WORKER: Iniciando motor de análisis profundo asíncrono")
+        while not self.canceled and (self.analysis_active or not self.analysis_queue.empty()):
+            try:
+                try:
+                    task = self.analysis_queue.get(timeout=1.0)
+                except queue.Empty:
+                    if not self.analysis_active: break
+                    continue
+
+                if task['type'] == 'deep_analysis':
+                    frame = task['frame']
+                    infraction = task['infraction']
+                    absolute_frame = task['absolute_frame']
+                    segment_id = task['segment_id']
+                    self._deep_analyze_infraction(frame, infraction, absolute_frame, segment_id)
+                    
+                    with self.analysis_results_lock:
+                        self.completed_analysis_count += 1
+                
+                self.analysis_queue.task_done()
+            except Exception as e:
+                print(f"⚠️ Error en worker de análisis: {e}")
+        print("🧠 WORKER: Hilo de análisis finalizado")
+
+    def _deep_analyze_infraction(self, frame, infraction, absolute_frame, segment_id):
+        """Realiza el análisis pesado de una infracción detectada (Fase 2)"""
+        try:
+            car_bbox = infraction['bbox']
+            plate_img = self._extract_plate_from_vehicle(frame, car_bbox)
+            if plate_img is not None:
+                plate_text, confidence = self._perform_smart_ocr(plate_img)
+                if plate_text and len(plate_text) >= 3:
+                     plate_text = self._normalize_plate(plate_text)
+                     with self.plate_registry_lock:
+                         is_duplicate = False
+                         plate_variations = self.smart_corrector.generate_variations(plate_text) if self.smart_corrector else [plate_text]
+                         for var in plate_variations:
+                             if var in self.detected_plates_global:
+                                 is_duplicate = True
+                                 break
+                         
+                         # Actualizar monitor con crop e identificación
+                         self.result_queue.put(("plate_monitor_update", (plate_img.copy(), plate_text)))
+                         
+                         if not is_duplicate:
+                             for var in plate_variations:
+                                 self.detected_plates_global.add(var)
+                             
+                             # Registrar feedback visual en el frame central
+                             with self.feedback_lock:
+                                 self.visual_feedback_items.append({
+                                     'type': 'infraction', 
+                                     'pos': infraction['crossing_point'], 
+                                     'bbox': infraction['bbox'], 
+                                     'expiry': absolute_frame + 30
+                                 })
+                             
+                             # 🚀 CREAR REGISTRO OFICIAL USANDO EL MÉTODO ESTÁNDAR
+                             inf_id = self._create_infraction_record(
+                                 plate_text=plate_text,
+                                 plate_img=plate_img,
+                                 vehicle_img=frame, # Usar frame completo para el record
+                                 frame_index=absolute_frame,
+                                 fps=self.fps,
+                                 bbox=infraction['bbox'],
+                                 track_id=infraction.get('track_id', 0),
+                                 confidence=confidence
+                             )
+                             
+                             if inf_id:
+                                 with self.analysis_results_lock:
+                                     self.detected_infractions.append(inf_id)
+        except Exception as e:
+            print(f"Error en _deep_analyze_infraction: {e}")
     def _update_video_frame(self, frame):
         """📺 VERSIÓN MEJORADA: Actualiza frame Y añade al buffer fluido"""
         if frame is None:
@@ -1814,17 +2075,10 @@ class PreprocessingDialog:
         self._add_frame_to_buffer(frame)
         
         # 📊 MANTENER: Lógica original para compatibilidad (SIN AFECTAR PROCESAMIENTO)
-        # Esta parte ahora es manejada por el thread fluido, pero mantenemos por compatibilidad
         try:
-            # Solo actualizar ocasionalmente la UI desde aquí para no sobrecargar
-            if not hasattr(self, '_last_ui_update'):
-                self._last_ui_update = 0
-                
-            current_time = time.time()
-            if current_time - self._last_ui_update > 0.1:  # Actualizar cada 100ms máximo
-                self._last_ui_update = current_time
-                # El thread fluido se encarga de mostrar frames a 30 FPS
-                
+            # Solo actualizar ocasionalmente la UI desde aquí si el hilo fluido no está activo
+            if not getattr(self, 'display_thread', None) or not self.display_thread.is_alive():
+                self._display_frame_immediate(frame)
         except Exception as e:
             print(f"Error en actualización de frame: {e}")
     
@@ -1941,7 +2195,7 @@ class PreprocessingDialog:
                 self.player.timestamp_updater.stop_timestamp()
                 print("⏸️ Timestamp detenido durante procesamiento")
             
-            # Detectar automáticamente si es una escena nocturna
+            # DETECTAR AUTOMÁTICAMENTE SI ES UNA ESCENA NOCTURNA
             ret, first_frame = cap.read()
             if not ret:
                 if hasattr(self, 'dialog') and self.dialog.winfo_exists():
@@ -1966,38 +2220,19 @@ class PreprocessingDialog:
             # MOSTRAR VENTANA NOCTURNA SI SE DETECTA
             print(f"🔍 Verificando condiciones: is_night={self.is_night}, popup_active={PreprocessingDialog._night_popup_active}")
             if self.is_night and not PreprocessingDialog._night_popup_active:
-                print("🌙 CONDICIONES NOCTURNAS DETECTADAS - MOSTRANDO PRIMERA VENTANA")
+                print("🌙 CONDICIONES NOCTURNAS DETECTADAS - MOSTRANDO VENTANA")
                 self._show_night_analysis_popup(avg_brightness, dark_threshold)
                 
                 # ESPERAR A QUE SE CIERRE LA VENTANA ANTES DE CONTINUAR
                 while PreprocessingDialog._night_popup_active or self.processing_paused:
+                    if self.canceled: break
                     time.sleep(0.1)
-                    self.dialog.update()
+                    try:
+                        self.dialog.update()
+                    except:
+                        break
                 
-                print("✅ Primera ventana nocturna cerrada - CONTINUANDO PROCESAMIENTO")
-            else:
-                if not self.is_night:
-                    print("☀️ CONDICIONES DIURNAS DETECTADAS - NO MOSTRAR VENTANAS NOCTURNAS")
-                elif PreprocessingDialog._night_popup_active:
-                    print("⚠️ VENTANA NOCTURNA YA ACTIVA - OMITIR")
-            
-            # Actualizar UI con información del modo nocturno
-            if self.is_night:
-                self.details_label.config(text=f"Franja horaria: {self.cycle_durations.get('time_slot', 'No especificada')} - MODO NOCTURNO ACTIVADO")
-                print("🌙 Modo nocturno activado para el procesamiento")
-            
-            # MOSTRAR VENTANA NOCTURNA SI SE DETECTA
-            print(f"🔍 Verificando condiciones: is_night={self.is_night}, popup_active={PreprocessingDialog._night_popup_active}")
-            if self.is_night and not PreprocessingDialog._night_popup_active:
-                print("🌙 CONDICIONES NOCTURNAS DETECTADAS - MOSTRANDO PRIMERA VENTANA")
-                self._show_night_analysis_popup(avg_brightness, dark_threshold)
-                
-                # ESPERAR A QUE SE CIERRE LA VENTANA ANTES DE CONTINUAR
-                while PreprocessingDialog._night_popup_active or self.processing_paused:
-                    time.sleep(0.1)
-                    self.dialog.update()
-                
-                print("✅ Primera ventana nocturna cerrada - CONTINUANDO PROCESAMIENTO")
+                print("✅ Ventana nocturna cerrada o diálogo inválido - CONTINUANDO PROCESAMIENTO")
             else:
                 if not self.is_night:
                     print("☀️ CONDICIONES DIURNAS DETECTADAS - NO MOSTRAR VENTANAS NOCTURNAS")
@@ -2049,18 +2284,35 @@ class PreprocessingDialog:
             # Obtener segmentos optimizados (solo zonas de infracción críticas)
             self.segments = self.intelligent_optimizer.get_processing_segments()
             
-            # DETECTAR MODO FALLBACK PARA VIDEOS CORTOS
-            if len(self.segments) == 0:
-                print(f"⚠️  MODO FALLBACK ACTIVADO: Video muy corto, usando lógica tradicional")
+            # FALLBACK PARA VIDEOS CORTOS O SIN ZONAS DE INFRACCIÓN:
+            # Si no hay segmentos después de la optimización, procesar el video completo
+            if not self.segments or len(self.segments) == 0:
+                print(f"⚠️ ADVERTENCIA: No se detectaron zonas críticas de infracción (semáforo en ROJO).")
+                print(f"🔄 USANDO MODO FALLBACK: Procesando video completo como un único segmento.")
+                self.segments = [(0, self.total_frames)]
                 self.intelligent_tracker._short_video_fallback = True
             else:
                 self.intelligent_tracker._short_video_fallback = False
-            
-            print(f"⚡ OPTIMIZACIÓN COMPLETADA: {len(self.segments)} segmentos críticos identificados")
-            
+                print(f"⚡ OPTIMIZACIÓN COMPLETADA: {len(self.segments)} segmentos críticos identificados")
+                
+            # 🚀 INICIAR TRABAJADOR DE ANÁLISIS (FASE 2)
+            self.analysis_active = True
+            self.analysis_worker_thread = threading.Thread(target=self._analysis_worker, daemon=True)
+            self.analysis_worker_thread.start()
+            print("🧠 Hilo de Análisis Profundo (Fase 2) iniciado")
+
             # Sincronizar con el semáforo del panel
             self.player.semaforo.activate_semaphore()
-            
+                
+            # 🚀 MOSTRAR PRIMER FRAME INMEDIATAMENTE (Evitar pantalla blanca)
+            try:
+                temp_cap = cv2.VideoCapture(self.video_path)
+                ret, first_frame = temp_cap.read()
+                if ret:
+                    self.result_queue.put(("frame_update", (first_frame.copy(), 0, 0, self.total_frames, 0)))
+                temp_cap.release()
+            except: pass
+
             # Fase 3: Inicialización optimizada de modelos
             self.phase_label.config(text="Fase 3: Inicializando sistemas de detección")
             self.details_label.config(text="⚡ Carga optimizada de modelos IA...")
@@ -2068,48 +2320,35 @@ class PreprocessingDialog:
             # 🚀 OPTIMIZACIÓN: Precarga inteligente de modelos
             self._initialize_models_optimized()
             
-            # Número óptimo de trabajadores basado en hardware detectado
-            import multiprocessing as mp
-            # ⚡ Ajustar workers según GPU disponible
-            if hasattr(self.player.vehicle_detector, 'device') and 'cuda' in str(self.player.vehicle_detector.device):
-                num_workers = max(4, mp.cpu_count() // 2)  # Con GPU: menos CPU workers
-                self.details_label.config(text="🚀 GPU detectada - Modo acelerado")
-            else:
-                num_workers = max(2, mp.cpu_count() - 1)   # Solo CPU: más workers
-                self.details_label.config(text="💻 Modo CPU - Optimizado")
-            
-            # Mostrar progreso de carga
-            self.dialog.update()
-            time.sleep(0.05)  # Reducido de 0.1s a 0.05s
-            
-            self.details_label.config(text=f"✅ Sistemas listos - {num_workers} núcleos activos")
+            self.details_label.config(text="✅ Sistemas listos.")
             
             # Inicializar variables de progreso
             self.completed_segments = 0
             self.total_segments = len(self.segments)
             
-            # Iniciar procesamiento multihilo
-            with ThreadPoolExecutor(max_workers=num_workers) as executor:
-                # Muestreo más agresivo para escenas nocturnas (más frames procesados)
-                # para mayor probabilidad de detectar placas en condiciones difíciles
-                red_frame_sampling = max(1, int(self.fps / (5 if self.is_night else 3)))
-                
-                # Preparar detector para reutilización
-                vehicle_detector = self.player.vehicle_detector
-                
-                # Umbral de confianza según condiciones de iluminación
-                conf_threshold = 0.25 if self.is_night else 0.40
-                
-                # Lanzar tareas para cada segmento
-                future_to_segment = {}
-                for i, (start, end) in enumerate(self.segments):
-                    future = executor.submit(
-                        self._process_segment_optimized,
-                        i, start, end, red_frame_sampling,
-                        vehicle_detector, conf_threshold
-                    )
-                    future_to_segment[future] = i
+            # 🚀 PROCESAMIENTO SECUENCIAL (Para flujo visual de Timelapse)
+            vehicle_detector = self.player.vehicle_detector
+            conf_threshold = 0.25 if self.is_night else 0.40
             
+            for i, (start, end, skip, phase) in enumerate(self.segments):
+                if self.canceled: break
+                
+                # Actualizar fase en UI
+                self.phase_label.config(text=f"Procesando: {phase.upper()}")
+                
+                # Ejecutar segmento de forma secuencial
+                self._process_segment_optimized(
+                    segment_id=i,
+                    start_frame=start,
+                    end_frame=end,
+                    frame_sampling=1, 
+                    vehicle_detector=vehicle_detector,
+                    conf_threshold=conf_threshold,
+                    skip_rate=skip
+                )
+                
+                self.completed_segments += 1
+                self.result_queue.put(("segment_complete", i))
             # No necesitamos esperar aquí ya que los resultados se procesan en _process_results_queue()
             
             # Fase 4: Finalización - VERIFICAR QUE LA VENTANA SIGA EXISTIENDO
@@ -2163,426 +2402,88 @@ class PreprocessingDialog:
             print(f"⚠️ Warmup parcial: {e}")
 
     def _process_segment_optimized(self, segment_id, start_frame, end_frame, 
-     frame_sampling, vehicle_detector, conf_threshold):
-        """Función optimizada para procesar un segmento de video en un hilo separado"""
-        # 🚀 LOG INICIAL: Mostrar que las optimizaciones están activas
-        print(f"\n🚀 INICIANDO PROCESAMIENTO OPTIMIZADO POR SEMÁFORO:")
-        print(f"   🟢 Verde: Skip x3 + Conf 0.7x + Solo tracking")  
-        print(f"   🟡 Amarillo: Skip x2 + Conf 0.85x + Análisis ligero")
-        print(f"   🔴 Rojo: Skip normal + Conf completa + OCR intensivo")
-        print(f"   📊 Segmento {segment_id}: Frames {start_frame}-{end_frame}")
-        print("   " + "="*60 + "\n")
-        
+                                 frame_sampling, vehicle_detector, conf_threshold, skip_rate=1):
+        """🧠 FASE 1: ESCANEO RÁPIDO (Sequential Phase Flow)"""
         try:
-            # Abrir segmento de video
             segment_cap = cv2.VideoCapture(self.video_path)
             segment_cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-            
-            # Variables para este segmento
-            local_infractions = []
             processed = 0
-            total_to_process = end_frame - start_frame
+            total_frames = end_frame - start_frame
             
-            # Variable para seguir las placas ya detectadas GLOBALMENTE (no solo en este segmento)
-            if not hasattr(self, "detected_plates_global"):
-                self.detected_plates_global = set()
-            
-            # Verificar si tenemos acceso al detector ANPR
-            has_anpr = hasattr(self.player, 'anpr_detector')
-            
-            # Enviar frame inicial para mostrar que estamos procesando este segmento
-            ret, first_frame = segment_cap.read()
-            if ret:
-                # Calcular estado real del semáforo para este frame inicial
-                initial_semaphore_state = self._get_semaphore_state_for_frame(start_frame)
-                skip_rate_for_frame = self._get_skip_rate_for_frame(start_frame)
+            while processed < total_frames and not self.canceled:
+                # ⏸️ PAUSA POR INTERFAZ
+                while getattr(self, 'processing_paused', False):
+                    time.sleep(0.1)
+                    if self.canceled: break
+
+                abs_f = start_frame + processed
+                state = self._get_semaphore_state_for_frame(abs_f)
                 
-                # Dibujar información inicial
-                cv2.putText(first_frame, f"Procesando segmento {segment_id+1}", (10, 30), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                self._draw_mini_semaphore(first_frame, initial_semaphore_state, 0, self.fps, self.is_night, skip_rate_for_frame)
+                # ⚡ ACELERACIÓN FLUIDA SEGÚN PLAN (Green=x3, Yellow=x2, Red=x1)
+                skip = skip_rate
                 
-                # Poner el frame en la cola para UI inmediatamente
-                self.result_queue.put(("frame_update", (first_frame.copy(), segment_id, 0, total_to_process)))
-                # Volver a la posición inicial
-                segment_cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-            
-            # Procesar frames en este segmento
-            for relative_frame in range(total_to_process):
-                # Si se canceló el procesamiento
-                if self.canceled:
-                    segment_cap.release()
-                    return [], segment_id
-                
-                # NUEVO: Esperar mientras esté pausado por ventana emergente
-                while hasattr(self, 'processing_paused') and self.processing_paused:
-                    import time
-                    time.sleep(0.1)  # Esperar 100ms antes de revisar nuevamente
-                    if self.canceled:  # Verificar cancelación durante la pausa
-                        segment_cap.release()
-                        return [], segment_id
-                
-                # 🚦 SALTO DE FRAMES DINÁMICO SEGÚN SEMÁFORO
-                absolute_frame = start_frame + processed
-                current_semaphore_state = self._get_semaphore_state_for_frame(absolute_frame)
-                
-                # Determinar salto dinámico: Verde=más agresivo, Rojo=más preciso  
-                dynamic_skip = {
-                    "green": frame_sampling * 3,    # 🟢 Saltar 3x más frames (MUY rápido)
-                    "yellow": frame_sampling * 2,   # 🟡 Saltar 2x más frames (moderado)
-                    "red": frame_sampling           # 🔴 Salto normal (preciso)
-                }.get(current_semaphore_state, frame_sampling)
-                
-                # Solo procesar cada 'dynamic_skip' frames para eficiencia condicional
-                if processed % dynamic_skip != 0:
-                    ret = segment_cap.grab()  # Solo avanzar sin decodificar
+                if processed % skip != 0:
+                    segment_cap.grab()
                     processed += 1
                     continue
                 
                 ret, frame = segment_cap.read()
-                if not ret:
-                    break
-                
+                if not ret: break
                 processed += 1
-                absolute_frame = start_frame + relative_frame
                 
-                # Para escenas nocturnas, mejorar el frame antes de detección
-                if self.is_night:
-                    frame = self._enhance_night_visibility_fast(frame)
-                
-                # MOSTRAR FRAME EN LA UI MÁS FRECUENTEMENTE
-                if processed % max(1, frame_sampling // 2) == 0:  # Actualizar más seguido
-                    display_frame = frame.copy()
+                # 📺 ACTUALIZAR UI (Muestreo más frecuente para fluidez)
+                if processed % 4 == 0:
+                    display = frame.copy()
                     
-                    # Dibujar área de restricción (línea roja) si está disponible
-                    if hasattr(self.player, 'polygon_points') and self.player.polygon_points:
-                        polygon_points = np.array(self.player.polygon_points, dtype=np.int32)
-                        cv2.polylines(display_frame, [polygon_points], isClosed=True, color=(0, 0, 255), thickness=3)
+                    # Dibujar polígono de detección (ROI) para feedback visual
+                    if self.polygon_points and len(self.polygon_points) >= 3:
+                        poly_pts = np.array(self.polygon_points, np.int32)
+                        cv2.polylines(display, [poly_pts], True, (255, 255, 0), 2)
                     
-                    # Dibujar información sobre el procesamiento con estado REAL del semáforo
-                    absolute_frame = start_frame + processed
-                    current_semaphore_state = self._get_semaphore_state_for_frame(absolute_frame)
-                    skip_rate_for_frame = self._get_skip_rate_for_frame(absolute_frame)
-                    self._draw_mini_semaphore(display_frame, current_semaphore_state, 0, self.fps, self.is_night, skip_rate_for_frame)
-                    cv2.putText(display_frame, f"Segmento: {segment_id+1}/{self.total_segments}", (10, 30), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                    cv2.putText(display_frame, f"Frame: {processed}/{total_to_process}", (10, 60), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    # Dibujar detecciones actuales en el preview
+                    for d in valid:
+                        x1, y1, x2, y2, _ = d
+                        cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 1)
+                        # Dibujar punto que se valida contra el polígono (front bumper)
+                        cv2.circle(display, ((x1+x2)//2, y2), 4, (0, 0, 255), -1)
                     
-                    # Poner el frame en la cola para UI
-                    self.result_queue.put(("frame_update", (display_frame, segment_id, processed, total_to_process)))
+                    self._draw_mini_semaphore(display, state, 0, self.fps, self.is_night, skip)
+                    # Enviar 'processed' relativo para barra de progreso y 'abs_f' absoluto para estado semáforo
+                    self.result_queue.put(("frame_update", (display, segment_id, processed, total_frames, abs_f)))
                 
-                # 🚦 PROCESAMIENTO CONDICIONAL POR SEMÁFORO
-                # Verde: Solo tracking rápido | Amarillo: Análisis ligero | Rojo: OCR completo
-                should_do_heavy_processing = current_semaphore_state == "red"
-                should_do_light_processing = current_semaphore_state in ["yellow", "red"]
-                
-                # NUEVA IMPLEMENTACIÓN: Procesamiento inteligente según semáforo
-                anpr_detection_interval = 10 if current_semaphore_state == "red" else 20  # Más frecuente en rojo
-                direct_anpr_detections = []
-                
-                # ✅ SOLO HACER ANPR PESADO EN ROJO O CADA MUCHO TIEMPO EN AMARILLO
-                if has_anpr and should_do_heavy_processing and processed % anpr_detection_interval == 0:
-                    # 🔴 ROJO: Procesamiento completo con ANPR
-                    try:
-                        # Procesar el frame completo directamente con ANPR
-                        processed_frame, anpr_results = self.player.anpr_detector.process_frame(
-                            frame, 
-                            frame_idx=absolute_frame,
-                            is_night=self.is_night
-                        )
-                        
-                        # Procesar resultados de ANPR si los hay
-                        for detection in anpr_results:
-                            plate_text = detection.get("plate", "")
-                            coords = detection.get("coords")
-                            
-                            if plate_text and coords:
-                                # Normalizar texto de placa
-                                plate_text = self._normalize_plate_text(plate_text)
-                                
-                                hardcoded_mappings = {
-                                    'T3E153': 'T3J-538', 'T3E-153': 'T3J-538',
-                                    'A9G886': 'A96-8B6', 'A9G-886': 'A96-8B6',
-                                    'AE6061': 'A3K-961', 'AE-6061': 'A3K-961',
-                                    'T8B147': 'APH-188', 'T8B-147': 'APH-188',
-                                    'A96886': 'A96-8B6', 'A-96886': 'A96-8B6', 'A96-886': 'A96-8B6',
-                                    'THI642': 'H1G-421', 'THI-642': 'H1G-421',
-                                    'L4A326': 'T4A-376', 'L4A-326': 'T4A-376',
-                                    'T1R538': 'T3J-538', 'T1R-538': 'T3J-538',
-                                    'T5T601': 'T6D-138', 'T5T-601': 'T6D-138',
-                                    'TFI621': 'H1G-621', 'TFI-621': 'H1G-621',
-                                    'T5A349': 'A3K-961', 'T5A-349': 'A3K-961',
-                                    'EAV619': 'AV6-190', 'EAV-619': 'AV6-190',
-                                }
-                                plate_text_clean = plate_text.replace('-', '').replace(' ', '').upper()
-                                if plate_text_clean in hardcoded_mappings:
-                                    plate_text = hardcoded_mappings[plate_text_clean]
-                                
-                                # NUEVO: Verificar que la placa normalizada no esté vacía (por longitud excesiva)
-                                # y que no tenga más de 8 caracteres (sin contar guiones)
-                                if plate_text and len(plate_text.replace('-', '')) <= 8:
-                                    # Verificar si esta placa ya fue detectada
-                                    if plate_text not in self.detected_plates_global:
-                                        self.detected_plates_global.add(plate_text)
-                                        
-                                        # Extraer imagen de la placa
-                                        x1, y1, x2, y2 = coords
-                                        if all(c >= 0 for c in (x1, y1, x2, y2)):
-                                            plate_img = frame[y1:y2, x1:x2].copy() if y2 > y1 and x2 > x1 else None
-                                            
-                                            # Crear directorio para placas si no existe
-                                            plates_dir = resource_path("data/output/placas")
-                                            vehicles_dir = resource_path("data/output/autos")
-                                            os.makedirs(plates_dir, exist_ok=True)
-                                            os.makedirs(vehicles_dir, exist_ok=True)
-                                            
-                                            # Guardar la imagen de la placa
-                                            plate_filename = f"plate_{plate_text}.jpg"
-                                            plate_path = os.path.join(plates_dir, plate_filename)
-                                            cv2.imwrite(plate_path, plate_img)
-                                            
-                                            # Guardar la imagen del vehículo (área ampliada alrededor de la placa)
-                                            expansion_factor = 2.5  # Expandir 2.5x el área de la placa
-                                            height, width = frame.shape[:2]
-                                            
-                                            # Calcular el centro de la placa
-                                            center_x = (x1 + x2) // 2
-                                            center_y = (y1 + y2) // 2
-                                            
-                                            # Calcular dimensiones expandidas
-                                            plate_width = x2 - x1
-                                            plate_height = y2 - y1
-                                            expanded_width = int(plate_width * expansion_factor)
-                                            expanded_height = int(plate_height * expansion_factor)
-                                            
-                                            # Calcular las nuevas coordenadas
-                                            ex1 = max(0, center_x - expanded_width // 2)
-                                            ey1 = max(0, center_y - expanded_height // 2)
-                                            ex2 = min(width, center_x + expanded_width // 2)
-                                            ey2 = min(height, center_y + expanded_height // 2)
-                                            
-                                            # Extraer el área ampliada
-                                            vehicle_img = frame[ey1:ey2, ex1:ex2].copy()
-                                            
-                                            # Guardar la imagen del vehículo
-                                            vehicle_filename = f"vehicle_{plate_text}.jpg"
-                                            vehicle_path = os.path.join(vehicles_dir, vehicle_filename)
-                                            cv2.imwrite(vehicle_path, vehicle_img)
-                                            
-                                            # Añadir a infracciones
-                                            direct_anpr_detections.append({
-                                                'frame': absolute_frame,
-                                                'time': absolute_frame / self.fps,
-                                                'plate': plate_text,
-                                                'plate_img': plate_img,
-                                                'vehicle_img': vehicle_img,
-                                                'plate_path': plate_path,
-                                                'vehicle_path': vehicle_path,
-                                                'unique': True
-                                            })
-                    except Exception as e:
-                        print(f"Error en detección directa ANPR: {e}")
-                        import traceback
-                        traceback.print_exc()
-                
-                # Si encontramos placas con detección directa, agregarlas y continuar
-                if direct_anpr_detections:
-                    local_infractions.extend(direct_anpr_detections)
+                # 🕵️ TRACKING Y TRIGGERS (Trigger solo en Rojo)
+                if state == "red" or processed % 5 == 0:
+                    detections = vehicle_detector.detect(frame, conf=0.30, draw=False)
+                    valid = []
+                    for d in detections:
+                        if len(d) >= 5:
+                            cls = int(d[5]) if len(d) > 5 else 2
+                            if cls in [2, 5, 7]:
+                                valid.append((int(d[0]), int(d[1]), int(d[2]), int(d[3]), float(d[4])))
                     
-                    # Mostrar detecciones en tiempo real
-                    detection_frame = frame.copy()
-                    for detection in direct_anpr_detections:
-                        cv2.putText(detection_frame, f"Placa (ANPR): {detection['plate']}", (10, 90), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    new_infractions = self.intelligent_tracker.update_tracks(valid, abs_f, state)
                     
-                    self.result_queue.put(("frame_update", (detection_frame, segment_id, processed, total_to_process)))
-                    continue  # Seguir con el siguiente frame si ya encontramos placas
-                
-                # 🚦 DETECCIÓN CONDICIONAL DE VEHÍCULOS SEGÚN SEMÁFORO
-                # Verde: Confianza baja para detección rápida | Rojo: Confianza alta para precisión
-                detection_conf = {
-                    "green": max(0.25, conf_threshold * 0.8),   # 🟢 Más permisivo (min 0.25)
-                    "yellow": max(0.30, conf_threshold * 0.9),  # 🟡 Ligeramente más permisivo  
-                    "red": conf_threshold                       # 🔴 Mantener precisión en rojo
-                }.get(current_semaphore_state, conf_threshold)
-                
-                # 🚀 OPTIMIZACIÓN: Detección con early exit y límite de resultados
-                # En verde: detectar menos vehículos para ir más rápido
-                max_detections = {
-                    "green": 3,    # 🟢 Máximo 3 vehículos (rápido)
-                    "yellow": 5,   # 🟡 Máximo 5 vehículos (balanceado)
-                    "red": 10      # 🔴 Máximo 10 vehículos (completo)
-                }.get(current_semaphore_state, 10)
-                
-                detections = vehicle_detector.detect(
-                    frame, 
-                    conf=detection_conf,  # 🚀 Confianza adaptativa
-                    draw=False
-                )
-                
-                # 🚀 OPTIMIZACIÓN: Limitar detecciones manualmente después de obtenerlas
-                if len(detections) > max_detections:
-                    detections = detections[:max_detections]
-                
-                # 🎯 NUEVA LÓGICA: Filtrar y preparar detecciones para tracking inteligente
-                filtered_detections = []
-                for detection in detections:
-                    if len(detection) >= 5:  # Asegurarse de que hay suficientes elementos
-                        x1, y1, x2, y2, confidence = detection[:5]
-                        class_id = detection[5] if len(detection) > 5 else detection[4]
-                        
-                        # Verificar si es un vehículo
-                        if isinstance(class_id, (int, float)):
-                            class_id = int(class_id)
-                            if class_id in [2, 5, 7]:  # coche, bus, camión
-                                # Formato: (x1, y1, x2, y2, confidence)
-                                filtered_detections.append((int(x1), int(y1), int(x2), int(y2), float(confidence)))
-                
-                # 🚀 TRACKING INTELIGENTE: Procesar detecciones y obtener infracciones
-                # Determinar estado del semáforo para este frame
-                current_semaphore_state = self._get_semaphore_state_for_frame(absolute_frame)
-                
-                # 📊 DEBUG: Mostrar tipo de procesamiento según semáforo
-                processing_type = {
-                    "green": "🟢 RÁPIDO (solo tracking)",
-                    "yellow": "🟡 MODERADO (tracking + análisis ligero)", 
-                    "red": "🔴 COMPLETO (tracking + OCR + infracciones)"
-                }.get(current_semaphore_state, "DESCONOCIDO")
-                
-                # � ESTADÍSTICAS DE OPTIMIZACIÓN cada 20 frames
-                if processed % 20 == 0:  
-                    cache_stats = self.smart_corrector.get_cache_stats() if hasattr(self, 'smart_corrector') else {}
-                    print(f"🚦 SEMÁFORO {current_semaphore_state.upper()}: {processing_type}")
-                    print(f"   📊 Frame {absolute_frame} | Det: {len(filtered_detections)} | Conf: {detection_conf:.2f}")
-                    print(f"   ⚡ Skip: {dynamic_skip}f | Max Det: {max_detections} | Cache: {cache_stats.get('cache_usage', 'N/A')}")
-                    print("   " + "="*65)
-                
-                # Actualizar tracking y obtener infracciones inteligentes
-                frame_infractions = self.intelligent_tracker.update_tracks(
-                    detections=filtered_detections,
-                    frame_index=absolute_frame,
-                    current_semaphore_state=current_semaphore_state
-                )
-                
-                # 🔍 DEBUG: Mostrar detecciones e infracciones
-                if processed % 30 == 0 or len(frame_infractions) > 0:
-                    print(f"🔍 DEBUG Frame {absolute_frame}: {len(filtered_detections)} detecciones → {len(frame_infractions)} infracciones")
-                
-                # 🎯 PROCESAR INFRACCIONES INTELIGENTES DETECTADAS
-                for infraction in frame_infractions:
-                    try:
-                        # Extraer datos de la infracción validada por el tracker
-                        track_id = infraction['track_id']
-                        bbox = infraction['bbox']
-                        x1, y1, x2, y2 = bbox
-                        confidence = infraction['confidence']
-                        
-                        # Extraer ROI del vehículo
-                        y1_roi = max(0, int(y1))
-                        y2_roi = min(frame.shape[0], int(y2))
-                        x1_roi = max(0, int(x1))
-                        x2_roi = min(frame.shape[1], int(x2))
-                        
-                        if y2_roi > y1_roi and x2_roi > x1_roi:
-                            vehicle_roi = frame[y1_roi:y2_roi, x1_roi:x2_roi].copy()
-                            
-                            # 🔍 PROCESAR PLACA SOLO PARA INFRACCIONES VALIDADAS
-                            result = self._extract_plate_from_vehicle(
-                                vehicle_roi, has_anpr, absolute_frame, current_semaphore_state
-                            )
-                            
-                            # Manejar diferentes tipos de retorno
-                            if len(result) == 3:
-                                plate_text, plate_img, siiv_confidence = result
-                                print(f"🔍 DEBUG: Confianza SIIV obtenida: {siiv_confidence:.2f}")
-                                # CRÍTICO: Asegurar confianza mínima de 0.50 para placas detectadas
-                                if siiv_confidence < 0.30 and plate_text and len(plate_text) >= 4:
-                                    print(f"⚠️ ADVERTENCIA: Confianza SIIV muy baja ({siiv_confidence:.2f}), ajustando a 0.50")
-                                    siiv_confidence = max(0.50, siiv_confidence)
-                            else:
-                                plate_text, plate_img = result
-                                siiv_confidence = max(0.50, confidence)  # Usar confianza del tracker con mínimo 0.50
-                                print(f"🔍 DEBUG: Usando confianza del tracker (min 0.50): {siiv_confidence:.2f}")
-                            
-                            if plate_text and len(plate_text) >= 4:
-                                # Normalizar y validar placa
-                                plate_text = self._normalize_plate_text(plate_text)
-                                
-                                if plate_text and len(plate_text.replace('-', '')) <= 8:
-                                    # VERIFICAR DUPLICADOS GLOBALES (incluyendo variaciones de formato)
-                                    plate_variations = [
-                                        plate_text,
-                                        plate_text.replace('-', ''),
-                                        plate_text.replace('5', 'S'),  # Variación común
-                                        plate_text.replace('S', '5'),  # Variación común
-                                    ]
-                                    
-                                    # Verificar si ya existe una placa similar
-                                    is_duplicate = any(var in self.detected_plates_global for var in plate_variations)
-                                    
-                                    # Verificar también por similitud de texto (para placas muy parecidas)
-                                    if not is_duplicate:
-                                        for existing_plate in self.detected_plates_global:
-                                            # Si las placas son muy similares (diferencia de 1-2 caracteres), considerarlas duplicadas
-                                            if len(plate_text) == len(existing_plate) and plate_text != existing_plate:
-                                                diff_count = sum(1 for a, b in zip(plate_text, existing_plate) if a != b)
-                                                if diff_count <= 2:  # Máximo 2 caracteres diferentes
-                                                    is_duplicate = True
-                                                    print(f"🔍 DUPLICADO DETECTADO: '{plate_text}' es muy similar a '{existing_plate}' (diff: {diff_count})")
-                                                    break
-                                    
-                                    if not is_duplicate:
-                                        # Registrar placa como detectada (todas las variaciones)
-                                        for var in plate_variations:
-                                            self.detected_plates_global.add(var)
-                                        print(f"✅ PLACA NUEVA REGISTRADA: '{plate_text}' (sin duplicados)")
-                                        
-                                        # 💾 GUARDAR IMÁGENES Y CREAR INFRACCIÓN
-                                        # CRÍTICO: Usar la confianza real calculada por SIIV
-                                        print(f"🔍 DEBUG: Usando confianza SIIV real: {siiv_confidence:.2f} para crear infracción")
-                                        infraction_data = self._create_infraction_record(
-                                            plate_text=plate_text,
-                                            plate_img=plate_img,
-                                            vehicle_img=vehicle_roi,
-                                            frame_index=absolute_frame,
-                                            fps=self.fps,
-                                            bbox=bbox,
-                                            track_id=track_id,
-                                            confidence=siiv_confidence  # Usar confianza SIIV real
-                                        )
-                                        
-                                        local_infractions.append(infraction_data)
-                                        
-                                        # 🖼️ MOSTRAR DETECCIÓN EN TIEMPO REAL
-                                        detection_frame = frame.copy()
-                                        cv2.rectangle(detection_frame, (x1_roi, y1_roi), (x2_roi, y2_roi), (0, 255, 0), 3)
-                                        cv2.putText(detection_frame, f"🚨 INFRACCIÓN: {plate_text}", (x1_roi, y1_roi-10), 
-                                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-                                        cv2.putText(detection_frame, f"Track ID: {track_id}", (x1_roi, y1_roi-30), 
-                                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-                                        
-                                        # Enviar detección a la UI
-                                        self.result_queue.put(("frame_update", (detection_frame, segment_id, processed, total_to_process)))
-                                        
-                                        print(f"🚨 INFRACCIÓN INTELIGENTE: Placa {plate_text} | Track {track_id} | Frame {absolute_frame}")
-                                    else:
-                                        print(f"⚠️  Placa {plate_text} ya detectada globalmente (Track {track_id})")
-                    
-                    except Exception as e:
-                        print(f"❌ Error procesando infracción de track {infraction.get('track_id', 'unknown')}: {e}")
-                        import traceback
-                        traceback.print_exc()
-            
+                    if state == "red":
+                        for inf in new_infractions:
+                            # 🚀 TRIGGER FASE 2: ANÁLISIS PROFUNDO ASÍNCRONO
+                            self.analysis_queue.put({
+                                'type': 'deep_analysis',
+                                'frame': frame.copy(),
+                                'infraction': inf,
+                                'absolute_frame': abs_f,
+                                'segment_id': segment_id
+                            })
+                            # Feedback inmediato: "Procesando..."
+                            plate_crop = self._extract_plate_from_vehicle(frame, inf['bbox'])
+                            if plate_crop is not None:
+                                self.result_queue.put(("plate_monitor_status", ("Analizando...", plate_crop)))
+
             segment_cap.release()
-            
-            # Filtrar duplicados antes de enviar resultados
-            filtered_infractions = self._filter_segment_duplicates(local_infractions)
-            
-            # Enviar resultados a la cola principal
-            self.result_queue.put(("segment_complete", (segment_id, filtered_infractions)))
-            print(f"Segmento {segment_id} completado con {len(filtered_infractions)} infracciones")
-            return filtered_infractions, segment_id
+            self.result_queue.put(("segment_complete", (segment_id, [])))
+            return [], segment_id
+        except Exception as e:
+            print(f"Error en Phase 1 (Segment {segment_id}): {e}")
+            return [], segment_id
             
         except Exception as e:
             print(f"Error en segment {segment_id}: {e}")
@@ -2594,23 +2495,9 @@ class PreprocessingDialog:
     def _get_semaphore_state_for_frame(self, frame_index):
         """
         Determina el estado del semáforo para un frame específico.
-        SINCRONIZADO: Usa el semáforo principal del player cuando está disponible.
-        
-        Args:
-            frame_index: Índice del frame
-            
-        Returns:
-            str: Estado del semáforo ('green', 'yellow', 'red')
+        ESTRICTAMENTE DETERMINÍSTICO: Basado únicamente en el índice del frame.
         """
-        # SINCRONIZACIÓN: Si el player principal está reproduciendo, usar su estado actual
-        if hasattr(self, 'player') and self.player and hasattr(self.player, 'semaforo'):
-            try:
-                # Durante la reproducción, sincronizar con el semáforo principal
-                if hasattr(self.player, 'running') and self.player.running:
-                    return self.player.semaforo.get_current_state()
-            except:
-                pass  # Fallback al cálculo manual si hay error
-        # Calcular en qué posición del ciclo estamos - VALIDACIÓN DEFENSIVA
+        # Calcular duraciones en frames
         frames_per_state = {}
         default_durations = {'green': 12, 'yellow': 2, 'red': 10}
         
@@ -2618,21 +2505,19 @@ class PreprocessingDialog:
             try:
                 duration = self.cycle_durations[state]
                 if isinstance(duration, (list, tuple)):
-                    duration_value = float(duration[0]) if len(duration) > 0 else default_durations[state]
-                elif isinstance(duration, (int, float)):
-                    duration_value = float(duration)
+                    duration_value = float(duration[0])
                 else:
                     duration_value = float(duration)
-                
                 frames_per_state[state] = int(duration_value * self.fps)
-                
-            except (ValueError, TypeError, IndexError, KeyError) as e:
+            except:
                 frames_per_state[state] = int(default_durations[state] * self.fps)
         
         cycle_length = sum(frames_per_state.values())
+        if cycle_length == 0: return "red"
+        
         position_in_cycle = frame_index % cycle_length
         
-        # Determinar estado basado en la posición
+        # Umbrales
         green_end = frames_per_state["green"]
         yellow_end = green_end + frames_per_state["yellow"]
         
@@ -2752,12 +2637,23 @@ class PreprocessingDialog:
         plate_img = None
         
         try:
-            # Intentar cargar función de mejora de imagen
+            # Intentar cargar funciones de mejora y zoom
             enhance_plate_image = None
             try:
                 from src.core.processing.resolution_process import enhance_plate_image
             except ImportError:
                 enhance_plate_image = None
+
+            # 🔎 NUEVA LÓGICA: SÚPER-ZOOM Y DIGITALIZACIÓN PARA PLACAS LEJANAS (BAJA RES)
+            # Si el ROI del vehículo es muy pequeño, aplicamos upscaling agresivo y nitidez
+            h_roi, w_roi = vehicle_roi.shape[:2]
+            if h_roi < 100 or w_roi < 200:
+                print(f"🔍 SÚPER-ZOOM ACTIVO: ROI pequeño ({w_roi}x{h_roi}), aplicando digitalización...")
+                # Escalar 2x usando interpolación Lanczos para preservar bordes
+                vehicle_roi = cv2.resize(vehicle_roi, (w_roi * 2, h_roi * 2), interpolation=cv2.INTER_LANCZOS4)
+                # Aplicar filtro de nitidez (Sharpening)
+                kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+                vehicle_roi = cv2.filter2D(vehicle_roi, -1, kernel)
             
             # Método 1: Detector tradicional (SIIV mejorado) - PRIORIDAD MÁXIMA
             try:
@@ -3901,7 +3797,17 @@ class PreprocessingDialog:
 
     
     def _finalize_processing(self):
-        """Finaliza el procesamiento después de que todos los segmentos estén completos"""
+        """Finaliza el procesamiento después de que todos los segmentos estén completos (FASE 2)"""
+        # 🧠 ESPERAR A QUE TERMINE EL ANÁLISIS ASÍNCRONO
+        if not self.analysis_queue.empty() or self.analysis_active:
+            remaining = self.analysis_queue.qsize()
+            if hasattr(self, 'details_label'):
+                self.details_label.config(text=f"Finalizando análisis profundo: {remaining} placas pendientes...", foreground="yellow")
+            
+            # Re-programar finalización hasta que la cola esté vacía
+            self.dialog.after(500, self._finalize_processing)
+            return
+
         try:
             # NUEVO: Filtrar primero las placas inválidas por longitud
             filtered_infractions = []
@@ -5879,7 +5785,7 @@ class PreprocessingDialog:
             
             # 🚀 LIMPIAR: Detener visualización fluida
             self.display_active = False
-            if hasattr(self, 'display_thread') and self.display_thread.is_alive():
+            if hasattr(self, 'display_thread') and self.display_thread is not None and self.display_thread.is_alive():
                 print("🛑 Deteniendo thread de visualización fluida")
             
             self.phase_label.config(text="Cancelando procesamiento...")

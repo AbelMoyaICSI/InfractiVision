@@ -125,6 +125,26 @@ class ANPR:
             "A43496": "A-3K961", "A-434Q6": "A-3K961", "A434Q6": "A-3K961", "A-43A96": "A-3K961",
         }
         
+        # === INTELIGENCIA PERUANA (TRUJILLO / LA LIBERTAD) ===
+        # La letra 'T' es el identificador regional de La Libertad (Trujillo)
+        self.regional_priority = "T"
+        
+        # MATRIZ DE CONFUSIÓN FE-SCHRIFT (Diseño de placa peruana)
+        # Basado en la anatomía de la fuente usada en Perú (desde 2010)
+        self.fe_schrift_confusions = {
+            'O': ['0', 'D', 'Q'],
+            '0': ['O', 'D', 'Q'],
+            '8': ['B', '3', 'S'],
+            'B': ['8', '3', 'E'],
+            'I': ['1', 'L', 'T'],
+            '1': ['I', 'L', 'T'],
+            'Z': ['2', '7'],
+            '2': ['Z', '7'],
+            'G': ['6', 'Q'],
+            '6': ['G', '8'],
+            'T': ['Y', 'I', '1']
+        }
+        
         # PATRONES ESPECÍFICOS PARA DIFERENTES TIPOS DE PLACAS
         self.plate_specific_patterns = {
             # === PLACAS HARDCODEADAS ESPECÍFICAS ===
@@ -644,13 +664,15 @@ class ANPR:
         dash_pos = text.find('-') if has_dash else self._estimate_format_break(text)
         
         # Position-aware correction dictionary - different for first and second parts
+        # MEJORA: Prioridad a Trujillo si estamos en modo regional
         first_part_corrections = {
-            '0': 'O', '1': 'I', '2': 'Z', '8': 'B', '5': 'S', '6': 'G', '4': 'A'
+            '0': 'O', '1': 'I', '2': 'Z', '8': 'B', '5': 'S', '6': 'G', '4': 'A',
+            'I': 'T', '1': 'T', '7': 'T' # Heurística regional para Trujillo
         }
         
         second_part_corrections = {
             'O': '0', 'I': '1', 'Z': '2', 'B': '8', 'S': '5', 'G': '6', 'A': '4', 
-            'T': '7', 'Q': '0', 'D': '0'
+            'T': '7', 'Q': '0', 'D': '0', 'I': '1'
         }
         
         # Check for potential "A968B6" pattern - single letter followed by digits then letter then digits
@@ -802,6 +824,17 @@ class ANPR:
             
             # Enhanced preprocessing to target specific issues
             processed_images = self.preprocess_plate_image(plate_img)
+            
+            # --- DOBLE ESFUERZO: IMAGE ENSEMBLE ---
+            # Si el procesamiento inicial es pobre, añadimos versiones de alto contraste y negativo
+            enhanced_v1 = cv2.detailEnhance(plate_img, sigma_s=10, sigma_r=0.15)
+            gray = cv2.cvtColor(enhanced_v1, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+            contrasted = clahe.apply(gray)
+            
+            # Añadir versiones extra al conjunto de procesamiento
+            processed_images.append(contrasted) # Alto contraste
+            processed_images.append(cv2.bitwise_not(contrasted)) # Negativo (útil para placas con brillo)
             
             # Lista para candidatos de texto con metadatos extendidos
             text_candidates = []

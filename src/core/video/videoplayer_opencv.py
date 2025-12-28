@@ -1324,8 +1324,9 @@ class VideoPlayerOpenCV:
                 if infractions and len(infractions) > 0:
                     print(f"📋 Abriendo panel de gestión con {len(infractions)} infracciones...")
                     try:
-                        from src.gui.infractions_management_window import InfractionsManagementWindow
-                        InfractionsManagementWindow(self.parent)
+                        from src.gui.infractions_management_window import create_infractions_window
+                        inf_win = tk.Toplevel(self.parent)
+                        create_infractions_window(inf_win, lambda: inf_win.destroy())
                         print("✅ Panel de gestión abierto exitosamente")
                     except Exception as e:
                         print(f"❌ Error abriendo panel de gestión: {e}")
