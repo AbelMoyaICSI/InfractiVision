@@ -1,6 +1,33 @@
 {
   "infracciones": [
     {
+      "placa": "Z0G-312",
+      "fecha": "03/01/2026",
+      "hora": "15:32:32",
+      "video_timestamp": "00:03",
+      "tiempo_video": "00:30",
+      "ubicacion": "Av.Grau 123",
+      "franja_horaria": "07:00 - 09:30",
+      "tipo": "Semáforo en rojo",
+      "estado": "Pendiente",
+      "plate_path": "C:\\Users\\HOUSE\\Desktop\\InfractiVision\\data\\output\\placas\\plate_Z0G-312.jpg",
+      "vehicle_path": "C:\\Users\\HOUSE\\Desktop\\InfractiVision\\data\\output\\autos\\vehicle_Z0G-312.jpg",
+      "nombre_video": "Traffic IP Camera video (DEMO 1).mp4",
+      "config_semaforo": "10-3-15",
+      "clasificacion": "NID",
+      "confianza": 0.78,
+      "tiempo_procesamiento": 3.48,
+      "metadata_clasificacion": {
+        "placa_final": "Z0G-312",
+        "confianza": 0.78,
+        "calidad_deteccion": "alta",
+        "justificacion": "Cumple criterios técnicos calibrados"
+      },
+      "sistema_version": "InfractiVision_v2.0_Optimized",
+      "hostname": "DESKTOP-NK75JMQ",
+      "username": "HOUSE"
+    },
+    {
       "placa": "MAS-968",
       "fecha": "24/12/2025",
       "hora": "14:36:00",

@@ -1,6 +1,6 @@
 {
-  "fecha_generacion": "24/12/2025 14:36:00",
-  "periodo_analisis": "24/12/2025 - 24/12/2025",
+  "fecha_generacion": "03/01/2026 15:32:32",
+  "periodo_analisis": "03/01/2026 - 03/01/2026",
   "dias_analizados": 1,
   "ubicacion": "Av.Grau 123",
   "nombre_video": "Traffic IP Camera video (DEMO 1).mp4",
@@ -15,10 +15,10 @@
         "fuente": "Registros PNP históricos"
       },
       "con_software": {
-        "detecciones_software_diarias": 3.0,
+        "detecciones_software_diarias": 1.0,
         "dias_analizados": 1
       },
-      "porcentaje_acierto": 66.67
+      "porcentaje_acierto": 100.0
     },
     "TR": {
       "descripcion": "Tiempo de Registro por Infracción Individual",
@@ -28,38 +28,36 @@
         "fuente": "Estimación basada en registros históricos de campo"
       },
       "con_software": {
-        "tiempo_promedio_minutos": 0.39,
+        "tiempo_promedio_minutos": 0.06,
         "tiempos_individuales": [
-          0.38,
-          0.37,
-          0.43
+          0.06
         ],
-        "muestras_analizadas": 3
+        "muestras_analizadas": 1
       },
-      "reduccion_tiempo_porcentual": 94.53,
-      "veces_mas_rapido": 18.28
+      "reduccion_tiempo_porcentual": 99.19,
+      "veces_mas_rapido": 124.14
     },
     "NID": {
       "descripcion": "Número de Infracciones Detectadas Correctamente (Clasificación por Confianza)",
       "unidad": "cantidad válida por día",
-      "infracciones_hoy": 2,
-      "promedio_diario": 2.0,
+      "infracciones_hoy": 1,
+      "promedio_diario": 1.0,
       "periodo_analizado": "1 días",
-      "total": 2
+      "total": 1
     },
     "NIE": {
       "descripcion": "Número de Infracciones Incorrectamente Registradas",
       "unidad": "cantidad no válida por día",
-      "infracciones_incorrectas": 1,
-      "total": 1
+      "infracciones_incorrectas": 0,
+      "total": 0
     }
   },
   "resumen_global": {
-    "ti_porcentaje_acierto": "66.7%",
-    "tiempo_registro_minutos": "0.39 min",
-    "infracciones_detectadas_hoy": 2,
-    "nid_total": 2,
-    "nie_total": 1,
-    "tir_total": 3
+    "ti_porcentaje_acierto": "100.0%",
+    "tiempo_registro_minutos": "0.06 min",
+    "infracciones_detectadas_hoy": 1,
+    "nid_total": 1,
+    "nie_total": 0,
+    "tir_total": 1
   }
 }

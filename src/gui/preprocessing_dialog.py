@@ -2190,11 +2190,6 @@ class PreprocessingDialog:
             # Fase 1: Inicialización rápida
             self.phase_label.config(text="Fase 1: Inicializando análisis")
             
-            # DETENER TIMESTAMP DURANTE PROCESAMIENTO - NO DEBERÍA CORRER MIENTRAS PROCESA
-            if hasattr(self, 'player') and hasattr(self.player, 'timestamp_updater'):
-                self.player.timestamp_updater.stop_timestamp()
-                print("⏸️ Timestamp detenido durante procesamiento")
-            
             # DETECTAR AUTOMÁTICAMENTE SI ES UNA ESCENA NOCTURNA
             ret, first_frame = cap.read()
             if not ret:
@@ -2264,114 +2259,510 @@ class PreprocessingDialog:
                     print(f"⚠️  Error procesando duración para {state}: usando valor por defecto")
                     frames_per_state[state] = int(default_durations[state] * self.fps)
             
-            # Fase 2: Planificación inteligente con optimizador
-            self.phase_label.config(text="Fase 2: 🚀 Optimizando análisis inteligente")
+            # ============================================================
+            # 🎬 PROCESAMIENTO FLUIDO COMO update_frames (Timer-based)
+            # ============================================================
+            # Usa dialog.after() para reproducir el video a velocidad nativa
+            # mientras detecta infracciones. Igual que el modo de reproducción.
             
-            # 🚀 NUEVA OPTIMIZACIÓN: Crear el optimizador inteligente
-            print(f"🧠 INICIANDO OPTIMIZACIÓN INTELIGENTE...")
-            self.intelligent_optimizer = IntelligentTrafficOptimizer(
-                cycle_durations=self.cycle_durations,
-                fps=self.fps,
-                total_frames=self.total_frames
-            )
+            self.phase_label.config(text="Escaneando video...")
             
-            # 🎯 TRACKING INTELIGENTE: Crear tracker para validación de infracciones
-            print(f"🎯 INICIANDO TRACKING INTELIGENTE...")
-            self.intelligent_tracker = IntelligentVehicleTracker(
-                polygon_points=self.polygon_points
-            )
+            # Variables de estado para el procesamiento fluido
+            self._prep_cap = cv2.VideoCapture(self.video_path)
+            self._prep_frame_index = 0
+            self._prep_detected_plates = set()
+            self._prep_infraction_count = 0
+            self._prep_running = True
             
-            # Obtener segmentos optimizados (solo zonas de infracción críticas)
-            self.segments = self.intelligent_optimizer.get_processing_segments()
-            
-            # FALLBACK PARA VIDEOS CORTOS O SIN ZONAS DE INFRACCIÓN:
-            # Si no hay segmentos después de la optimización, procesar el video completo
-            if not self.segments or len(self.segments) == 0:
-                print(f"⚠️ ADVERTENCIA: No se detectaron zonas críticas de infracción (semáforo en ROJO).")
-                print(f"🔄 USANDO MODO FALLBACK: Procesando video completo como un único segmento.")
-                self.segments = [(0, self.total_frames)]
-                self.intelligent_tracker._short_video_fallback = True
+            # 🚦 INICIAR SEMÁFORO (igual que play_video)
+            if hasattr(self.player.semaforo, 'resume_semaphore'):
+                self.player.semaforo.resume_semaphore()
+                print("🚦 Semáforo REANUDADO")
             else:
-                self.intelligent_tracker._short_video_fallback = False
-                print(f"⚡ OPTIMIZACIÓN COMPLETADA: {len(self.segments)} segmentos críticos identificados")
-                
-            # 🚀 INICIAR TRABAJADOR DE ANÁLISIS (FASE 2)
-            self.analysis_active = True
-            self.analysis_worker_thread = threading.Thread(target=self._analysis_worker, daemon=True)
-            self.analysis_worker_thread.start()
-            print("🧠 Hilo de Análisis Profundo (Fase 2) iniciado")
-
-            # Sincronizar con el semáforo del panel
-            self.player.semaforo.activate_semaphore()
-                
-            # 🚀 MOSTRAR PRIMER FRAME INMEDIATAMENTE (Evitar pantalla blanca)
-            try:
-                temp_cap = cv2.VideoCapture(self.video_path)
-                ret, first_frame = temp_cap.read()
-                if ret:
-                    self.result_queue.put(("frame_update", (first_frame.copy(), 0, 0, self.total_frames, 0)))
-                temp_cap.release()
-            except: pass
-
-            # Fase 3: Inicialización optimizada de modelos
-            self.phase_label.config(text="Fase 3: Inicializando sistemas de detección")
-            self.details_label.config(text="⚡ Carga optimizada de modelos IA...")
+                self.player.semaforo.activate_semaphore()
+                print("🚦 Semáforo ACTIVADO")
             
-            # 🚀 OPTIMIZACIÓN: Precarga inteligente de modelos
-            self._initialize_models_optimized()
+            # Delay entre frames para velocidad nativa (basado en FPS del video)
+            self._frame_delay = max(10, int(1000 / self.fps))  # ms entre frames
             
-            self.details_label.config(text="✅ Sistemas listos.")
+            print(f"🎬 Iniciando escaneo fluido: {self.total_frames} frames @ {self.fps:.1f}fps (delay: {self._frame_delay}ms)")
             
-            # Inicializar variables de progreso
-            self.completed_segments = 0
-            self.total_segments = len(self.segments)
+            # Iniciar el loop de actualización basado en timer
+            self._process_next_frame()
             
-            # 🚀 PROCESAMIENTO SECUENCIAL (Para flujo visual de Timelapse)
-            vehicle_detector = self.player.vehicle_detector
-            conf_threshold = 0.25 if self.is_night else 0.40
-            
-            for i, (start, end, skip, phase) in enumerate(self.segments):
-                if self.canceled: break
-                
-                # Actualizar fase en UI
-                self.phase_label.config(text=f"Procesando: {phase.upper()}")
-                
-                # Ejecutar segmento de forma secuencial
-                self._process_segment_optimized(
-                    segment_id=i,
-                    start_frame=start,
-                    end_frame=end,
-                    frame_sampling=1, 
-                    vehicle_detector=vehicle_detector,
-                    conf_threshold=conf_threshold,
-                    skip_rate=skip
-                )
-                
-                self.completed_segments += 1
-                self.result_queue.put(("segment_complete", i))
-            # No necesitamos esperar aquí ya que los resultados se procesan en _process_results_queue()
-            
-            # Fase 4: Finalización - VERIFICAR QUE LA VENTANA SIGA EXISTIENDO
-            if hasattr(self, 'dialog') and self.dialog.winfo_exists():
-                self.phase_label.config(text="Fase 4: Organizando resultados")
-            
-            # Identificar y filtrar placas duplicadas
-            if hasattr(self, 'dialog') and self.dialog.winfo_exists():
-                self.phase_label.config(text="Análisis completado")
-                self.progress_value = 100
-            
-            # Procesar los resultados finales tras una pequeña pausa
-            if hasattr(self, 'dialog') and self.dialog.winfo_exists():
-                self.dialog.after(500, self._finalize_processing)
-                
         except Exception as e:
             import traceback
             traceback.print_exc()
             if hasattr(self, 'dialog') and self.dialog.winfo_exists():
                 self.dialog.after(0, lambda msg=str(e): self._show_error(msg))
-        finally:
-            if 'cap' in locals() and cap is not None:
-                cap.release()
+    
+    def _process_next_frame(self):
+        """
+        Procesa UN frame y programa el siguiente.
+        OPTIMIZADO: Detecta cada 3 frames pero dibuja en cada uno.
+        """
+        # Verificar si debemos continuar
+        if not hasattr(self, '_prep_running') or not self._prep_running:
+            return
+        if self.canceled:
+            self._finalize_preprocessing()
+            return
+        if not hasattr(self, 'dialog') or not self.dialog.winfo_exists():
+            return
+        
+        # Leer siguiente frame
+        ret, frame = self._prep_cap.read()
+        if not ret or self._prep_frame_index >= self.total_frames:
+            self._finalize_preprocessing()
+            return
+        
+        # Inicializar cache de detecciones si no existe
+        if not hasattr(self, '_cached_detections'):
+            self._cached_detections = []
+            self._cached_is_night = False
+        
+        # =====================================================
+        # 🔍 DETECTAR CADA 3 FRAMES (para fluidez)
+        # =====================================================
+        if self._prep_frame_index % 3 == 0:
+            try:
+                # Detectar solo cuando toca
+                self._cached_is_night = self.player._is_night_scene(frame)
+                raw = self.player.vehicle_detector.detect(frame, conf=0.35, draw=False)
+                self._cached_detections = []
+                for d in raw:
+                    if len(d) >= 5:
+                        cls = int(d[5]) if len(d) > 5 else 2
+                        if cls in [2, 5, 7]:
+                            self._cached_detections.append((int(d[0]), int(d[1]), int(d[2]), int(d[3]), cls))
+            except:
+                pass
+        
+        # Usar la variable local para el frame actual
+        is_night = self._cached_is_night
+        car_detections = self._cached_detections
+        
+        # =====================================================
+        # 📺 DIBUJAR EN CADA FRAME (boxes cacheados)
+        # =====================================================
+        display = frame.copy()
+        
+        # Dibujar detecciones cacheadas
+        for det in car_detections:
+            x1, y1, x2, y2, cls = det
+            cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = "CAR" if cls == 2 else "BUS" if cls == 5 else "TRUCK"
+            cv2.putText(display, label, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 2)
+        
+        # Dibujar polígono ROI
+        if self.polygon_points:
+            pts = np.array(self.polygon_points, np.int32).reshape(-1, 1, 2)
+            poly_color = (0, 220, 255) if is_night else (0, 0, 255)
+            cv2.polylines(display, [pts], True, poly_color, 2)
+        
+        # Obtener estado del semáforo
+        current_state = self.player.semaforo.get_current_state()
+        
+        # Dibujar estado del semáforo
+        colors = {"red": ((0,0,255), (255,255,255)), "yellow": ((0,255,255), (0,0,0)), "green": ((0,255,0), (0,0,0))}
+        text_color, bg_color = colors.get(current_state, ((255,255,255), (0,0,0)))
+        semaforo_text = f"Semaforo: {current_state.upper()}"
+        cv2.rectangle(display, (5, 5), (250, 35), bg_color, -1)
+        cv2.putText(display, semaforo_text, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, text_color, 2)
+        
+        # =====================================================
+        # 🔴 SI ESTÁ EN ROJO: DETECTAR INFRACCIONES
+        # =====================================================
+        if current_state == "red" and self.polygon_points and car_detections:
+            polygon = np.array(self.polygon_points, np.int32)
+            
+            for det in car_detections:
+                x1, y1, x2, y2, cls = det
+                
+                # 🎯 PUNTO DEL PARACHOQUES DELANTERO (parte inferior del bbox)
+                bumper_x = (x1 + x2) // 2
+                bumper_y = y2  # Parte inferior = parachoques
+                
+                # Verificar si el parachoques está en el polígono
+                in_polygon = cv2.pointPolygonTest(polygon, (bumper_x, bumper_y), False) >= 0
+                
+                # Dibujar punto del parachoques
+                point_color = (0, 0, 255) if in_polygon else (0, 255, 255)
+                cv2.circle(display, (bumper_x, bumper_y), 5, point_color, -1)
+                
+                if in_polygon:
+                    vehicle_center = (bumper_x, bumper_y)
+                    
+                    # Tracking de infractores
+                    if not hasattr(self, '_active_infractors'):
+                        self._active_infractors = {}
+                    if not hasattr(self, '_captured_infractions'):
+                        self._captured_infractions = []
+                    
+                    # Buscar si ya existe este infractor
+                    is_new = True
+                    for existing_id, data in self._active_infractors.items():
+                        dist = ((vehicle_center[0] - data['center'][0])**2 + 
+                               (vehicle_center[1] - data['center'][1])**2)**0.5
+                        if dist < 100:
+                            self._active_infractors[existing_id]['center'] = vehicle_center
+                            is_new = False
+                            break
+                    
+                    if is_new:
+                        self._prep_infraction_count += 1
+                        inf_id = f"inf_{self._prep_infraction_count}"
+                        self._active_infractors[inf_id] = {'center': vehicle_center}
+                        
+                        # 📸 CAPTURA RÁPIDA PARA FASE 2 (sin procesamiento pesado)
+                        self._captured_infractions.append({
+                            'id': self._prep_infraction_count,
+                            'frame_index': self._prep_frame_index,
+                            'timestamp': self._prep_frame_index / self.fps,
+                            'bbox': (x1, y1, x2, y2),
+                            'full_frame': frame.copy()  # Solo guardamos el frame
+                        })
+                        print(f"🚨 INFRACCIÓN #{self._prep_infraction_count} detectada!")
+                    
+                    # Dibujar cuadro ROJO para infractor
+                    cv2.rectangle(display, (x1, y1), (x2, y2), (0, 0, 255), 3)
+                    cv2.putText(display, f"INFRACCION", (x1, y1-10), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+        
+        # Contador en la parte inferior
+        h, w = display.shape[:2]
+        counter_text = f"Infracciones: {self._prep_infraction_count}"
+        cv2.rectangle(display, (5, h-35), (220, h-5), (0, 0, 0), -1)
+        cv2.putText(display, counter_text, (10, h-12), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        
+        # 📺 Mostrar en la UI
+        try:
+            resized = cv2.resize(display, (640, 360))
+            rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+            imgtk = ImageTk.PhotoImage(Image.fromarray(rgb))
+            self.video_label.config(image=imgtk)
+            self.video_label.image = imgtk
+        except:
+            pass
+        
+        # Actualizar progreso (Fase 1 = 0-80%)
+        phase1_progress = (self._prep_frame_index / self.total_frames) * 80
+        self.progress_value = phase1_progress
+        self.progress_var.set(self.progress_value)
+        self.percentage_label.config(text=f"{self.progress_value:.0f}% | Infracciones: {self._prep_infraction_count}")
+        # self.infractions_label.config(text=f"Infracciones: {self._prep_infraction_count}")
+        self.details_label.config(text=f"Frame {self._prep_frame_index}/{self.total_frames} | {self._prep_frame_index/self.fps:.1f}s")
+        
+        self._prep_frame_index += 1
+        
+        # ⏱️ Programar siguiente frame (delay mayor = más fluido pero más lento)
+        self.dialog.after(self._frame_delay, self._process_next_frame)
+    
+    def _finalize_preprocessing(self):
+        """Finaliza Fase 1 e inicia Fase 2: Análisis de placas."""
+        self._prep_running = False
+        
+        if hasattr(self, '_prep_cap'):
+            self._prep_cap.release()
+        
+        captured_count = len(getattr(self, '_captured_infractions', []))
+        print(f"✅ Fase 1 completada: {self._prep_infraction_count} infracciones, {captured_count} capturas")
+        
+        if hasattr(self, 'dialog') and self.dialog.winfo_exists():
+            if captured_count > 0:
+                # Iniciar Fase 2: Análisis de placas
+                self.phase_label.config(text=f"Fase 2: Analizando {captured_count} placas...")
+                self.progress_var.set(80)
+                self.percentage_label.config(text=f"80% | Infracciones: {self._prep_infraction_count}")
+                self._phase2_index = 0
+                
+                # 🔧 OCULTAR elementos de video para mostrar layout de análisis
+                try:
+                    if hasattr(self, 'semaphore_frame'):
+                        self.semaphore_frame.pack_forget()
+                    if hasattr(self, 'monitor_side'):
+                        self.monitor_side.pack_forget()
+                    if hasattr(self, 'infractions_label'):
+                        self.infractions_label.pack_forget()
+                except:
+                    pass
+                
+                self.dialog.after(500, self._run_phase2_analysis)
+            else:
+                # Sin infracciones, finalizar
+                self.phase_label.config(text="Análisis completado - Sin infracciones")
+                self.progress_value = 100
+                self.progress_var.set(100)
+                self.percentage_label.config(text=f"100% | Infracciones: {self._prep_infraction_count}")
+                self.dialog.after(500, self._finalize_processing)
+    
+    def _run_phase2_analysis(self):
+        """Fase 2: Muestra placa a la izquierda y análisis OCR a la derecha."""
+        print(f"🔵 FASE 2 INICIADA - index: {getattr(self, '_phase2_index', 'N/A')}")
+        if not hasattr(self, 'dialog') or not self.dialog.winfo_exists():
+            return
+        if self.canceled:
+            self._finalize_processing()
+            return
+        
+        captured = getattr(self, '_captured_infractions', [])
+        if self._phase2_index >= len(captured):
+            # Fase 2 completada
+            self.phase_label.config(text="Análisis completado")
+            self.progress_var.set(100)
+            self.percentage_label.config(text=f"100% | Infracciones: {self._prep_infraction_count}")
+            self.dialog.after(500, self._finalize_processing)
+            return
+        
+        # Obtener infracción actual
+        inf = captured[self._phase2_index]
+        
+        # Actualizar progreso (Fase 2 = 80-100%)
+        phase2_progress = 80 + ((self._phase2_index + 1) / len(captured)) * 20
+        self.progress_var.set(phase2_progress)
+        self.percentage_label.config(text=f"{phase2_progress:.0f}% | Infracciones: {self._prep_infraction_count}")
+        self.phase_label.config(text=f"Fase 2: Analizando placa {self._phase2_index + 1}/{len(captured)}")
+        self.details_label.config(text=f"Infracción #{inf['id']} | Tiempo: {inf['timestamp']:.1f}s")
+        
+        # =====================================================
+        # 📐 LAYOUT COMPLETO: Placa izquierda | OCR derecha
+        # =====================================================
+        display = np.zeros((360, 640, 3), dtype=np.uint8)
+        display[:, :] = (30, 30, 30)  # Fondo gris oscuro
+        
+        # Línea divisoria vertical
+        cv2.line(display, (320, 0), (320, 360), (100, 100, 100), 2)
+        
+        # 1. Obtener imagen del VEHÍCULO (fallback seguro)
+        vehicle_img = None
+        if 'full_frame' in inf and inf['full_frame'] is not None:
+             try:
+                x1, y1, x2, y2 = [int(v) for v in inf['bbox']]
+                h_f, w_f = inf['full_frame'].shape[:2]
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(w_f, x2), min(h_f, y2)
+                if x2 > x1 and y2 > y1:
+                    vehicle_img = inf['full_frame'][y1:y2, x1:x2].copy()
+             except:
+                 pass
+
+        # 2. Extraer PLACA usando motor sofisticado (SIIV + ANPR)
+        plate = None
+        plate_text = "No detectada"
+        confidence = 0.0
+        
+        if vehicle_img is not None:
+            try:
+                # Detectar si es noche (para mejorar extracción)
+                is_night = getattr(self, 'is_night', False)
+                if not is_night and hasattr(self, '_is_night_scene'):
+                    is_night = self._is_night_scene(vehicle_img)
+                
+                # Llamar al extractor sofisticado (el que está en la línea 3031 aprox)
+                # NOTA: le pasamos has_anpr=True para máxima precisión en Fase 2
+                res = self._extract_plate_from_vehicle(
+                    vehicle_roi=vehicle_img, 
+                    has_anpr=True, 
+                    frame_index=inf.get('frame_index', 0),
+                    current_semaphore_state="red"
+                )
+                
+                if res and len(res) >= 3:
+                    plate_text, plate, confidence = res
+            except Exception as e:
+                print(f"⚠️ Error en extracción sofisticada Fase 2: {e}")
+                plate_text = "Error OCR"
+                confidence = 0.0
+        
+        # ========== IZQUIERDA: VEHICULO O PLACA ==========
+        # Si tenemos placa la mostramos grande, si no, el vehículo
+        left_img = plate if (plate is not None and plate.size > 0) else vehicle_img
+        title_left = "PLACA DETECTADA" if (plate is not None and plate.size > 0) else "VEHICULO INFRACTOR"
+        
+        cv2.putText(display, title_left, (60, 45), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        if left_img is not None and left_img.size > 0:
+            try:
+                h, w = left_img.shape[:2]
+                # Ajustar escala para que quepa en 280x200
+                scale = min(280/max(w,1), 200/max(h,1))
+                new_w, new_h = max(1, int(w*scale)), max(1, int(h*scale))
+                img_resized = cv2.resize(left_img, (new_w, new_h))
+                
+                # Centrar en el área izquierda (0-320)
+                x_off = (320 - new_w) // 2
+                y_off = 70
+                display[y_off:y_off+new_h, x_off:x_off+new_w] = img_resized
+            except Exception as e:
+                 print(f"Error dibujando left_img: {e}")
+                 cv2.putText(display, "Error visual", (80, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1)
+        
+        # Datos descriptivos abajo a la izquierda
+        cv2.putText(display, f"Infraccion #{inf['id']}", (80, 310), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        cv2.putText(display, f"Tiempo local: {inf['timestamp']:.1f}s", (90, 335), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
+        
+        # ========== DERECHA: ANALISIS OCR ==========
+        cv2.putText(display, "ANALISIS OCR", (410, 45), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        # Box con matrícula (ESTILO PREMIUM)
+        cv2.rectangle(display, (340, 110), (620, 200), (0, 60, 0), -1)  # Fondo verde oscuro
+        cv2.rectangle(display, (340, 110), (620, 200), (0, 255, 0), 2)  # Borde verde neón
+        
+        cv2.putText(display, "MATRICULA:", (350, 135), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
+        
+        # Placa en amarillo brillante y grande
+        plate_display_text = plate_text.upper() if plate_text else "---"
+        cv2.putText(display, plate_display_text, (365, 175), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.95, (0, 255, 255), 3)
+        
+        # 3. Barra de confianza (ESTILO PLATE CARD)
+        conf_pct = int(confidence * 100)
+        if confidence >= 0.85:
+            conf_color = (0, 200, 0)   # Verde
+            status_text = "NID - DETECCION VALIDA"
+        elif confidence >= 0.70:
+            conf_color = (0, 150, 255) # Ámbar/Naranja
+            status_text = "NID - VALIDACION RECOMENDADA"
+        else:
+            conf_color = (0, 0, 255)   # Rojo
+            status_text = "NIE - REVISAR MANUALMENTE"
+            
+        cv2.rectangle(display, (340, 220), (620, 240), (40, 40, 40), -1)
+        bar_w = int(280 * confidence)
+        cv2.rectangle(display, (340, 220), (340 + bar_w, 240), conf_color, -1)
+        
+        cv2.putText(display, f"Confianza: {conf_pct}%", (340, 215), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        # 4. Estado final
+        cv2.putText(display, status_text, (340, 280), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, conf_color, 1)
+        
+        status_main = "LEIDA" if confidence >= 0.70 else "REVISAR"
+        cv2.putText(display, status_main, (430, 330), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.0, conf_color, 3)
+        
+        # ========== MOSTRAR EN UI ==========
+        try:
+            rgb = cv2.cvtColor(display, cv2.COLOR_BGR2RGB)
+            imgtk = ImageTk.PhotoImage(Image.fromarray(rgb))
+            self.video_label.config(image=imgtk)
+            self.video_label.image = imgtk
+            self.dialog.update_idletasks() # Forzar dibujado
+        except Exception as e:
+            print(f"❌ Error actualizando UI Fase 2: {e}")
+
+        # 🚀 REGISTRO OFICIAL DE INFRACCIÓN
+        if plate_text and plate_text not in ["No detectada", "No legible", "Error OCR"]:
+            try:
+                # Crear registro oficial para que aparezca en el panel principal
+                inf_id = self._create_infraction_record(
+                    plate_text=plate_text,
+                    plate_img=plate if (plate is not None and plate.size > 0) else left_img,
+                    vehicle_img=inf.get('full_frame'),
+                    frame_index=inf.get('frame_index', 0),
+                    fps=self.fps,
+                    bbox=inf.get('bbox'),
+                    track_id=inf.get('id', 0),
+                    confidence=confidence
+                )
+                
+                if inf_id:
+                    with self.analysis_results_lock:
+                        # Asegurarse de que no esté ya en la lista para procesamiento final
+                        if inf_id not in self.detected_infractions:
+                            self.detected_infractions.append(inf_id)
+                    
+                    # ✨ ACTUALIZACIÓN EN TIEMPO REAL: Añadir al panel lateral de la ventana principal
+                    try:
+                        self.player._safe_add_plate_to_panel(
+                            plate_img=(plate if (plate is not None and plate.size > 0) else vehicle_img),
+                            plate_text=plate_text,
+                            timestamp=inf.get('time'),
+                            confidence=confidence,
+                            vehicle_img=inf.get('full_frame')
+                        )
+                        print(f"✨ Panel actualizado en tiempo real para: {plate_text}")
+                    except Exception as e:
+                        print(f"⚠️ Error actualizando panel lateral: {e}")
+                            
+                    print(f"✅ Infracción #{inf['id']} registrada oficialmente: {plate_text}")
+            except Exception as e:
+                print(f"⚠️ Error al registrar infracción oficialmente: {e}")
+        
+        # Guardar resultado en el set global para de-duplicación
+        if plate_text and plate_text not in ["No detectada", "No legible", "Error OCR"]:
+            with self.plate_registry_lock:
+                self.detected_plates_global.add(plate_text)
+        
+        # Siguiente infracción
+        self._phase2_index += 1
+        self.dialog.after(1000, self._run_phase2_analysis)
+    
+    def _get_plate_crop(self, frame, bbox):
+        """Extrae de forma rápida la región probable de la placa (40% inferior del vehículo)."""
+        if frame is None:
+            return None
+        try:
+            x1, y1, x2, y2 = [int(v) for v in bbox]
+            h, w = frame.shape[:2]
+            
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            
+            if x2 <= x1 or y2 <= y1: return None
+            
+            # La placa está en el 40% inferior del vehículo (aproximadamente)
+            vh = y2 - y1
+            py1 = y1 + int(vh * 0.6)
+            return frame[py1:y2, x1:x2].copy()
+        except:
+            return None
+
+    def _enhance_plate_for_ocr(self, plate_img):
+        """Mejora la imagen de placa para OCR."""
+        if plate_img is None or plate_img.size == 0:
+            return None
+        try:
+            gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
+            # Aumentar contraste
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+            # Binarizar
+            _, binary = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+        except:
+            return plate_img
+
+    def _perform_smart_ocr(self, plate_img):
+        """Lectura de placa usando el motor PaddleOCR del proyecto."""
+        if plate_img is None or plate_img.size == 0:
+            return "No detectada", 0.0
+        try:
+            from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
+            
+            # Mejorar imagen antes de OCR
+            enhanced = self._enhance_plate_for_ocr(plate_img)
+            
+            # Reconocer texto (usar motor original)
+            plate_text = recognize_plate(enhanced if enhanced is not None else plate_img)
+            
+            if not plate_text:
+                return "No legible", 0.0
+                
+            # Calcular confianza SIIV (formato ABC-123)
+            confidence, details = calculate_siiv_confidence(plate_text, 0.70)
+            formatted_plate = details.get('formatted_plate', plate_text)
+            
+            return formatted_plate, confidence
+        except Exception as e:
+            print(f"❌ Error en _perform_smart_ocr: {e}")
+            return "Error OCR", 0.0
 
     def _initialize_models_optimized(self):
         """
@@ -2400,6 +2791,51 @@ class PreprocessingDialog:
             
         except Exception as e:
             print(f"⚠️ Warmup parcial: {e}")
+    
+    def _is_vehicle_in_polygon_simple(self, bbox):
+        """
+        Verifica si un vehículo está dentro del polígono de detección.
+        Replica la lógica de is_vehicle_in_polygon de videoplayer.
+        """
+        if not self.polygon_points or len(self.polygon_points) < 3:
+            return False
+        
+        x1, y1, x2, y2 = bbox
+        center_x = (x1 + x2) // 2
+        center_y = (y1 + y2) // 2
+        
+        # Punto del parachoques delantero (más preciso para detectar cruce)
+        front_y = y2  # Parte inferior del bbox
+        
+        polygon = np.array(self.polygon_points, np.int32)
+        
+        # Verificar centro
+        if cv2.pointPolygonTest(polygon, (center_x, center_y), False) >= 0:
+            return True
+        
+        # Verificar parachoques delantero
+        if cv2.pointPolygonTest(polygon, (center_x, front_y), False) >= 0:
+            return True
+        
+        # Verificar esquinas
+        corners = [(x1, y1), (x2, y1), (x1, y2), (x2, y2)]
+        for corner in corners:
+            if cv2.pointPolygonTest(polygon, corner, False) >= 0:
+                return True
+        
+        return False
+    
+    def _normalize_plate(self, plate_text):
+        """
+        Normaliza el texto de la placa para evitar duplicados por variaciones menores.
+        """
+        if not plate_text:
+            return ""
+        # Eliminar espacios y convertir a mayúsculas
+        normalized = plate_text.upper().replace(" ", "").replace("-", "")
+        # Eliminar caracteres no alfanuméricos
+        normalized = ''.join(c for c in normalized if c.isalnum())
+        return normalized
 
     def _process_segment_optimized(self, segment_id, start_frame, end_frame, 
                                  frame_sampling, vehicle_detector, conf_threshold, skip_rate=1):
@@ -2431,30 +2867,10 @@ class PreprocessingDialog:
                 if not ret: break
                 processed += 1
                 
-                # 📺 ACTUALIZAR UI (Muestreo más frecuente para fluidez)
-                if processed % 4 == 0:
-                    display = frame.copy()
-                    
-                    # Dibujar polígono de detección (ROI) para feedback visual
-                    if self.polygon_points and len(self.polygon_points) >= 3:
-                        poly_pts = np.array(self.polygon_points, np.int32)
-                        cv2.polylines(display, [poly_pts], True, (255, 255, 0), 2)
-                    
-                    # Dibujar detecciones actuales en el preview
-                    for d in valid:
-                        x1, y1, x2, y2, _ = d
-                        cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 1)
-                        # Dibujar punto que se valida contra el polígono (front bumper)
-                        cv2.circle(display, ((x1+x2)//2, y2), 4, (0, 0, 255), -1)
-                    
-                    self._draw_mini_semaphore(display, state, 0, self.fps, self.is_night, skip)
-                    # Enviar 'processed' relativo para barra de progreso y 'abs_f' absoluto para estado semáforo
-                    self.result_queue.put(("frame_update", (display, segment_id, processed, total_frames, abs_f)))
-                
-                # 🕵️ TRACKING Y TRIGGERS (Trigger solo en Rojo)
+                # 🕵️ TRACKING Y TRIGGERS (Ejecutar ANTES del visual feedback para que 'valid' exista)
+                valid = []  # Inicializar siempre
                 if state == "red" or processed % 5 == 0:
                     detections = vehicle_detector.detect(frame, conf=0.30, draw=False)
-                    valid = []
                     for d in detections:
                         if len(d) >= 5:
                             cls = int(d[5]) if len(d) > 5 else 2
@@ -2474,19 +2890,33 @@ class PreprocessingDialog:
                                 'segment_id': segment_id
                             })
                             # Feedback inmediato: "Procesando..."
-                            plate_crop = self._extract_plate_from_vehicle(frame, inf['bbox'])
+                            plate_crop = self._get_plate_crop(frame, inf['bbox'])
                             if plate_crop is not None:
                                 self.result_queue.put(("plate_monitor_status", ("Analizando...", plate_crop)))
+                
+                # 📺 ACTUALIZAR UI (Ahora 'valid' ya está definido)
+                if processed % 4 == 0:
+                    display = frame.copy()
+                    
+                    # Dibujar polígono de detección (ROI) para feedback visual
+                    if self.polygon_points and len(self.polygon_points) >= 3:
+                        poly_pts = np.array(self.polygon_points, np.int32)
+                        cv2.polylines(display, [poly_pts], True, (255, 255, 0), 2)
+                    
+                    # Dibujar detecciones actuales en el preview
+                    for d in valid:
+                        x1, y1, x2, y2, _ = d
+                        cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 1)
+                        cv2.circle(display, ((x1+x2)//2, y2), 4, (0, 0, 255), -1)
+                    
+                    self._draw_mini_semaphore(display, state, 0, self.fps, self.is_night, skip)
+                    self.result_queue.put(("frame_update", (display, segment_id, processed, total_frames, abs_f)))
 
             segment_cap.release()
             self.result_queue.put(("segment_complete", (segment_id, [])))
             return [], segment_id
         except Exception as e:
             print(f"Error en Phase 1 (Segment {segment_id}): {e}")
-            return [], segment_id
-            
-        except Exception as e:
-            print(f"Error en segment {segment_id}: {e}")
             import traceback
             traceback.print_exc()
             self.result_queue.put(("segment_complete", (segment_id, [])))
