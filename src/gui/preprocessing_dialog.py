@@ -1215,6 +1215,9 @@ class PreprocessingDialog:
         self.total_frames = 0
         self.result_queue = queue.Queue()
         
+        # 🌙 DETECCIÓN DE ESCENA NOCTURNA (inicializar antes de usar)
+        self.is_night = False  # Se actualizará cuando se procese el primer frame
+        
         # 🔴 VISUALES PERSISTENTES E INFRAESTRUCTURA DE MONITOR
         self.visual_feedback_items = []      # Lista de {'type', 'pos', 'frame_expiry', 'bbox'}
         self.feedback_lock = threading.Lock()
@@ -2476,16 +2479,16 @@ class PreprocessingDialog:
                 self.percentage_label.config(text=f"80% | Infracciones: {self._prep_infraction_count}")
                 self._phase2_index = 0
                 
-                # 🔧 OCULTAR elementos de video para mostrar layout de análisis
+                # 🔧 OCULTAR solo elementos de video innecesarios (mantener contador visible)
                 try:
                     if hasattr(self, 'semaphore_frame'):
                         self.semaphore_frame.pack_forget()
                     if hasattr(self, 'monitor_side'):
                         self.monitor_side.pack_forget()
-                    if hasattr(self, 'infractions_label'):
-                        self.infractions_label.pack_forget()
+                    # ✅ Mantener infractions_label visible durante Fase 2
                 except:
                     pass
+
                 
                 self.dialog.after(500, self._run_phase2_analysis)
             else:
@@ -2546,33 +2549,35 @@ class PreprocessingDialog:
              except:
                  pass
 
-        # 2. Extraer PLACA usando motor sofisticado (SIIV + ANPR)
+        # 2. Extraer PLACA usando process_plate DIRECTAMENTE (más rápido)
         plate = None
         plate_text = "No detectada"
         confidence = 0.0
         
         if vehicle_img is not None:
             try:
-                # Detectar si es noche (para mejorar extracción)
+                # 🔄 Actualizar GUI para evitar "No responde"
+                self.dialog.update_idletasks()
+                
+                # Usar process_plate directamente (ya hace detección + OCR)
+                from src.core.processing.plate_processing import process_plate
                 is_night = getattr(self, 'is_night', False)
-                if not is_night and hasattr(self, '_is_night_scene'):
-                    is_night = self._is_night_scene(vehicle_img)
                 
-                # Llamar al extractor sofisticado (el que está en la línea 3031 aprox)
-                # NOTA: le pasamos has_anpr=True para máxima precisión en Fase 2
-                res = self._extract_plate_from_vehicle(
-                    vehicle_roi=vehicle_img, 
-                    has_anpr=True, 
-                    frame_index=inf.get('frame_index', 0),
-                    current_semaphore_state="red"
-                )
+                result = process_plate(vehicle_img, is_night=is_night)
                 
-                if res and len(res) >= 3:
-                    plate_text, plate, confidence = res
+                if result and len(result) >= 4:
+                    bbox, plate_img, plate_text_result, conf = result
+                    if plate_text_result and len(plate_text_result) >= 4:
+                        plate_text = plate_text_result
+                        confidence = conf
+                        plate = plate_img
+                        print(f"✅ OCR directo: '{plate_text}' (conf: {confidence:.2f})")
+                
             except Exception as e:
-                print(f"⚠️ Error en extracción sofisticada Fase 2: {e}")
+                print(f"⚠️ Error en OCR Fase 2: {e}")
                 plate_text = "Error OCR"
                 confidence = 0.0
+
         
         # ========== IZQUIERDA: VEHICULO O PLACA ==========
         # Si tenemos placa la mostramos grande, si no, el vehículo
@@ -2700,9 +2705,11 @@ class PreprocessingDialog:
             with self.plate_registry_lock:
                 self.detected_plates_global.add(plate_text)
         
-        # Siguiente infracción
+        # Siguiente infracción (delay reducido + actualizar GUI)
         self._phase2_index += 1
-        self.dialog.after(1000, self._run_phase2_analysis)
+        self.dialog.update_idletasks()  # Mantener GUI responsiva
+        self.dialog.after(100, self._run_phase2_analysis)  # Reducido de 1000ms a 100ms
+
     
     def _get_plate_crop(self, frame, bbox):
         """Extrae de forma rápida la región probable de la placa (40% inferior del vehículo)."""
@@ -2725,19 +2732,116 @@ class PreprocessingDialog:
             return None
 
     def _enhance_plate_for_ocr(self, plate_img):
-        """Mejora la imagen de placa para OCR."""
+        """
+        Mejora la imagen de placa para OCR - VERSIÓN OPTIMIZADA.
+        Evita binarización agresiva que destruye caracteres.
+        
+        Pipeline:
+        1. Primero intenta con imagen a color (mejor para PaddleOCR)
+        2. Si falla, usa CLAHE mejorado sin binarizar
+        3. Solo usa umbralización adaptativa como último recurso
+        """
         if plate_img is None or plate_img.size == 0:
             return None
         try:
-            gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
-            # Aumentar contraste
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            enhanced = clahe.apply(gray)
-            # Binarizar
-            _, binary = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
-        except:
+            # PASO 1: Redimensionar si es muy pequeña (mínimo 100px de ancho)
+            h, w = plate_img.shape[:2]
+            if w < 100:
+                scale = 100 / w
+                plate_img = cv2.resize(plate_img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            
+            # PASO 2: Reducir ruido preservando bordes (bilateral filter)
+            denoised = cv2.bilateralFilter(plate_img, 9, 75, 75)
+            
+            # PASO 3: Mejorar contraste en color usando LAB
+            lab = cv2.cvtColor(denoised, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            
+            # CLAHE solo en canal L (luminosidad) - más suave
+            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(4, 4))
+            l_enhanced = clahe.apply(l)
+            
+            # Recombinar
+            lab_enhanced = cv2.merge([l_enhanced, a, b])
+            enhanced_color = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+            
+            # PASO 4: Aumentar nitidez ligeramente
+            kernel = np.array([[-0.5,-0.5,-0.5], [-0.5,5,-0.5], [-0.5,-0.5,-0.5]])
+            sharpened = cv2.filter2D(enhanced_color, -1, kernel)
+            
+            return sharpened
+            
+        except Exception as e:
+            print(f"⚠️ Error en _enhance_plate_for_ocr: {e}")
             return plate_img
+
+    def _multi_pass_ocr_voting(self, vehicle_img, plate_crop=None):
+        """
+        OCR optimizado: Una sola pasada con detección de placa y upscaling inteligente.
+        OPTIMIZADO para velocidad sin sacrificar precisión.
+        
+        Returns:
+            tuple: (plate_text, confidence, plate_img)
+        """
+        from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
+        
+        if vehicle_img is None or vehicle_img.size == 0:
+            return "No detectada", 0.0, None
+        
+        try:
+            # ========== PASO 1: DETECTAR Y RECORTAR SOLO LA PLACA ==========
+            plate_region = None
+            h, w = vehicle_img.shape[:2]
+            
+            # Intentar usar el detector de placas para crop preciso
+            try:
+                from src.core.processing.plate_processing import process_plate
+                is_night = getattr(self, 'is_night', False)
+                result = process_plate(vehicle_img, is_night=is_night)
+                
+                if result and len(result) >= 4:
+                    bbox, plate_img_detected, plate_text_detected, conf = result
+                    # Si process_plate ya detectó la placa, usar su resultado directamente
+                    if plate_text_detected and len(plate_text_detected) >= 4:
+                        print(f"✅ Placa detectada directamente: '{plate_text_detected}' (conf: {conf:.2f})")
+                        return plate_text_detected, conf, plate_img_detected
+                    # Si detectó la región pero no el texto, usar el crop
+                    if plate_img_detected is not None and plate_img_detected.size > 0:
+                        plate_region = plate_img_detected
+            except Exception as e:
+                print(f"⚠️ Detector de placas falló, usando crop heurístico: {e}")
+            
+            # Fallback: Crop heurístico (40% inferior del vehículo)
+            if plate_region is None:
+                plate_y1 = int(h * 0.55)  # 55% desde arriba
+                plate_region = vehicle_img[plate_y1:h, :].copy()
+            
+            # ========== PASO 2: UPSCALING INTELIGENTE (SOLO BAJA RES) ==========
+            ph, pw = plate_region.shape[:2]
+            if pw < 100:
+                # Baja resolución: aplicar upscale 2x
+                scale = 2.0
+                plate_region = cv2.resize(plate_region, None, fx=scale, fy=scale, 
+                                         interpolation=cv2.INTER_CUBIC)
+                print(f"🔍 Upscaling 2x aplicado (ancho original: {pw}px)")
+            
+            # ========== PASO 3: MEJORA RÁPIDA Y OCR ==========
+            enhanced = self._enhance_plate_for_ocr(plate_region)
+            if enhanced is None:
+                enhanced = plate_region
+            
+            plate_text = recognize_plate(enhanced)
+            
+            if plate_text and len(plate_text) >= 4:
+                confidence, _ = calculate_siiv_confidence(plate_text, 0.75)
+                print(f"📖 OCR: '{plate_text}' (conf: {confidence:.2f})")
+                return plate_text, confidence, enhanced
+            
+            return "No detectada", 0.0, plate_region
+            
+        except Exception as e:
+            print(f"❌ Error en OCR optimizado: {e}")
+            return "Error OCR", 0.0, vehicle_img
 
     def _perform_smart_ocr(self, plate_img):
         """Lectura de placa usando el motor PaddleOCR del proyecto."""
@@ -2745,6 +2849,7 @@ class PreprocessingDialog:
             return "No detectada", 0.0
         try:
             from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
+
             
             # Mejorar imagen antes de OCR
             enhanced = self._enhance_plate_for_ocr(plate_img)
@@ -3088,7 +3193,8 @@ class PreprocessingDialog:
             # Método 1: Detector tradicional (SIIV mejorado) - PRIORIDAD MÁXIMA
             try:
                 from src.core.processing.plate_processing import process_plate
-                result = process_plate(vehicle_roi, is_night=self.is_night)
+                is_night_scene = getattr(self, 'is_night', False)
+                result = process_plate(vehicle_roi, is_night=is_night_scene)
                 print(f"🔍 DEBUG Método 1: result = {result}")
                 if result and len(result) >= 4:
                     plate_bbox, plate_img, plate_text, siiv_conf = result
@@ -3173,7 +3279,8 @@ class PreprocessingDialog:
                     
                     # Usar imagen mejorada si está disponible
                     if enhance_plate_image is not None:
-                        enhanced_roi = enhance_plate_image(vehicle_roi, is_night=self.is_night)
+                        is_night_scene = getattr(self, 'is_night', False)
+                        enhanced_roi = enhance_plate_image(vehicle_roi, is_night=is_night_scene)
                         plate_text = recognize_plate(enhanced_roi)
                         plate_img = enhanced_roi if plate_text else None
                     else:

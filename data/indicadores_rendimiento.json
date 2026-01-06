@@ -1,6 +1,6 @@
 {
-  "fecha_generacion": "03/01/2026 15:32:32",
-  "periodo_analisis": "03/01/2026 - 03/01/2026",
+  "fecha_generacion": "04/01/2026 23:33:00",
+  "periodo_analisis": "04/01/2026 - 04/01/2026",
   "dias_analizados": 1,
   "ubicacion": "Av.Grau 123",
   "nombre_video": "Traffic IP Camera video (DEMO 1).mp4",
@@ -28,14 +28,14 @@
         "fuente": "Estimación basada en registros históricos de campo"
       },
       "con_software": {
-        "tiempo_promedio_minutos": 0.06,
+        "tiempo_promedio_minutos": 0.43,
         "tiempos_individuales": [
-          0.06
+          0.43
         ],
         "muestras_analizadas": 1
       },
-      "reduccion_tiempo_porcentual": 99.19,
-      "veces_mas_rapido": 124.14
+      "reduccion_tiempo_porcentual": 93.97,
+      "veces_mas_rapido": 16.59
     },
     "NID": {
       "descripcion": "Número de Infracciones Detectadas Correctamente (Clasificación por Confianza)",
@@ -54,7 +54,7 @@
   },
   "resumen_global": {
     "ti_porcentaje_acierto": "100.0%",
-    "tiempo_registro_minutos": "0.06 min",
+    "tiempo_registro_minutos": "0.43 min",
     "infracciones_detectadas_hoy": 1,
     "nid_total": 1,
     "nie_total": 0,
