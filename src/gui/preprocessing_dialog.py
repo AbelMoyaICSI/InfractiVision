@@ -6,6 +6,7 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from collections import deque
+import re
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -39,46 +40,64 @@ class SmartPlateCorrector:
         self.correction_threshold = 0.75  # Solo procesar si confianza < 75% (más permisivo)
         self.fast_validation = True       # Validación rápida activada
         
-        # 📊 MAPAS DE CONFUSIÓN COMÚN optimizados (solo más frecuentes)
+        # 📊 MAPAS DE CONFUSIÓN COMÚN optimizados (incluyendo variaciones de Perú)
         self.confusion_map = {
             # Números que se confunden con letras
-            '0': ['O', 'D', 'Q'],
-            '1': ['I', 'L', 'T'],  
-            '2': ['Z'],
-            '3': ['E'],
-            '5': ['S'],
-            '6': ['G', 'C'],
-            '7': ['T', 'L'],
-            '8': ['B'],
-            '9': ['P'],
+            '0': ['O', 'D', 'Q', 'U'],
+            '1': ['I', 'L', 'T', '7', 'J'],  
+            '2': ['Z', 'S', '7'],
+            '3': ['E', 'B', '8'],
+            '4': ['A', 'H'],
+            '5': ['S', 'Z'],
+            '6': ['G', 'C', 'B'],
+            '7': ['T', 'L', '1', 'F', '2', 'Z'],
+            '8': ['B', 'S', '3', '0'],
+            '9': ['P', 'R', 'G', '8'],
             
             # Letras que se confunden con números  
             'O': ['0', 'D', 'Q'],
-            'I': ['1', 'L'],
+            'I': ['1', 'L', 'J', 'T'],
             'L': ['1', 'I', '7'],
-            'S': ['5'],
-            'G': ['6'],
-            'B': ['8'],
-            'T': ['7', '1'],
-            'H': ['N', 'M'],
-            'N': ['H', 'M'],
-            'Z': ['2', '7'],
-            'E': ['3'],
-            'P': ['9']
+            'S': ['5', '8', '2', 'Z'],
+            'G': ['6', '0', '9', 'C'],
+            'B': ['8', '3', '6'],
+            'T': ['7', '1', 'I', 'Y', 'A'],
+            'H': ['N', 'M', '4', 'A', 'K'],
+            'N': ['H', 'M', 'W'],
+            'M': ['N', 'H', 'W', 'V'],
+            'W': ['M', 'V', 'N'],
+            'Z': ['2', '7', 'S'],
+            'E': ['3', 'F'],
+            'P': ['9', 'F', 'R'],
+            'K': ['X', 'H', 'A', 'G'], 
+            'A': ['4', 'H', 'K', 'X', 'T']
         }
         
-        # 🇵🇪 PATRONES VÁLIDOS PERUANOS para validación
+        # 🇵🇪 PATRONES VÁLIDOS PERUANOS (SIIV 2010)
         self.peru_patterns = [
-            r'^[A-Z]{3}-\d{3}$',    # ABC-123 (formato principal)
-            r'^[A-Z]{2}\d-\d{3}$',  # AB1-234 (vehículos menores)
+            r'^[A-Z]{3}-\d{3}$',    # ABC-123 (Particular Nacional)
+            r'^[A-Z]\d[A-Z]-\d{3}$', # T1A-123 (Particular Trujillo/Regional)
+            r'^[A-Z]{2}\d-\d{3}$',  # AB1-234 (Vehículos Menores)
+            r'^[A-Z]{3}\d{3}$',     # ABC123 (Sin guion)
+            r'^[A-Z]\d[A-Z]\d{3}$', # T1A123 (Sin guion)
         ]
         
         # 📋 BASE DE DATOS DE PLACAS CONOCIDAS (pequeña para rapidez)
         self.known_plates = self._load_known_plates()
         
-        # === INTELIGENCIA REGIONAL: TRUJILLO ===
+        # === INTELIGENCIA REGIONAL: TRUJILLO (PERÚ) ===
         self.regional_context = "Trujillo"
-        self.regional_codes = ["T"]
+        self.regional_codes = ["T", "A", "M", "P"] # T (Trujillo), A (Nacional), M (Lima), P (Piura)
+        
+        # Patrones específicos de Perú (SIIV 2010)
+        self.peru_patterns = [
+            r'^[A-Z]{3}-\d{3}$',    # ABC-123 (Nacional)
+            r'^[TMD]\d[A-Z]-\d{3}$', # T1A-123 (Particular Trujillo)
+            r'^[ABCDEFGHJKLNPQRSTVWXYZ]\d[A-Z]-\d{3}$', # Genérico Regional
+            r'^[A-Z]{2}\d-\d{3}$',  # AB1-234 (Motos/Menores)
+            r'^[A-Z]{3}\d{3}$',     # ABC123 (Sin guion)
+            r'^[A-Z]\d[A-Z]\d{3}$', # A1B123
+        ]
     
     def _add_to_cache(self, key, result):
         """⚡ Agregar resultado al cache con gestión optimizada"""
@@ -102,72 +121,42 @@ class SmartPlateCorrector:
         
     def correct_plate_smart(self, detected_plate, confidence):
         """
-        ⚡ CORRECCIÓN INTELIGENTE OPTIMIZADA con cache y procesamiento selectivo
-        
-        OPTIMIZACIONES:
-        - Cache de resultados previos
-        - Skip procesamiento si confianza alta
-        - Validación rápida de patrones
+        🚀 VERSIÓN LPRNet Master V2: 
+        Aplica reglas estructurales del MTC Perú para corregir confusiones (B/8, O/0, I/1).
         """
-        if not detected_plate or len(detected_plate) < 4:
+        if not detected_plate:
             return detected_plate, confidence, []
+
+        clean = detected_plate.upper().replace(' ', '').replace('-', '')
         
-        # 🚀 CACHE CHECK: Si ya procesamos esta placa, devolver resultado
-        cache_key = f"{detected_plate}_{confidence:.2f}"
-        if cache_key in self._correction_cache:
-            return self._correction_cache[cache_key]
-        
-        # ⚡ SKIP PROCESAMIENTO si confianza muy alta (>90%)
-        if confidence > self.correction_threshold:
-            result = (detected_plate, confidence, [])
-            self._add_to_cache(cache_key, result)
-            return result
+        # SIIV MASTER: Todas las placas vehiculares tienen 6 caracteres
+        if len(clean) != 6:
+            return clean, confidence, []
             
-        corrections = []
-        best_plate = detected_plate.upper().replace(' ', '')
-        best_confidence = confidence
+        corrected = ""
+        # REGLA 1: Posición 1 siempre es LETRA (Región T, A, M, etc.)
+        c1 = clean[0]
+        if c1.isdigit():
+            alt = {'0': 'O', '1': 'I', '2': 'Z', '3': 'E', '4': 'A', '5': 'S', '6': 'G', '7': 'T', '8': 'B', '9': 'P'}
+            c1 = alt.get(c1, c1)
+        corrected += c1
+
+        # REGLA 2: Posiciones 2 y 3 pueden ser Letras o Números (Formatos LLL, LNL, LLN)
+        # Aquí confiamos más en la IA a menos que sea una letra prohibida (Ñ, O, I, Q)
+        corrected += clean[1:3]
+
+        # REGLA 3: Posiciones 4, 5 y 6 siempre son NÚMEROS
+        for i in range(3, 6):
+            char = clean[i]
+            if char.isalpha():
+                alt = {'O': '0', 'D': '0', 'I': '1', 'L': '1', 'S': '5', 'G': '6', 'B': '8', 'T': '7', 'Z': '2', 'E': '3', 'P': '9'}
+                corrected += alt.get(char, char)
+            else:
+                corrected += char
         
-        # 🎯 NIVEL 1: Corrección por patrón de formato
-        format_corrected = self._correct_by_format_pattern(best_plate)
-        if format_corrected != best_plate:
-            # Inteligencia Regional: Si estamos en Trujillo y el 1er char parece una T/I/7, forzar T
-            if self.regional_context == "Trujillo" and format_corrected[0] in ['T', 'I', '7', '1', 'L']:
-                format_corrected = 'T' + format_corrected[1:]
-                
-            corrections.append(f"Formato: {best_plate} → {format_corrected}")
-            best_plate = format_corrected
-            best_confidence += 0.1  # Bonus por corrección de formato
-            
-        # 🎯 NIVEL 2: Corrección por proximidad (SI CONFIANZA < 0.85)
-        if confidence < 0.85:
-            proximity_corrected = self._correct_by_proximity(best_plate)
-            if proximity_corrected != best_plate:
-                corrections.append(f"Proximidad: {best_plate} → {proximity_corrected}")
-                best_plate = proximity_corrected
-                best_confidence += 0.15  # Bonus mayor por corrección inteligente
-                
-        # 🎯 NIVEL 3: Validación contra base conocida (solo si es crítico)
-        if self.fast_validation and confidence < 0.70:
-            known_match = self._find_closest_known_plate(best_plate)
-            if known_match and known_match != best_plate:
-                # ⚡ Similitud rápida sin cálculo complejo
-                if abs(len(best_plate) - len(known_match)) <= 1:
-                    corrections.append(f"Base conocida: {best_plate} → {known_match}")
-                    best_plate = known_match
-                    best_confidence = max(0.9, best_confidence + 0.2)  # Boost alto
-                    
-        # 🎯 VALIDACIÓN FINAL: Verificar formato válido
-        if self._is_valid_peru_format(best_plate):
-            final_confidence = min(0.99, best_confidence)  # Cap a 99%
-        else:
-            # Si las correcciones rompieron el formato, revertir
-            best_plate, final_confidence, corrections = detected_plate, confidence, ["Correcciones revertidas"]
-        
-        # 🚀 GUARDAR EN CACHE para futuras consultas
-        result = (best_plate, final_confidence, corrections)
-        self._add_to_cache(cache_key, result)
-        
-        return result
+        # Formatear con guion SIIV
+        formatted = f"{corrected[:3]}-{corrected[3:]}"
+        return formatted, confidence, []
 
     def _correct_by_format_pattern(self, plate):
         """
@@ -319,7 +308,36 @@ class SmartPlateCorrector:
         ✅ Verifica formato peruano válido
         """
         import re
+        if not hasattr(self, 'peru_patterns'):
+             self.peru_patterns = [r'^[A-Z]{3}-?\d{3}$', r'^[A-Z]{2}\d-?\d{3}$']
         return any(re.match(pattern, plate) for pattern in self.peru_patterns)
+
+    def generate_variations(self, plate):
+        """
+        🧬 Genera variaciones inteligentes (O/0, B/8, etc.) 
+        para que el sistema de detección de duplicados no falle.
+        Fundamental para la coherencia en baja resolución.
+        """
+        if not plate: return set()
+        clean = plate.replace('-', '').upper()
+        variations = {plate, clean}
+        
+        confusions = getattr(self, 'confusion_map', {
+            '0': 'OQ', 'O': '0Q', 'B': '83', '8': 'B3', 
+            'I': '1L', '1': 'IL', 'Z': '27', '2': 'Z7',
+            'S': '5', '5': 'S', 'G': '6', '6': 'G', 'T': '7'
+        })
+        
+        for i, char in enumerate(clean):
+            if char in confusions:
+                for alt in confusions[char]:
+                    var = clean[:i] + alt + clean[i+1:]
+                    variations.add(var)
+                    # También añadir con guión si tiene longitud 6
+                    if len(var) == 6:
+                        variations.add(f"{var[:3]}-{var[3:]}")
+                        
+        return variations
 
     def _load_known_plates(self):
         """
@@ -345,96 +363,6 @@ class SmartPlateCorrector:
         ]
 
 
-class PlateClassificationSystem:
-    """
-    Sistema de clasificación NID/NIE técnicamente justificado para la tesis.
-    
-    REGLAS BALANCEADAS (más NID, menos NIE):
-    - NID: Detecciones confiables que se incluyen en estadísticas oficiales
-    - NIE: Detecciones dudosas que requieren revisión manual
-    
-    CALIBRACIÓN TÉCNICA:
-    - Umbrales optimizados para maximizar TI manteniendo calidad
-    - Validación por consenso de múltiples frames
-    - Tolerancia realista para condiciones operativas
-    """
-    
-    def __init__(self):
-        # UMBRALES CALIBRADOS CORRECTAMENTE (umbral técnico 70%)
-        self.confidence_threshold_nid = 0.70    # ✅ Umbral técnico: 70% para NID
-        self.char_tolerance = 2                 # Tolerancia razonable de caracteres
-        self.min_consensus_frames = 2           # Frames mínimos para consenso
-        self.min_plate_length = 5               # Mínimo válido SIIV (A1-234 = 5)
-        self.max_plate_length = 8               # Máximo válido SIIV (ABC-1234 = 8)
-        
-        # Patrones de placas peruanas válidas SIIV 2010
-        self.valid_patterns = [
-            r'^[A-Z]{3}-?\d{3}$',        # ABC-123 o ABC123 (formato principal)
-            r'^[A-Z]{2}\d-?\d{3}$',      # AB1-234 o AB1234 (vehículos menores)
-            r'^\d{3}-?[A-Z]{3}$',        # 123-ABC (formato inverso)
-        ]
-        
-    def classify_detection(self, plate_detections, frame_validations):
-        """
-        Clasifica una detección como NID o NIE basado en reglas técnicas.
-        
-        Args:
-            plate_detections: Lista de [(text, confidence)] por frame
-            frame_validations: Lista de validaciones temporales
-            
-        Returns:
-            Tuple[str, dict]: ('NID'/'NIE', metadata_dict)
-        """
-        if not plate_detections:
-            return 'NIE', {'razon': 'sin_detecciones'}
-            
-        # 1. VALIDAR CONFIANZA PROMEDIO
-        avg_confidence = sum(conf for _, conf in plate_detections) / len(plate_detections)
-        if avg_confidence < self.confidence_threshold_nid:
-            return 'NIE', {
-                'razon': 'confianza_baja',
-                'confianza_promedio': round(avg_confidence, 3),
-                'umbral_minimo': self.confidence_threshold_nid
-            }
-            
-        # 2. ANÁLISIS DE CONSENSO
-        plate_texts = [text for text, _ in plate_detections]
-        consensus_result = self._analyze_consensus(plate_texts)
-        
-        if not consensus_result['has_consensus']:
-            return 'NIE', {
-                'razon': 'sin_consenso',
-                'variaciones_detectadas': len(set(plate_texts)),
-                'tolerancia_maxima': self.char_tolerance
-            }
-            
-        best_plate = consensus_result['best_text']
-        
-        # 3. VALIDAR FORMATO
-        format_validation = self._validate_format(best_plate)
-        if not format_validation['is_valid']:
-            return 'NIE', {
-                'razon': 'formato_invalido',
-                'placa_detectada': best_plate,
-                'error_formato': format_validation['error']
-            }
-            
-        # 4. VALIDAR CONTEXTO TEMPORAL (si disponible)
-        if frame_validations:
-            temporal_valid = all(v.get('crossing_confirmed', True) for v in frame_validations)
-            if not temporal_valid:
-                return 'NIE', {
-                    'razon': 'cruce_no_confirmado',
-                    'placa_detectada': best_plate
-                }
-                
-        # ✅ CLASIFICAR COMO NID (DETECCIÓN VÁLIDA)
-        return 'NID', {
-            'placa_final': best_plate,
-            'confianza_promedio': round(avg_confidence, 3),
-            'frames_consenso': consensus_result['consensus_frames'],
-            'calidad_deteccion': 'alta' if avg_confidence >= 0.80 else 'media'
-        }
         
     def _analyze_consensus(self, plate_texts):
         """
@@ -599,7 +527,7 @@ class ThesisMetricsCalculator:
             },
             'resumen_tesis': {
                 'sistema_efectivo': nid_percentage >= 70 and nie_percentage <= 30,
-                'confiabilidad': 'Alta' if nid_percentage >= 80 else 'Media' if nid_percentage >= 70 else 'Baja',
+                'confiabilidad_general': 'Alta' if nid_percentage >= 85 else 'Media' if nid_percentage >= 70 else 'Baja',
                 'justificacion_nie': f"NIE controlado al {round(nie_percentage, 1)}% - Transparente vs errores humanos ocultos"
             }
         }
@@ -932,30 +860,45 @@ class IntelligentVehicleTracker:
             if len(track_data['positions']) > self.history_length:
                 track_data['positions'] = track_data['positions'][-self.history_length:]
             
-            # ACTUALIZACIÓN DE MEJOR TOMA (BEST POSE)
-            # Criterio: Mayor confianza de detección + Centralidad + Tamaño del BBox
-            if current_semaphore_state == "red":
-                if best_track_id not in self.best_frame_per_track:
-                    self.best_frame_per_track[best_track_id] = []
-                
-                # Calcular puntaje de "calidad de pose"
-                # (Centralidad en imagen + Tamaño BBox + Confianza)
-                bbox_area = (x2 - x1) * (y2 - y1)
-                pose_score = float(confidence) * (bbox_area / 10000.0) # Normalizar un poco
-                
-                self.best_frame_per_track[best_track_id].append({
-                    'score': pose_score,
-                    'frame_idx': frame_index,
-                    'bbox': (x1, y1, x2, y2),
-                    'conf': confidence
-                })
-                
-                # Mantener solo las mejores 5 tomas potenciales para elegir al final
-                self.best_frame_per_track[best_track_id] = sorted(
-                    self.best_frame_per_track[best_track_id], 
-                    key=lambda x: x['score'], 
-                    reverse=True
-                )[:5]
+            # ACTUALIZACIÓN DE MMRP (Punto Máximo de Resolución - PVM)
+        # Basado en la propuesta técnica de Abel V16:
+        # Optimiza: Resolución Espacial (PPM) + Ortogonalidad (Coseno) + Enfoque (Contrast)
+        if current_semaphore_state == "red":
+            if best_track_id not in self.best_frame_per_track:
+                self.best_frame_per_track[best_track_id] = []
+            
+            # --- CÁLCULO TRIGONOMÉTRICO Y GEOMÉTRICO DEL MÉRITO ---
+            
+            # 1. Factor de Resolución (PPM): BBox Area
+            bbox_area = (x2 - x1) * (y2 - y1)
+            res_factor = bbox_area / 20000.0 # Normalizado para resolución HD
+            
+            # 2. Factor de Centralidad (C): Menor distorsión por aberración de lente
+            # Ideal: El vehículo está en el centro horizontal de la escena
+            img_w = 1920 # Asumimos HD por defecto, se ajusta si es mayor
+            center_dist = abs(detection_center[0] - (img_w // 2))
+            # Penalización suave por estar en los bordes térmicos del lente
+            centrality_factor = 1.0 - (center_dist / (img_w // 2)) * 0.4
+            
+            # 3. Factor de Sharpening Estimado (Puntaje de Contraste)
+            # Como Phase 1 es rápida, usamos confianza de YOLO como proxy inicial
+            # Pero Phase 2 lo refinará con varianza Laplaciana.
+            
+            merit_score = float(confidence) * res_factor * centrality_factor
+            
+            self.best_frame_per_track[best_track_id].append({
+                'score': merit_score,
+                'frame_idx': frame_index,
+                'bbox': (x1, y1, x2, y2),
+                'conf': confidence
+            })
+            
+            # Ordenar por el Merito Máximo (MMRP / PVM)
+            self.best_frame_per_track[best_track_id] = sorted(
+                self.best_frame_per_track[best_track_id], 
+                key=lambda x: x['score'], 
+                reverse=True
+            )[:5] # Mantenemos el top 5 para el Consensus Elite del final
 
             matched_tracks.add(best_track_id)
             
@@ -1222,7 +1165,7 @@ class PreprocessingDialog:
         self.visual_feedback_items = []      # Lista de {'type', 'pos', 'frame_expiry', 'bbox'}
         self.feedback_lock = threading.Lock()
         self.last_plate_crop = None          # Para el monitor lateral al ladito
-        self.plate_monitor_ready = False     # Flag de UI lista
+        self.plate_monitor_ready = False     # Flag de UI desactivada
         self.detected_plates_global = set()  # Registro único de placas
         self.plate_registry_lock = threading.Lock()
         
@@ -1279,10 +1222,22 @@ class PreprocessingDialog:
         # Add this line to track start time
         self.processing_start_time = time.time()
         
-        # NUEVO: Instancias para clasificación NID/NIE y métricas de tesis
         self.plate_classifier = PlateClassificationSystem()
         self.metrics_calculator = ThesisMetricsCalculator()
+        self.smart_corrector = SmartPlateCorrector()
+        
+        # 🚀 PIPELINE ASÍNCRONO: Procesa durante VERDE/AMARILLO (Idea de Abel 2026)
+        try:
+            from src.core.processing.async_plate_processor import get_async_processor
+            self.async_processor = get_async_processor()
+            self.async_processor.start()
+            print("🚀 Pipeline Asíncrono: Activado (procesa en intervalos vacíos)")
+        except Exception as e:
+            self.async_processor = None
+            print(f"⚠️ Pipeline Asíncrono no disponible: {e}")
+        
         print("🧠 Sistema de clasificación NID/NIE inicializado con umbrales balanceados")
+
         
         # Reset class variable for this instance
         if len(PreprocessingDialog.recorded_processing_times) > 100:  # Limit history
@@ -1299,12 +1254,12 @@ class PreprocessingDialog:
         icon_path = resource_path("img/icon.ico")
         if os.path.exists(icon_path):
             self.dialog.iconbitmap(icon_path)
-        self.dialog.geometry("800x600")
+        self.dialog.geometry("1050x800")
         self.dialog.resizable(False, False)
         
         # Centrar ventana
         self.dialog.update_idletasks()
-        width, height = 800, 600
+        width, height = 1050, 850
         x = (self.dialog.winfo_screenwidth() - width) // 2
         y = (self.dialog.winfo_screenheight() - height) // 2
         self.dialog.geometry(f"{width}x{height}+{x}+{y}")
@@ -1517,15 +1472,10 @@ class PreprocessingDialog:
         video_container = ttk.Frame(main_frame)
         video_container.pack(pady=(0, 20), fill="x")
         
-        # Frame para la visualización del video
-        self.video_frame = ttk.Frame(video_container, width=640, height=360, relief="groove", borderwidth=2)
-        self.video_frame.pack(side="left", padx=(0, 10))
+        # Frame para la visualización del video (AUMENTADO A 950x540 para mejor visión)
+        self.video_frame = ttk.Frame(video_container, width=950, height=540, relief="groove", borderwidth=2)
+        self.video_frame.pack(side="left", padx=5)
         self.video_frame.pack_propagate(False)
-        
-        # Frame para el semáforo sincronizado
-        self.semaphore_frame = ttk.Frame(video_container, width=120, height=360, relief="groove", borderwidth=2)
-        self.semaphore_frame.pack(side="left", fill="y")
-        self.semaphore_frame.pack_propagate(False)
         
         # Label para mostrar el frame actual (Contenedor con Monitor)
         display_container = ttk.Frame(self.video_frame)
@@ -1534,21 +1484,11 @@ class PreprocessingDialog:
         self.video_label = ttk.Label(display_container)
         self.video_label.pack(side="left", fill="both", expand=True)
         
-        # MONITOR LATERAL (AL LADITO)
-        self.monitor_side = tk.Frame(display_container, width=150, background="#111")
-        self.monitor_side.pack(side="right", fill="y", padx=2)
-        self.monitor_side.pack_propagate(False)
+        # Monitor lateral eliminado a petición del usuario (Fase 1 limpia)
+        self.plate_monitor_ready = False
         
-        tk.Label(self.monitor_side, text="PLACA DETECTADA", font=("Arial", 8, "bold"), fg="white", bg="#111").pack(pady=5)
-        self.plate_monitor_img = tk.Label(self.monitor_side, bg="#000")
-        self.plate_monitor_img.pack(pady=5, padx=5, fill="x")
-        self.plate_monitor_text = tk.Label(self.monitor_side, text="---", font=("Arial", 12, "bold"), fg="#00FF00", bg="#111")
-        self.plate_monitor_text.pack(pady=5)
-        
+        # Monitor lateral listo
         self.plate_monitor_ready = True
-        
-        # Crear semáforo visual sincronizado
-        self.create_synchronized_semaphore()
         
         # Información de procesamiento
         self.info_frame = ttk.Frame(main_frame)
@@ -1585,21 +1525,47 @@ class PreprocessingDialog:
         )
         self.progress_bar.pack(fill="x")
         
-        # Etiqueta de porcentaje
+        # Frame para etiquetas de estado debajo de la barra
+        labels_under_progress = ttk.Frame(progress_frame)
+        labels_under_progress.pack(fill="x", pady=(5, 0))
+        
+        # Etiqueta de infracciones (Izquierda)
+        self.infractions_counter_label = ttk.Label(
+            labels_under_progress, 
+            text="Infracciones: 0", 
+            font=("Arial", 11, "bold"),
+            foreground="#e74c3c"
+        )
+        self.infractions_counter_label.pack(side="left")
+        
+        # Etiqueta de porcentaje (Derecha)
         self.percentage_label = ttk.Label(
-            progress_frame, 
+            labels_under_progress, 
             text="0%", 
             font=("Arial", 12, "bold")
         )
-        self.percentage_label.pack(anchor="e", pady=(5, 0))
+        self.percentage_label.pack(side="right")
         
-        # Contador de infracciones detectadas
-        self.infractions_label = ttk.Label(
-            main_frame, 
-            text="Infracciones detectadas: 0", 
-            font=("Arial", 12, "bold")
-        )
-        self.infractions_label.pack(pady=10)
+        # Contador de INFRACCIONES (NID/NIE - Estilo Tesis)
+        self.stats_frame = ttk.LabelFrame(main_frame, text=" 📊 Métricas de Procesamiento (Tesis) ")
+        self.stats_frame.pack(fill="x", pady=10, padx=5)
+        
+        # Grid para métricas
+        metrics_inner = ttk.Frame(self.stats_frame)
+        metrics_inner.pack(pady=5, padx=10, fill="x")
+        
+        self.nid_label = ttk.Label(metrics_inner, text="NID: 0", font=("Arial", 11, "bold"), foreground="#27ae60")
+        self.nid_label.pack(side="left", expand=True)
+        
+        self.nie_label = ttk.Label(metrics_inner, text="NIE: 0", font=("Arial", 11, "bold"), foreground="#e67e22")
+        self.nie_label.pack(side="left", expand=True)
+        
+        self.v_count_label = ttk.Label(metrics_inner, text="Vehículos: 0", font=("Arial", 11, "bold"), foreground="#2980b9")
+        self.v_count_label.pack(side="left", expand=True)
+        
+        # NUEVO: Panel de contadores detallados alineado con la tesis
+        self.stats_panel = ttk.Frame(main_frame)
+        self.stats_panel.pack(fill="x", pady=5)
         
         # Frame para botones
         button_frame = ttk.Frame(main_frame)
@@ -1621,8 +1587,26 @@ class PreprocessingDialog:
                 self.progress_var.set(self.progress_value)
                 self.percentage_label.config(text=f"{int(self.progress_value)}%")
                 
-                # Actualizar contador de infracciones
-                self.infractions_label.config(text=f"Infracciones detectadas: {len(self.detected_infractions)}")
+                # Actualizar contadores de Tesis (NID/NIE/Vehículos)
+                total_inf = len(self.detected_infractions)
+                nid_count = 0
+                for inf in self.detected_infractions:
+                    if inf.get('clasificacion') == 'NIE':
+                        continue
+                    nid_count += 1
+                
+                # SINCRONIZACIÓN DE CONTADORES: Reflejar estado real en todo momento
+                self.nid_label.config(text=f"✅ NID: {nid_count}")
+                self.nie_label.config(text=f"⚠️ NIE: {total_inf - nid_count}")
+                # Vehículos muestra el total de infracciones registradas (NID + NIE)
+                self.v_count_label.config(text=f"🚗 Vehículos: {total_inf}")
+                
+                # Actualizar label principal de infracciones para que coincida con el total
+                if self.progress_value >= 100:
+                    status_text = "FINALIZADO"
+                    self.infractions_counter_label.config(text=f"Total: {total_inf}", foreground="#27ae60")
+                else:
+                    self.infractions_counter_label.config(text=f"Infracciones: {total_inf}")
                 
                 # Procesar cualquier resultado pendiente de los hilos de trabajo
                 self._process_results_queue()
@@ -1679,25 +1663,19 @@ class PreprocessingDialog:
                         # Actualizar texto de progreso SIN CONTADOR (se actualiza en segment_complete)
                         self.details_label.config(text=f"Procesando segmento {segment_id+1}/{self.total_segments} | Frame {absolute_frame}/{segment_length}")
                     
-                    elif result_type == "plate_monitor_status":
-                        status_text, plate_img = data
-                        # Actualizar solo el texto (amarillo para "procesando")
-                        if hasattr(self, 'plate_monitor_text'):
-                            self.plate_monitor_text.config(text=status_text, foreground="yellow")
-                        
-                        # Actualizar imagen si se proporciona (el crop de la fase 1)
-                        if plate_img is not None:
-                            self._update_monitor_image(plate_img)
+                    # Estos msg tipos de monitor lateral fueron eliminados para Fase 1 limpia
+                    elif result_type in ["plate_monitor_status", "plate_monitor_update"]:
+                        pass
 
-                    elif result_type == "plate_monitor_update":
-                        plate_img, plate_text = data
-                        # Actualizar el monitor lateral con el resultado final (verde)
-                        if hasattr(self, 'plate_monitor_ready') and self.plate_monitor_ready:
-                            try:
-                                self._update_monitor_image(plate_img)
-                                self.plate_monitor_text.config(text=plate_text, foreground="#4CAF50")
-                            except Exception as e:
-                                print(f"Error actualizando monitor de placas: {e}")
+                    elif result_type == "phase2_result":
+                        # data: {'index', 'plate_text', 'confidence', 'plate_crop', 'vehicle_img', 'infraction'}
+                        self._display_phase2_result(data)
+                    
+                    elif result_type == "phase2_skip":
+                        # Infracción descartada (no se detectó placa válida)
+                        self._phase2_index += 1
+                        self._phase2_processing = False
+                        print(f"⏭️ Infracción descartada, pasando a la siguiente...")
 
                     elif result_type == "segment_complete":
                         segment_id, infractions = data
@@ -1973,25 +1951,7 @@ class PreprocessingDialog:
             # Deshabilitar sistema fluido si hay errores continuos
             self.display_enabled = False
     
-    def _update_monitor_image(self, plate_img):
-        """Helper para actualizar la imagen en el monitor lateral"""
-        if plate_img is None or not hasattr(self, 'plate_monitor_img'):
-            return
-        try:
-            # Redimensionar para que quepa en el monitor (ancho ~140)
-            h, w = plate_img.shape[:2]
-            new_w = 140
-            new_h = int(h * (new_w / w))
-            plate_resized = cv2.resize(plate_img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-            
-            # Convertir a PhotoImage
-            img_pil = Image.fromarray(cv2.cvtColor(plate_resized, cv2.COLOR_BGR2RGB))
-            img_tk = ImageTk.PhotoImage(image=img_pil)
-            
-            self.plate_monitor_img.config(image=img_tk)
-            self.plate_monitor_img.image = img_tk # Mantener referencia
-        except Exception as e:
-            print(f"Error en _update_monitor_image: {e}")
+    # _update_monitor_image eliminado (Fase 1 limpia)
 
     def _analysis_worker(self):
         """🧠 Hilo trabajador para análisis profundo de placas (Fase 2)"""
@@ -2022,10 +1982,30 @@ class PreprocessingDialog:
     def _deep_analyze_infraction(self, frame, infraction, absolute_frame, segment_id):
         """Realiza el análisis pesado de una infracción detectada (Fase 2)"""
         try:
+            # Recortar el vehículo con MARGEN EXTRA (10%) para mejorar detección de bordes
             car_bbox = infraction['bbox']
-            plate_img = self._extract_plate_from_vehicle(frame, car_bbox)
+            cx1, cy1, cx2, cy2 = [int(v) for v in car_bbox]
+            vh, vw = frame.shape[:2]
+            mw, mh = int((cx2-cx1)*0.1), int((cy2-cy1)*0.1)
+            x1, y1 = max(0, cx1-mw), max(0, cy1-mh)
+            x2, y2 = min(vw, cx2+mw), min(vh, cy2+mh+mh) # Un poco más de margen abajo por la placa
+            vehicle_roi = frame[y1:y2, x1:x2].copy()
+            
+            # Verificar si existe el detector ANPR
+            has_anpr = hasattr(self.player, 'anpr_detector') and self.player.anpr_detector is not None
+            
+            # 🚀 LLAMADA CORREGIDA: Pasar vehicle_roi y absolute_frame
+            # Retorna: (plate_text, plate_img, confidence)
+            p_text, p_img, p_conf = self._extract_plate_from_vehicle(vehicle_roi, has_anpr, absolute_frame)
+            
+            plate_img = p_img
             if plate_img is not None:
-                plate_text, confidence = self._perform_smart_ocr(plate_img)
+                # Determinar texto y confianza (Fase 2 asíncrona)
+                if p_text and len(p_text.replace('-', '')) >= 4:
+                    plate_text, confidence = p_text, p_conf
+                else:
+                    plate_text, confidence = self._perform_smart_ocr(plate_img)
+                    
                 if plate_text and len(plate_text) >= 3:
                      plate_text = self._normalize_plate(plate_text)
                      with self.plate_registry_lock:
@@ -2035,9 +2015,8 @@ class PreprocessingDialog:
                              if var in self.detected_plates_global:
                                  is_duplicate = True
                                  break
-                         
-                         # Actualizar monitor con crop e identificación
-                         self.result_queue.put(("plate_monitor_update", (plate_img.copy(), plate_text)))
+                         # Notificación visual desactivada para Fase 1 limpia
+                         pass
                          
                          if not is_duplicate:
                              for var in plate_variations:
@@ -2056,7 +2035,7 @@ class PreprocessingDialog:
                              inf_id = self._create_infraction_record(
                                  plate_text=plate_text,
                                  plate_img=plate_img,
-                                 vehicle_img=frame, # Usar frame completo para el record
+                                 vehicle_img=vehicle_roi, # Usar ROI del vehículo, no el frame completo
                                  frame_index=absolute_frame,
                                  fps=self.fps,
                                  bbox=infraction['bbox'],
@@ -2319,26 +2298,54 @@ class PreprocessingDialog:
             self._finalize_preprocessing()
             return
         
+        h, w = frame.shape[:2]
+        
         # Inicializar cache de detecciones si no existe
         if not hasattr(self, '_cached_detections'):
             self._cached_detections = []
-            self._cached_is_night = False
+        # =====================================================
+        # 🧪 MONITOR DE RECURSOS (Adaptación Dinámica)
+        # =====================================================
+        if not hasattr(self, '_perf_monitor'):
+            self._perf_monitor = {'times': [], 'adapt_level': 0}
         
-        # =====================================================
-        # 🔍 DETECTAR CADA 3 FRAMES (para fluidez)
-        # =====================================================
-        if self._prep_frame_index % 3 == 0:
+        start_t = time.time()
+        
+        # Estrategia profesional: Si el semáforo es verde, saltar más cuadros (ahorro CPU)
+        # Si es rojo o amarillo, procesar con mayor frecuencia
+        skip_rate = 3  # Por defecto cada 3 frames
+        
+        # Ajuste dinámico si la PC es lenta
+        if self._perf_monitor['adapt_level'] > 0:
+            skip_rate += self._perf_monitor['adapt_level'] # Saltar mas frames si es lento
+            
+        current_state = self.player.semaforo.get_current_state()
+        if current_state == "green":
+            skip_rate = 10 + self._perf_monitor['adapt_level'] # Ahorro masivo en verde
+        elif current_state == "red":
+            # Si hay infractores activos, ser más preciso
+            # 🚀 MODO TURBO V41: En ROJO o con infractores activos, procesamos TODO
+            if current_state == "red" or (hasattr(self, '_active_infractors') and self._active_infractors):
+                skip_rate = 1 
+            else:
+                skip_rate = 3
+
+        if self._prep_frame_index % skip_rate == 0:
             try:
                 # Detectar solo cuando toca
                 self._cached_is_night = self.player._is_night_scene(frame)
-                raw = self.player.vehicle_detector.detect(frame, conf=0.35, draw=False)
+                
+                # 🛡️ FILTRO AGRESIVO DE CONFIANZA (Evitar partes que no son carros)
+                raw = self.player.vehicle_detector.detect(frame, conf=0.50, draw=False)
                 self._cached_detections = []
                 for d in raw:
                     if len(d) >= 5:
                         cls = int(d[5]) if len(d) > 5 else 2
                         if cls in [2, 5, 7]:
+                            # Coordenadas directas del frame completo
                             self._cached_detections.append((int(d[0]), int(d[1]), int(d[2]), int(d[3]), cls))
-            except:
+            except Exception as e:
+                print(f"Error en detección: {e}")
                 pass
         
         # Usar la variable local para el frame actual
@@ -2346,32 +2353,50 @@ class PreprocessingDialog:
         car_detections = self._cached_detections
         
         # =====================================================
-        # 📺 DIBUJAR EN CADA FRAME (boxes cacheados)
+        # 📺 DIBUJAR EN CADA FRAME
         # =====================================================
         display = frame.copy()
-        
-        # Dibujar detecciones cacheadas
-        for det in car_detections:
-            x1, y1, x2, y2, cls = det
-            cv2.rectangle(display, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = "CAR" if cls == 2 else "BUS" if cls == 5 else "TRUCK"
-            cv2.putText(display, label, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 2)
+        h_frame, w_frame = frame.shape[:2]
+        h, w = h_frame, w_frame
         
         # Dibujar polígono ROI
         if self.polygon_points:
             pts = np.array(self.polygon_points, np.int32).reshape(-1, 1, 2)
             poly_color = (0, 220, 255) if is_night else (0, 0, 255)
             cv2.polylines(display, [pts], True, poly_color, 2)
+
         
-        # Obtener estado del semáforo
-        current_state = self.player.semaforo.get_current_state()
+        # Obtener estado del semáforo (ya lo tenemos arriba)
         
-        # Dibujar estado del semáforo
+        # Medir tiempo y ajustar
+        proc_time = (time.time() - start_t) * 1000 # ms
+        self._perf_monitor['times'].append(proc_time)
+        if len(self._perf_monitor['times']) > 30:
+            avg_time = sum(self._perf_monitor['times']) / len(self._perf_monitor['times'])
+            self._perf_monitor['times'] = []
+            # Si procesar un frame toma mucho tiempo (>50ms), aumentar adaptación
+            if avg_time > 50: 
+                self._perf_monitor['adapt_level'] = min(5, self._perf_monitor['adapt_level'] + 1)
+                print(f"⚠️ PC Lenta ({avg_time:.1f}ms). Ajustando nivel: {self._perf_monitor['adapt_level']}")
+            elif avg_time < 20:
+                self._perf_monitor['adapt_level'] = max(0, self._perf_monitor['adapt_level'] - 1)
+                
+        # Dibujar estado del semáforo (GIGANTE Y RESPONSIVE V27)
+        # Escala base aumentada para máxima legibilidad
+        f_scale = (display.shape[1] / 1000.0) * 1.5 
         colors = {"red": ((0,0,255), (255,255,255)), "yellow": ((0,255,255), (0,0,0)), "green": ((0,255,0), (0,0,0))}
         text_color, bg_color = colors.get(current_state, ((255,255,255), (0,0,0)))
-        semaforo_text = f"Semaforo: {current_state.upper()}"
-        cv2.rectangle(display, (5, 5), (250, 35), bg_color, -1)
-        cv2.putText(display, semaforo_text, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, text_color, 2)
+        semaforo_text = f" SEMAFORO: {current_state.upper()} "
+        
+        # Texto GIGANTE con fondo sólido
+        txt_size, baseline = cv2.getTextSize(semaforo_text, cv2.FONT_HERSHEY_DUPLEX, 1.5 * f_scale, 4)
+        cv2.rectangle(display, (10, 10), (int(10 + txt_size[0]), int(20 + txt_size[1])), bg_color, -1)
+        cv2.putText(display, semaforo_text, (10, int(15 + txt_size[1])), cv2.FONT_HERSHEY_DUPLEX, 1.5 * f_scale, text_color, 4)
+        
+        # 🚀 Actualizar estado del semáforo al procesador asíncrono
+        if hasattr(self, 'async_processor') and self.async_processor:
+            self.async_processor.update_semaphore_state(current_state)
+
         
         # =====================================================
         # 🔴 SI ESTÁ EN ROJO: DETECTAR INFRACCIONES
@@ -2382,65 +2407,248 @@ class PreprocessingDialog:
             for det in car_detections:
                 x1, y1, x2, y2, cls = det
                 
-                # 🎯 PUNTO DEL PARACHOQUES DELANTERO (parte inferior del bbox)
+                # 🛡️ RESET VARIABLES
+                proximity_factor = 0.0
+                has_plate_score = 0.0
+                current_d = None
+                
+                # 🎯 POSICIÓN Quirúrgica (Vértices Inferiores)
                 bumper_x = (x1 + x2) // 2
-                bumper_y = y2  # Parte inferior = parachoques
+                bumper_y = y2
+                v_left = (x1, y2)
+                v_right = (x2, y2)
+                vehicle_center = (bumper_x, bumper_y)
+                vehicle_area = (x2 - x1) * (y2 - y1)
                 
-                # Verificar si el parachoques está en el polígono
-                in_polygon = cv2.pointPolygonTest(polygon, (bumper_x, bumper_y), False) >= 0
+                # 🧬 PPI V43 — LÓGICA RADIAL (Edge-Adaptive)
+                # El PPI aumenta al bajar (Y) Y al acercarse a la izquierda (X) para este ángulo
+                y_factor = (bumper_y - (h_frame * 0.35)) / (h_frame * 0.60) # 0.35 a 0.95
+                x_factor = ((w_frame * 0.85) - bumper_x) / (w_frame * 0.75) # 0.85 a 0.10
+                proximity_factor = max(0.01, min(1.0, max(y_factor, x_factor)))
                 
-                # Dibujar punto del parachoques
+                # 🛡️ FILTRO DE LEJANÍA
+                if proximity_factor < 0.12: continue
+
+                # 📐 COLISIÓN POR VÉRTICES (V41: Tolerancia de 15px para "morder" rápido)
+                test_center = cv2.pointPolygonTest(polygon, (float(bumper_x), float(bumper_y)), True) >= -15
+                test_left = cv2.pointPolygonTest(polygon, (float(v_left[0]), float(v_left[1])), True) >= -15
+                test_right = cv2.pointPolygonTest(polygon, (float(v_right[0]), float(v_right[1])), True) >= -15
+                in_polygon = test_center or test_left or test_right
+                
+                # Dibujo de debug (Círculo rojo en cada vértice en colisión)
                 point_color = (0, 0, 255) if in_polygon else (0, 255, 255)
                 cv2.circle(display, (bumper_x, bumper_y), 5, point_color, -1)
                 
-                if in_polygon:
-                    vehicle_center = (bumper_x, bumper_y)
+                # 🛰️ ASOCIACIÓN DE TRACKING ROBUSTA (Evitar duplicados por saltos de ID)
+                is_new = True
+                track_dist_threshold = 140 # Aumentado de 70 para mayor estabilidad
+                if not hasattr(self, '_active_infractors'): self._active_infractors = {}
+
+                for existing_id, data in self._active_infractors.items():
+                    last_center = data['center']
+                    dist = ((vehicle_center[0] - last_center[0])**2 + (vehicle_center[1] - last_center[1])**2)**0.5
+                    if dist < track_dist_threshold:
+                        is_new = False
+                        current_d = data
+                        break
+
+                # 🚨 NUEVA INFRACCIÓN (Filtro v47: 18,000px y PPI 0.28)
+                min_area_val = 18000 # Solo carros de tamaño significativo para evitar falsos
+                if is_new and in_polygon and proximity_factor > 0.28 and vehicle_area > min_area_val:
+                    self._prep_infraction_count += 1
+                    inf_id = f"inf_{self._prep_infraction_count}"
+                    current_d = {
+                        'id': self._prep_infraction_count,
+                        'center': vehicle_center,
+                        'start_y': vehicle_center[1],
+                        'area_history': [],
+                        'mmrp_reached': False,
+                        'mmrp_frame': None,
+                        'best_pqi': -1.0,
+                        'async_sent': False 
+                    }
+                    self._active_infractors[inf_id] = current_d
+                    print(f"🚨 INF-START: New ID #{current_d['id']} at PPI:{proximity_factor:.2f} (Area:{vehicle_area})")
+
+                # Guardar para la barra global
+                if not hasattr(self, '_last_ppi_map'): self._last_ppi_map = {}
+                if current_d: self._last_ppi_map[current_d['id']] = proximity_factor
+
+                # =============================================================
+                # 🧬 ACTUALIZACIÓN, TRIGGER Y DIBUJO (V42)
+                # =============================================================
+                # 🎨 PREPARAR ETIQUETA (PPI SIEMPRE VISIBLE)
+                # Es un infractor si ya tiene un tracking activo o acaba de empezar uno
+                is_infrator = (current_d is not None)
+                t_color = (0, 0, 255) if is_infrator else (0, 255, 255) # Rojo si es infractor, Amarillo si no
+                
+                # Texto de etiqueta: "INF #X" si es infractor, "VEH" si es candidato
+                label = f"{'INF' if is_infrator else 'VEH'} #{current_d['id'] if is_infrator else '?'} PPI:{proximity_factor:.2f}"
+                
+                # Dibujo Premium de Etiqueta (Fondo + Texto Bold)
+                font = cv2.FONT_HERSHEY_DUPLEX
+                (tw, th), _ = cv2.getTextSize(label, font, 0.55, 1)
+                tx, ty = max(5, min(bumper_x - tw // 2, w_frame - tw - 5)), max(th + 15, min(y1 - 20, h_frame - 15))
+                
+                sub_img = display[max(0,ty-th-8):min(h_frame,ty+5), max(0,tx-5):min(w_frame,tx+tw+5)]
+                if sub_img.size > 0:
+                    bg_pill = np.zeros(sub_img.shape, dtype=np.uint8)
+                    display[max(0,ty-th-8):min(h_frame,ty+5), max(0,tx-5):min(w_frame,tx+tw+5)] = cv2.addWeighted(sub_img, 0.5, bg_pill, 0.5, 1.0)
+                
+                # Texto blanco, cambia a verde si está en zona de disparo (0.75+)
+                txt_c = (0, 255, 0) if (is_infrator and proximity_factor >= 0.75) else (255, 255, 255)
+                cv2.putText(display, label, (tx, ty), font, 0.55, txt_c, 1)
+                
+                # Cuadro del vehículo (ROJO si es infractor)
+                cv2.rectangle(display, (x1, y1), (x2, y2), t_color, 3 if is_infrator else 2)
+
+                # Solo registrar datos si es un track activo
+                if current_d:
+                    current_d['center'] = vehicle_center
+                    current_d['area_history'].append(vehicle_area)
                     
-                    # Tracking de infractores
-                    if not hasattr(self, '_active_infractors'):
-                        self._active_infractors = {}
-                    if not hasattr(self, '_captured_infractions'):
-                        self._captured_infractions = []
+                    # Plato Check Rápido
+                    has_plate_score = 0.0
+                    try:
+                        tm = 180
+                        v_roi = frame[max(0,y1-tm):min(h,y2+tm), max(0,x1-tm):min(w,x2+tm)]
+                        if v_roi.size > 0 and hasattr(self.player, 'plate_detector'):
+                            p_det = self.player.plate_detector.detect_plates(v_roi, confidence=0.25)
+                            if p_det: has_plate_score = 1.0
+                    except: pass
+
+                    pqi = proximity_factor * (has_plate_score if has_plate_score > 0.1 else 0.1)
                     
-                    # Buscar si ya existe este infractor
-                    is_new = True
-                    for existing_id, data in self._active_infractors.items():
-                        dist = ((vehicle_center[0] - data['center'][0])**2 + 
-                               (vehicle_center[1] - data['center'][1])**2)**0.5
-                        if dist < 100:
-                            self._active_infractors[existing_id]['center'] = vehicle_center
-                            is_new = False
-                            break
-                    
-                    if is_new:
-                        self._prep_infraction_count += 1
-                        inf_id = f"inf_{self._prep_infraction_count}"
-                        self._active_infractors[inf_id] = {'center': vehicle_center}
+                    if pqi > current_d['best_pqi']:
+                        current_d['best_pqi'] = pqi
                         
-                        # 📸 CAPTURA RÁPIDA PARA FASE 2 (sin procesamiento pesado)
-                        self._captured_infractions.append({
-                            'id': self._prep_infraction_count,
-                            'frame_index': self._prep_frame_index,
-                            'timestamp': self._prep_frame_index / self.fps,
-                            'bbox': (x1, y1, x2, y2),
-                            'full_frame': frame.copy()  # Solo guardamos el frame
-                        })
-                        print(f"🚨 INFRACCIÓN #{self._prep_infraction_count} detectada!")
-                    
-                    # Dibujar cuadro ROJO para infractor
-                    cv2.rectangle(display, (x1, y1), (x2, y2), (0, 0, 255), 3)
-                    cv2.putText(display, f"INFRACCION", (x1, y1-10), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                        # 🧬 INTEGRACIÓN LABFORENSE V44: Rectificación Inmediata
+                        plate_stripped = None
+                        vehicle_ctx = None
+                        try:
+                            # Recortar vehículo con margen para contexto
+                            tm_ctx = 160
+                            vehicle_ctx = frame[max(0,y1-tm_ctx):min(h,y2+tm_ctx), max(0,x1-tm_ctx):min(w,x2+tm_ctx)].copy()
+                            
+                            # Buscar placa en el vehículo
+                            if hasattr(self.player, 'plate_detector'):
+                                p_det = self.player.plate_detector.detect_plates(vehicle_ctx, confidence=0.25)
+                                if p_det:
+                                    x1p, y1p, x2p, y2p = [int(v) for v in p_det[0]]
+                                    p_raw = vehicle_ctx[y1p:y2p, x1p:x2p].copy()
+                                    
+                                    from src.core.processing.plate_processing import rectificar_perspectiva
+                                    plate_stripped = rectificar_perspectiva(p_raw)
+                                    if plate_stripped is not None:
+                                        print(f"📍 MMRP #{current_d['id']} RECTIFICADO OK ({plate_stripped.shape[1]}x{plate_stripped.shape[0]}px)")
+                        except: pass
+
+                        current_d['mmrp_frame'] = {
+                            'img': frame.copy(),
+                            'bbox': (max(0, x1-60), max(0, y1-60), min(w, x2+60), min(h, y2+60)),
+                            'f': self._prep_frame_index,
+                            'plate_stripped': plate_stripped,
+                            'vehicle_context': vehicle_ctx
+                        }
+
+                    # Detección de Pico
+                    if not current_d['mmrp_reached'] and len(current_d['area_history']) >= 6:
+                        recent = current_d['area_history'][-5:]
+                        if sum(recent[-3:])/3 < (sum(recent[:3])/3) * 0.98:
+                            current_d['mmrp_reached'] = True
+
+                    # 🚀 TRIGGER ULTRA-AGRESIVO V46 (0.88 Panic Logic)
+                    if not current_d['async_sent']:
+                        num_f = len(current_d['area_history'])
+                        # Pánico Ultra-Rápido: 0.88
+                        is_panic = (proximity_factor >= 0.88)
+                        # Secure Capture (Zona Verde 0.85 + 3 frames): Asegura disparo en zona óptima
+                        is_secure = (num_f >= 3 and proximity_factor >= 0.85)
+                        # Pico Dorado: 0.78
+                        is_peak_gold = (num_f >= 5 and current_d['mmrp_reached'] and proximity_factor >= 0.78)
+                        # Persistencia: 22 frames
+                        is_heavy = (num_f >= 22 and proximity_factor >= 0.75)
+                        
+                        ready = is_panic or is_secure or is_peak_gold or is_heavy
+                        if not in_polygon and proximity_factor < 0.35: ready = False
+                        
+                        if ready and hasattr(self, 'async_processor') and self.async_processor:
+                            self.async_processor.add_infraction(
+                                track_id=current_d['id'],
+                                frame_img=current_d['mmrp_frame']['img'] if current_d['mmrp_frame'] else frame.copy(),
+                                bbox=current_d['mmrp_frame']['bbox'] if current_d['mmrp_frame'] else (x1,y1,x2,y2),
+                                frame_index=self._prep_frame_index
+                            )
+                            current_d['async_sent'] = True
+                            p_str = "[PEAK]" if is_peak_gold else "[PANIC]" if is_panic else "[PERSIST]"
+                            print(f"🚀 {p_str} TRIGGER #{current_d['id']} PPI:{proximity_factor:.2f} (Frames: {num_f})")
+
+                        
+                        # 🛰️ INDICADOR PPI + CÁMARA (Estilo LabForense)
+                        cv2.putText(display, f"PPI: {proximity_factor:.2f}", (x1, y2+20),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                        
+                        # Si acaba de disparar el trigger, mostrar "icono cámara" (círculo verde flash)
+                        if current_d.get('async_sent', False):
+                            # Efecto flash de captura
+                            cv2.circle(display, (x1+20, y1-30), 10, (0, 255, 0), -1)
+                            cv2.putText(display, "SNAPSHOT", (x1+35, y1-25),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
-        # Contador en la parte inferior
-        h, w = display.shape[:2]
-        counter_text = f"Infracciones: {self._prep_infraction_count}"
-        cv2.rectangle(display, (5, h-35), (220, h-5), (0, 0, 0), -1)
-        cv2.putText(display, counter_text, (10, h-12), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+         # ============================================================
+        # 📊 BARRA PPI GLOBAL V43 (Fuera del bucle para estabilidad)
+        # ============================================================
+        best_p = 0.0
+        b_id = 0
+        b_sent = False
+        b_peaked = False
+        b_frames = 0
+        
+        if hasattr(self, '_active_infractors') and self._active_infractors:
+            for d in self._active_infractors.values():
+                # Obtener el PPI más alto de los infractores activos
+                # (aproximamos basado en el último guardado o el actual)
+                p = d.get('best_pqi', 0) / 1.0 # Normalizar si es necesario
+                # Buscamos el que esté más cerca del área de interés
+                if hasattr(self, '_last_ppi_map') and d['id'] in self._last_ppi_map:
+                    p = self._last_ppi_map[d['id']]
+                
+                if p > best_p:
+                    best_p = p
+                    b_id = d['id']
+                    b_sent = d.get('async_sent', False)
+                    b_peaked = d.get('mmrp_reached', False)
+                    b_frames = len(d.get('area_history', []))
+
+        if best_p > 0.05:
+            dh, dw = display.shape[:2]
+            bar_y, bar_h = dh - 50, 25
+            bar_x, bar_w = 30, dw - 60
+            
+            # Fondo
+            cv2.rectangle(display, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (30, 30, 30), -1)
+            # Relleno
+            f_ppi = min(1.0, best_p)
+            f_w = int(bar_w * f_ppi)
+            # Color: Naranja -> Azul -> Verde
+            b_color = (0, 140, 255) if f_ppi < 0.70 else (255, 140, 0)
+            if b_sent: b_color = (0, 255, 0)
+            
+            cv2.rectangle(display, (bar_x, bar_y), (bar_x + f_w, bar_y + bar_h), b_color, -1)
+            cv2.rectangle(display, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (150, 150, 150), 1)
+            
+            # Texto
+            status = "CAPTURADO" if b_sent else "PICO!" if b_peaked else f"RASTREANDO ({b_frames} frames)"
+            txt = f"PPI GLOBAL: {f_ppi:.2f} | #{b_id} {status}"
+            cv2.putText(display, txt, (bar_x, bar_y - 10), cv2.FONT_HERSHEY_DUPLEX, 0.7 * f_scale, b_color, 2)
+
         
         # 📺 Mostrar en la UI
         try:
-            resized = cv2.resize(display, (640, 360))
+            # VISUALIZACIÓN NATURAL (Sin filtros destructivos)
+            # Aumentado a 950x540 tras eliminar el semáforo lateral
+            resized = cv2.resize(display, (950, 540), interpolation=cv2.INTER_LINEAR)
+            
             rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
             imgtk = ImageTk.PhotoImage(Image.fromarray(rgb))
             self.video_label.config(image=imgtk)
@@ -2448,12 +2656,11 @@ class PreprocessingDialog:
         except:
             pass
         
-        # Actualizar progreso (Fase 1 = 0-80%)
         phase1_progress = (self._prep_frame_index / self.total_frames) * 80
         self.progress_value = phase1_progress
         self.progress_var.set(self.progress_value)
-        self.percentage_label.config(text=f"{self.progress_value:.0f}% | Infracciones: {self._prep_infraction_count}")
-        # self.infractions_label.config(text=f"Infracciones: {self._prep_infraction_count}")
+        self.percentage_label.config(text=f"{self.progress_value:.0f}%")
+        self.infractions_counter_label.config(text=f"Infracciones: {self._prep_infraction_count}")
         self.details_label.config(text=f"Frame {self._prep_frame_index}/{self.total_frames} | {self._prep_frame_index/self.fps:.1f}s")
         
         self._prep_frame_index += 1
@@ -2463,213 +2670,421 @@ class PreprocessingDialog:
     
     def _finalize_preprocessing(self):
         """Finaliza Fase 1 e inicia Fase 2: Análisis de placas."""
+        print("🛑 Finalizando Fase 1 (Escaneo de video)...")
         self._prep_running = False
         
+        # 🚀 RECURSOS DE VIDEO: Liberar inmediatamente
         if hasattr(self, '_prep_cap'):
-            self._prep_cap.release()
+            try:
+                self._prep_cap.release()
+                print("✅ Recurso de captura de video liberado")
+            except:
+                pass
         
-        captured_count = len(getattr(self, '_captured_infractions', []))
-        print(f"✅ Fase 1 completada: {self._prep_infraction_count} infracciones, {captured_count} capturas")
+        # Limpiar cualquier frame residual en el buffer visual
+        if hasattr(self, 'display_buffer'):
+            self.display_buffer.clear()
+        
+        # 🚀 RECOPILAR INFRACTORES PARA FASE 2
+        if hasattr(self, '_active_infractors'):
+            # V22 FIX: Filtrar infractores que tengan candidatos o mmrp_frame válido
+            valid_infractions = []
+            for inf in self._active_infractors.values():
+                has_candidates = len(inf.get('candidates', [])) > 0
+                has_mmrp = inf.get('mmrp_frame') is not None
+                if has_candidates or has_mmrp:
+                    valid_infractions.append(inf)
+            
+            # Ordenar por tiempo de detección (con fallback seguro)
+            def get_sort_key(x):
+                if x.get('candidates') and len(x['candidates']) > 0:
+                    return x['candidates'][0].get('f', 0)
+                elif x.get('mmrp_frame'):
+                    return x['mmrp_frame'].get('f', 0)
+                return 0
+            
+            self._captured_infractions = sorted(valid_infractions, key=get_sort_key)
+            
+            skipped = len(self._active_infractors) - len(valid_infractions)
+            if skipped > 0:
+                print(f"⚠️ {skipped} infracciones descartadas (sin candidatos legibles)")
+        else:
+            self._captured_infractions = []
+            
+        captured_count = len(self._captured_infractions)
+        print(f"✅ Fase 1 completada: {self._prep_infraction_count} infracciones detectadas")
+        print(f"📊 Capturas para Fase 2: {captured_count}")
         
         if hasattr(self, 'dialog') and self.dialog.winfo_exists():
+            # 🔧 LIMPIEZA VISUAL FORZADA (Ocultar elementos de video fase 1)
+            try:
+                # Ocultar semáforo y monitor lateral para dar espacio al análisis detallado
+                if hasattr(self, 'semaphore_frame'):
+                    self.semaphore_frame.pack_forget()
+                if hasattr(self, 'monitor_side'):
+                    self.monitor_side.pack_forget()
+                
+                # Limpiar label de video temporalmente
+                if hasattr(self, 'video_label'):
+                    self.video_label.config(image='')
+            except Exception as e:
+                print(f"⚠️ Error en limpieza visual: {e}")
+
             if captured_count > 0:
-                # Iniciar Fase 2: Análisis de placas
-                self.phase_label.config(text=f"Fase 2: Analizando {captured_count} placas...")
+                # Iniciar Fase 2: Análisis de placas con retardo mínimo
+                self.phase_label.config(text=f"Fase 2: Analizando {captured_count} placas...", foreground="#3498db")
                 self.progress_var.set(80)
-                self.percentage_label.config(text=f"80% | Infracciones: {self._prep_infraction_count}")
+                self.percentage_label.config(text=f"80% | Iniciando análisis profundo...")
                 self._phase2_index = 0
                 
-                # 🔧 OCULTAR solo elementos de video innecesarios (mantener contador visible)
-                try:
-                    if hasattr(self, 'semaphore_frame'):
-                        self.semaphore_frame.pack_forget()
-                    if hasattr(self, 'monitor_side'):
-                        self.monitor_side.pack_forget()
-                    # ✅ Mantener infractions_label visible durante Fase 2
-                except:
-                    pass
-
+                # NUEVO: Flag para evitar múltiples ejecuciones asíncronas
+                self._phase2_processing = False
                 
-                self.dialog.after(500, self._run_phase2_analysis)
+                # Transición inmediata (50ms en lugar de 500ms)
+                self.dialog.after(50, self._run_phase2_analysis)
             else:
                 # Sin infracciones, finalizar
-                self.phase_label.config(text="Análisis completado - Sin infracciones")
+                self.phase_label.config(text="Análisis completado - Sin infracciones", foreground="gray")
                 self.progress_value = 100
                 self.progress_var.set(100)
-                self.percentage_label.config(text=f"100% | Infracciones: {self._prep_infraction_count}")
-                self.dialog.after(500, self._finalize_processing)
+                self.percentage_label.config(text="100%")
+                self.infractions_counter_label.config(text="Infracciones: 0")
+                self.dialog.after(100, self._finalize_processing)
     
     def _run_phase2_analysis(self):
-        """Fase 2: Muestra placa a la izquierda y análisis OCR a la derecha."""
-        print(f"🔵 FASE 2 INICIADA - index: {getattr(self, '_phase2_index', 'N/A')}")
+        """
+        Fase 2: Ejecuta el análisis OCR de forma asíncrona para no bloquear la UI.
+        Muestra cada resultado incrementalmente.
+        """
         if not hasattr(self, 'dialog') or not self.dialog.winfo_exists():
             return
+            
         if self.canceled:
             self._finalize_processing()
             return
-        
+
         captured = getattr(self, '_captured_infractions', [])
-        if self._phase2_index >= len(captured):
-            # Fase 2 completada
-            self.phase_label.config(text="Análisis completado")
-            self.progress_var.set(100)
-            self.percentage_label.config(text=f"100% | Infracciones: {self._prep_infraction_count}")
-            self.dialog.after(500, self._finalize_processing)
-            return
         
-        # Obtener infracción actual
+        # Si terminamos todas las capturas
+        if self._phase2_index >= len(captured):
+            print("🏁 Todas las infracciones de Fase 2 analizadas.")
+            self.phase_label.config(text="Análisis completado ✅", foreground="#27ae60")
+            self.progress_var.set(100)
+            self.percentage_label.config(text="100% | Proceso finalizado")
+            # Activar estado final en el contador principal
+            self.infractions_counter_label.config(text=f"Total: {len(self.detected_infractions)}", foreground="#27ae60")
+            self.dialog.after(200, self._finalize_processing)
+            return
+
+        # Si ya hay un procesamiento en curso, esperar (poll)
+        if getattr(self, '_phase2_processing', False):
+            return
+
+        # Marcar como en curso e iniciar hilo para el OCR pesado
+        self._phase2_processing = True
         inf = captured[self._phase2_index]
         
-        # Actualizar progreso (Fase 2 = 80-100%)
-        phase2_progress = 80 + ((self._phase2_index + 1) / len(captured)) * 20
+        # Actualizar progreso UI previo al análisis
+        phase2_progress = 80 + (self._phase2_index / len(captured)) * 20
         self.progress_var.set(phase2_progress)
-        self.percentage_label.config(text=f"{phase2_progress:.0f}% | Infracciones: {self._prep_infraction_count}")
-        self.phase_label.config(text=f"Fase 2: Analizando placa {self._phase2_index + 1}/{len(captured)}")
-        self.details_label.config(text=f"Infracción #{inf['id']} | Tiempo: {inf['timestamp']:.1f}s")
-        
-        # =====================================================
-        # 📐 LAYOUT COMPLETO: Placa izquierda | OCR derecha
-        # =====================================================
-        display = np.zeros((360, 640, 3), dtype=np.uint8)
-        display[:, :] = (30, 30, 30)  # Fondo gris oscuro
-        
-        # Línea divisoria vertical
-        cv2.line(display, (320, 0), (320, 360), (100, 100, 100), 2)
-        
-        # 1. Obtener imagen del VEHÍCULO (fallback seguro)
-        vehicle_img = None
-        if 'full_frame' in inf and inf['full_frame'] is not None:
-             try:
-                x1, y1, x2, y2 = [int(v) for v in inf['bbox']]
-                h_f, w_f = inf['full_frame'].shape[:2]
-                x1, y1 = max(0, x1), max(0, y1)
-                x2, y2 = min(w_f, x2), min(h_f, y2)
-                if x2 > x1 and y2 > y1:
-                    vehicle_img = inf['full_frame'][y1:y2, x1:x2].copy()
-             except:
-                 pass
+        self.percentage_label.config(text=f"{phase2_progress:.0f}%")
+        # Mostrar progreso de análisis (EJ: 3/10)
+        self.infractions_counter_label.config(text=f"Analizando: {self._phase2_index + 1}/{len(captured)}", foreground="#3498db")
+        self.phase_label.config(text=f"Fase 2: Procesando Vehículo {self._phase2_index + 1}/{len(captured)}")
 
-        # 2. Extraer PLACA usando process_plate DIRECTAMENTE (más rápido)
-        plate = None
-        plate_text = "No detectada"
-        confidence = 0.0
+        def ocr_worker_task(infraction, index):
+            """Hilo de trabajo interno para OCR pesado con Fusión Multicuadro (Consensus)"""
+            try:
+                # --- INICIALIZACIÓN ABSOLUTA DE SEGURIDAD ---
+                best_plate_crop, best_vehicle_img = None, None
+                highest_cand_conf = -1.0
+                collected_crops = []
+                ocr_results = []
+                track_id = infraction.get('id', 0)
+                candidates = infraction.get('candidates', [])
+                
+                from src.core.ocr.recognizer import get_lprnet_predictor, recognize_plate
+                from src.core.detection.plate_detector import PlateDetector
+                from src.path_helper import resource_path
+                import os
+                
+                # Acceso único al predictor
+                predictor = get_lprnet_predictor()
+                
+                if not hasattr(ocr_worker_task, '_plate_detector'):
+                    model_path = resource_path("models/license_plate_detector.pt")
+                    ocr_worker_task._plate_detector = PlateDetector(model_path) if os.path.exists(model_path) else PlateDetector()
+                
+                plate_detector = ocr_worker_task._plate_detector
+                
+                # MMRP: Selección y Procesamiento de Candidatos
+                mmrp_frame = infraction.get('mmrp_frame')
+                
+                # ============================================================
+                # 🧬 ATAJO LABFORENSE: Si el MMRP ya tiene placa rectificada,
+                # usarla directamente sin re-detectar (flujo exacto del test)
+                # ============================================================
+                if mmrp_frame and mmrp_frame.get('plate_stripped') is not None:
+                    plate_stripped = mmrp_frame['plate_stripped']
+                    vehicle_ctx = mmrp_frame.get('vehicle_context')
+                    
+                    print(f"🧬 ATAJO LABFORENSE: Usando placa pre-rectificada ({plate_stripped.shape[1]}x{plate_stripped.shape[0]}px)")
+                    
+                    # OCR directo sobre la placa ya limpia
+                    p_txt, p_conf, p_surg = recognize_plate(
+                        plate_stripped, return_processed=True, 
+                        autocrop=True, regional_context="Trujillo"
+                    )
+                    
+                    if p_txt and len(p_txt.replace('-', '')) >= 4:
+                        final_text = p_txt
+                        final_conf = p_conf
+                        best_plate_crop = p_surg if (p_surg is not None and p_surg.size > 0) else plate_stripped
+                        best_vehicle_img = vehicle_ctx if vehicle_ctx is not None else None
+                        
+                        # Intentar padding para display uniforme
+                        if predictor and hasattr(predictor, 'resize_with_padding'):
+                            best_plate_crop = predictor.resize_with_padding(best_plate_crop, (94, 24))
+                        
+                        print(f"✅ LABFORENSE OCR: '{final_text}' (conf: {final_conf:.2f})")
+                        
+                        # Enviar resultado directo (saltar todo el loop de candidatos)
+                        self.result_queue.put(("phase2_result", {
+                            'index': index, 'plate_text': final_text, 'confidence': final_conf,
+                            'plate_crop': best_plate_crop, 'vehicle_img': best_vehicle_img,
+                            'infraction': infraction
+                        }))
+                        self._phase2_processing = False
+                        return
+                
+                # ============================================================
+                # FLUJO ESTÁNDAR: Si no hay placa pre-rectificada
+                # ============================================================
+                if mmrp_frame:
+                    candidates = [mmrp_frame] + [c for c in candidates if c['f'] != mmrp_frame['f']]
+                else:
+                    candidates.sort(key=lambda x: x['bbox'][3], reverse=True)
+                
+                # Procesar candidatos (máximo 8 para no demorar)
+                valid_plates_found = 0
+                ocr_results = [] # Inicialización Robusta
+                yolo_plate_hit = False
+                
+                for cand in candidates[:8]:
+                    try:
+                        cand_img = cand['img']
+                        x1, y1, x2, y2 = [int(v) for v in cand['bbox']]
+                        vh_c, vw_c = cand_img.shape[:2]
+                        
+                        # ROI del Vehículo con margen extra
+                        mw, mh = int((x2-x1)*0.1), int((y2-y1)*0.1)
+                        vx1, vy1 = max(0, x1-mw), max(0, y1-mh)
+                        vx2, vy2 = min(vw_c, x2+mw), min(vh_c, y2+mh)
+                        vehicle_img = cand_img[vy1:vy2, vx1:vx2].copy()
+                        
+                        # Guardar imagen del vehículo (mejor toma provisional)
+                        if best_vehicle_img is None: 
+                            best_vehicle_img = vehicle_img.copy()
+
+                        # --- REFINAMIENTO QUIRÚRGICO DE NITIDEZ (V16) ---
+                        # Antes de detectar placa, medimos la varianza Laplaciana (Sharpness)
+                        gray_cand = cv2.cvtColor(vehicle_img, cv2.COLOR_BGR2GRAY)
+                        # Varianza Laplaciana: Un valor alto indica bordes definidos (nítidos)
+                        sharpness_score = cv2.Laplacian(gray_cand, cv2.CV_64F).var()
+                        # Normalizamos: >500 suele ser muy nítido, <100 es borroso
+                        sharpness_multiplier = min(1.2, max(0.5, sharpness_score / 350.0))
+                        
+                        # Guardar el puntaje de nitidez para el reporte técnico si es necesario
+                        if sharpness_score < 80:
+                             print(f"📉 Frame {cand['f']} descartado por baja nitidez ({sharpness_score:.1f})")
+                             if valid_plates_found == 0 and best_vehicle_img is None:
+                                 best_vehicle_img = vehicle_img.copy()
+                             continue # Saltamos excesivamente borrosos 
+                             
+
+                        # 🎯 DETECTAR PLACA (Target Precise V21)
+                        plate_detections = plate_detector.detect_plates(vehicle_img, confidence=0.45)
+                        
+                        if not plate_detections:
+                            continue
+
+                        # 🧬 TARGET LOCK: Si hay varios carros, elegir la placa alineada al eje del ROI
+                        # Esto evita capturar la placa del carro de al lado en un overlap.
+                        best_det = None
+                        min_axis_dist = 9999
+                        roi_center_x = vehicle_img.shape[1] // 2
+                        
+                        for det in plate_detections:
+                            dx1, dy1, dx2, dy2 = det[:4]
+                            det_center_x = (dx1 + dx2) // 2
+                            axis_dist = abs(det_center_x - roi_center_x)
+                            if axis_dist < min_axis_dist:
+                                min_axis_dist = axis_dist
+                                best_det = det
+                        
+                        yolo_plate_hit = True
+                        best_vehicle_img = vehicle_img.copy()
+                        px1, py1, px2, py2 = [int(v) for v in best_det[:4]]
+                            
+                        best_raw_crop = vehicle_img[max(0, py1):min(vehicle_img.shape[0], py2), 
+                                                   max(0, px1):min(vehicle_img.shape[1], px2)].copy()
+                            
+                        # ============ RECONOCIMIENTO Y RECORTE V16 (STRICT FLUSH) ============
+                        # autocrop=True para que el Escáner de Energía haga el recorte quirúrgico FINAL
+                        p_txt, p_conf, p_surg = recognize_plate(best_raw_crop, return_processed=True, 
+                                                               autocrop=True, regional_context="Trujillo")
+                        p_crop_cand = p_surg if (p_surg is not None and p_surg.size > 0) else best_raw_crop
+                        
+                        # Guardar resultado individual para la bolsa de élite
+                        if p_txt and len(p_txt.replace('-', '')) >= 4:
+                            valid_plates_found += 1
+                            # AJUSTE DE CONFIANZA POR NITIDEZ (MMRP/PVM Logic)
+                            adjusted_conf = p_conf * sharpness_multiplier
+                            
+                            # Guardamos el recorte y sus metadatos para la fusión posterior
+                            ocr_results.append({
+                                'text': p_txt, 
+                                'conf': adjusted_conf, 
+                                'crop': p_crop_cand,
+                                'vehicle_img': vehicle_img.copy()
+                            })
+                        
+                        # Guardar mejor toma visual provisional para el panel
+                        if best_plate_crop is None or (p_conf * sharpness_multiplier) > highest_cand_conf:
+                            highest_cand_conf = p_conf * sharpness_multiplier
+                            best_plate_crop = p_crop_cand.copy()
+
+                    except Exception as e_cand: print(f"⚠️ Error cand: {e_cand}")
+
+                # 🚫 Si NO se encontró ninguna placa válida después de revisar todos los candidatos:
+                if valid_plates_found == 0:
+                    # 🔍 GARANTÍA DE PLACA REAL v48: Si AMBOS modelos fallan, es un falso positivo vehicular.
+                    if not yolo_plate_hit:
+                        print(f"🧹 FILTRO AGRESIVO: Descartando #{track_id} - No se detectó placa (YOLO=0, OCR=0)")
+                        self.result_queue.put(("phase2_skip", index))
+                        return
+
+                    spec_reason = "❌ Imagen ilegible (Mucho brillo/ruido)"
+                    print(f"⚠️ INFRACCIÓN #{track_id}: {spec_reason}. Registrando como NIE para visualización.")
+                    
+                    self.result_queue.put(("phase2_result", {
+                        'index': index, 'plate_text': "NIE", 'confidence': 0.05,
+                        'plate_crop': None, 'vehicle_img': best_vehicle_img if best_vehicle_img is not None else candidates[0]['img'],
+                        'infraction': infraction,
+                        'reason': spec_reason
+                    }))
+                    return
+
+                # 🗳️ ESTRUCTURA ELITE FUSION (CONCEPTO ABEL V16)
+                final_text, final_conf = "NIE", 0.0
+                
+                if ocr_results:
+                    try:
+                        # 1. SELECCIÓN DE ÉLITE: Solo las mejores 3 capturas del mismo track_id
+                        # Ordenamos por confianza del modelo individual
+                        ocr_results.sort(key=lambda x: x['conf'], reverse=True)
+                        elite_set = ocr_results[:3]
+                        
+                        if len(elite_set) >= 2:
+                            # 2. ALINEACIÓN QUIRÚRGICA (ECC Registration)
+                            base_width, base_height = 300, 80
+                            anchor_data = elite_set[0]
+                            anchor_crop = cv2.resize(anchor_data['crop'], (base_width, base_height), interpolation=cv2.INTER_LANCZOS4)
+                            gray_anchor = cv2.cvtColor(anchor_crop, cv2.COLOR_BGR2GRAY)
+                            
+                            aligned_set = [anchor_crop]
+                            for i in range(1, len(elite_set)):
+                                current = cv2.resize(elite_set[i]['crop'], (base_width, base_height), interpolation=cv2.INTER_LANCZOS4)
+                                gray_curr = cv2.cvtColor(current, cv2.COLOR_BGR2GRAY)
+                                warp_m = np.eye(2, 3, dtype=np.float32)
+                                criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 35, 0.001)
+                                try:
+                                    # Corregimos micro-desplazamientos (Solo traslación para no deformar)
+                                    (_, warp_m) = cv2.findTransformECC(gray_anchor, gray_curr, warp_m, cv2.MOTION_TRANSLATION, criteria)
+                                    aligned = cv2.warpAffine(current, warp_m, (base_width, base_height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+                                    aligned_set.append(aligned)
+                                except:
+                                    continue
+
+                            # 3. FUSIÓN MAESTRA (Mediana de Tinta Sólida)
+                            master_fusion = np.median(aligned_set, axis=0).astype(np.uint8)
+                            
+                            # 4. RE-RECORTE CON MICRO-ESPACIO (Recorte Pro)
+                            master_refined = predictor.autocrop_plate(master_fusion)
+                            
+                            # 5. INFERENCIA FINAL SOBRE PLACA MAESTRA (Con Letterbox Blanco)
+                            print(f"🧠 SIIV ELITE-FLUSH: Procesando Fusión para Auto #{track_id}...")
+                            m_txt, m_conf, master_94x24 = recognize_plate(master_refined, autocrop=False, return_processed=True, regional_context="Trujillo")
+                            
+                            if m_txt and len(m_txt.replace('-', '')) >= 4 and m_conf > 0.65:
+                                final_text = m_txt; final_conf = m_conf
+                                best_plate_crop = master_94x24
+                                # La imagen del vehículo para la fusión será la del ancla (la más nitida)
+                                best_vehicle_img = anchor_data['vehicle_img']
+                            else:
+                                # Fallback al ganador individual (Sincronizado y Proporcional)
+                                final_text = anchor_data['text']; final_conf = anchor_data['conf']
+                                best_plate_crop = predictor.resize_with_padding(anchor_data['crop'], (94, 24))
+                                best_vehicle_img = anchor_data['vehicle_img']
+                        else:
+                            # Solo hay un frame válido: Sincronización Total Proporcional
+                            final_text = elite_set[0]['text']; final_conf = elite_set[0]['conf']
+                            best_plate_crop = predictor.resize_with_padding(elite_set[0]['crop'], (94, 24))
+                            best_vehicle_img = elite_set[0]['vehicle_img']
+                        
+                    except Exception as e_fusion:
+                        print(f"⚠️ Error en Elite Fusion: {e_fusion}")
+                        if ocr_results:
+                            final_text = ocr_results[0]['text']; final_conf = ocr_results[0]['conf']
+                            best_plate_crop = cv2.resize(ocr_results[0]['crop'], (94, 24))
+                        else:
+                            final_text, final_conf = "ERROR OCR", 0.0
+                
+                # 📦 ENVÍO FINAL AL PANEL DE GESTIÓN
+                self.result_queue.put(("phase2_result", {
+                    'index': index, 'plate_text': final_text, 'confidence': final_conf,
+                    'plate_crop': best_plate_crop, 'vehicle_img': best_vehicle_img,
+                    'infraction': infraction
+                }))
+                self._phase2_processing = False
+
+            except Exception as e_task:
+                print(f"❌ Error ocr_worker_task (Sincronizado): {e_task}")
+                self.result_queue.put(("phase2_result", {
+                    'index': index, 'plate_text': "Error OCR", 'confidence': 0.0,
+                    'plate_crop': None, 'vehicle_img': None,
+                    'infraction': infraction if 'id' in infraction else {'id': 0}
+                }))
+
+        # Lanzar el hilo
+        threading.Thread(target=ocr_worker_task, args=(inf, self._phase2_index), daemon=True).start()
+
+    def _display_phase2_result(self, data):
+        """Dibuja el resultado del análisis en el panel de Phase 2"""
+        index = data['index']
+        plate_text = data['plate_text']
+        confidence = data['confidence']
+        plate = data['plate_crop']
+        vehicle_img = data['vehicle_img']
+        inf = data['infraction']
+        custom_reason = data.get('reason') # Razón específica de Phase 2
         
+        print(f"📊 UI DEBUG: Recibido Fase 2 - Placa: {plate_text} (Conf: {confidence:.2f})")
+        
+        # REGISTRO OFICIAL: Guardar SIEMPRE, incluso si es NIE (No Identificada)
+        # Solo evitamos guardar si no hay ninguna imagen disponible
+        actual_infraction = None
         if vehicle_img is not None:
             try:
-                # 🔄 Actualizar GUI para evitar "No responde"
-                self.dialog.update_idletasks()
+                # Si no se detectó texto, usamos NIE (No Identificada Externamente)
+                save_text = plate_text if plate_text not in ["No detectada", "No legible", "Error OCR", "", None] else "NIE"
                 
-                # Usar process_plate directamente (ya hace detección + OCR)
-                from src.core.processing.plate_processing import process_plate
-                is_night = getattr(self, 'is_night', False)
-                
-                result = process_plate(vehicle_img, is_night=is_night)
-                
-                if result and len(result) >= 4:
-                    bbox, plate_img, plate_text_result, conf = result
-                    if plate_text_result and len(plate_text_result) >= 4:
-                        plate_text = plate_text_result
-                        confidence = conf
-                        plate = plate_img
-                        print(f"✅ OCR directo: '{plate_text}' (conf: {confidence:.2f})")
-                
-            except Exception as e:
-                print(f"⚠️ Error en OCR Fase 2: {e}")
-                plate_text = "Error OCR"
-                confidence = 0.0
-
-        
-        # ========== IZQUIERDA: VEHICULO O PLACA ==========
-        # Si tenemos placa la mostramos grande, si no, el vehículo
-        left_img = plate if (plate is not None and plate.size > 0) else vehicle_img
-        title_left = "PLACA DETECTADA" if (plate is not None and plate.size > 0) else "VEHICULO INFRACTOR"
-        
-        cv2.putText(display, title_left, (60, 45), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        
-        if left_img is not None and left_img.size > 0:
-            try:
-                h, w = left_img.shape[:2]
-                # Ajustar escala para que quepa en 280x200
-                scale = min(280/max(w,1), 200/max(h,1))
-                new_w, new_h = max(1, int(w*scale)), max(1, int(h*scale))
-                img_resized = cv2.resize(left_img, (new_w, new_h))
-                
-                # Centrar en el área izquierda (0-320)
-                x_off = (320 - new_w) // 2
-                y_off = 70
-                display[y_off:y_off+new_h, x_off:x_off+new_w] = img_resized
-            except Exception as e:
-                 print(f"Error dibujando left_img: {e}")
-                 cv2.putText(display, "Error visual", (80, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1)
-        
-        # Datos descriptivos abajo a la izquierda
-        cv2.putText(display, f"Infraccion #{inf['id']}", (80, 310), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        cv2.putText(display, f"Tiempo local: {inf['timestamp']:.1f}s", (90, 335), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
-        
-        # ========== DERECHA: ANALISIS OCR ==========
-        cv2.putText(display, "ANALISIS OCR", (410, 45), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        
-        # Box con matrícula (ESTILO PREMIUM)
-        cv2.rectangle(display, (340, 110), (620, 200), (0, 60, 0), -1)  # Fondo verde oscuro
-        cv2.rectangle(display, (340, 110), (620, 200), (0, 255, 0), 2)  # Borde verde neón
-        
-        cv2.putText(display, "MATRICULA:", (350, 135), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
-        
-        # Placa en amarillo brillante y grande
-        plate_display_text = plate_text.upper() if plate_text else "---"
-        cv2.putText(display, plate_display_text, (365, 175), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.95, (0, 255, 255), 3)
-        
-        # 3. Barra de confianza (ESTILO PLATE CARD)
-        conf_pct = int(confidence * 100)
-        if confidence >= 0.85:
-            conf_color = (0, 200, 0)   # Verde
-            status_text = "NID - DETECCION VALIDA"
-        elif confidence >= 0.70:
-            conf_color = (0, 150, 255) # Ámbar/Naranja
-            status_text = "NID - VALIDACION RECOMENDADA"
-        else:
-            conf_color = (0, 0, 255)   # Rojo
-            status_text = "NIE - REVISAR MANUALMENTE"
-            
-        cv2.rectangle(display, (340, 220), (620, 240), (40, 40, 40), -1)
-        bar_w = int(280 * confidence)
-        cv2.rectangle(display, (340, 220), (340 + bar_w, 240), conf_color, -1)
-        
-        cv2.putText(display, f"Confianza: {conf_pct}%", (340, 215), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        
-        # 4. Estado final
-        cv2.putText(display, status_text, (340, 280), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, conf_color, 1)
-        
-        status_main = "LEIDA" if confidence >= 0.70 else "REVISAR"
-        cv2.putText(display, status_main, (430, 330), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1.0, conf_color, 3)
-        
-        # ========== MOSTRAR EN UI ==========
-        try:
-            rgb = cv2.cvtColor(display, cv2.COLOR_BGR2RGB)
-            imgtk = ImageTk.PhotoImage(Image.fromarray(rgb))
-            self.video_label.config(image=imgtk)
-            self.video_label.image = imgtk
-            self.dialog.update_idletasks() # Forzar dibujado
-        except Exception as e:
-            print(f"❌ Error actualizando UI Fase 2: {e}")
-
-        # 🚀 REGISTRO OFICIAL DE INFRACCIÓN
-        if plate_text and plate_text not in ["No detectada", "No legible", "Error OCR"]:
-            try:
-                # Crear registro oficial para que aparezca en el panel principal
-                inf_id = self._create_infraction_record(
-                    plate_text=plate_text,
-                    plate_img=plate if (plate is not None and plate.size > 0) else left_img,
-                    vehicle_img=inf.get('full_frame'),
+                # CRÍTICO: Usar la imagen del vehículo que contiene el TARGET (Green Box)
+                # y el recorte exacto de la placa para máxima coherencia.
+                actual_infraction = self._create_infraction_record(
+                    plate_text=save_text,
+                    plate_img=plate if (plate is not None and plate.size > 0) else self._get_plate_crop(vehicle_img, (0, 0, vehicle_img.shape[1], vehicle_img.shape[0])),
+                    vehicle_img=vehicle_img, # Imagen con recuadro verde
                     frame_index=inf.get('frame_index', 0),
                     fps=self.fps,
                     bbox=inf.get('bbox'),
@@ -2677,38 +3092,181 @@ class PreprocessingDialog:
                     confidence=confidence
                 )
                 
-                if inf_id:
-                    with self.analysis_results_lock:
-                        # Asegurarse de que no esté ya en la lista para procesamiento final
-                        if inf_id not in self.detected_infractions:
-                            self.detected_infractions.append(inf_id)
+                if actual_infraction:
+                    # 1. Normalizar la matrícula para comparación
+                    normalized_plate = save_text.replace('-', '').replace(' ', '').upper() if save_text != "NIE" else ""
                     
-                    # ✨ ACTUALIZACIÓN EN TIEMPO REAL: Añadir al panel lateral de la ventana principal
-                    try:
-                        self.player._safe_add_plate_to_panel(
-                            plate_img=(plate if (plate is not None and plate.size > 0) else vehicle_img),
-                            plate_text=plate_text,
-                            timestamp=inf.get('time'),
-                            confidence=confidence,
-                            vehicle_img=inf.get('full_frame')
-                        )
-                        print(f"✨ Panel actualizado en tiempo real para: {plate_text}")
-                    except Exception as e:
-                        print(f"⚠️ Error actualizando panel lateral: {e}")
+                    # 2. VALIDACIÓN SIIV: Exactamente 6 caracteres para ser válida
+                    # Si tiene != 6 caracteres, es NIE (No Identificada)
+                    if save_text != "NIE" and len(normalized_plate) != 6:
+                        print(f"⚠️ Placa '{save_text}' tiene {len(normalized_plate)} caracteres (debe ser 6). Clasificando como NIE.")
+                        save_text = "NIE"
+                        actual_infraction['plate'] = "NIE"
+                        actual_infraction['clasificacion'] = 'NIE'
+                        normalized_plate = ""
+                    
+                    inf_id = actual_infraction.get('track_id', 0)
+                    if not hasattr(self, 'detected_infractions'): self.detected_infractions = []
+                    if not hasattr(self, 'infraction_records'): self.infraction_records = []
+                    if not hasattr(self, 'detected_plates_set'): self.detected_plates_set = set()  # Nuevo: set de matrículas
+                    
+                    # 3. Verificar duplicados por TRACK_ID Y por MATRÍCULA
+                    is_duplicate = False
+                    
+                    # 3a. Verificar por track_id
+                    for existing in self.infraction_records:
+                        if existing.get('track_id') == inf_id:
+                            is_duplicate = True
+                            print(f"🔄 Duplicado por track_id: {inf_id}")
+                            break
+                    
+                    # 3b. Verificar por matrícula (variaciones inteligentes)
+                    if not is_duplicate and normalized_plate:
+                        from src.core.processing.plate_processing import SmartPlateCorrector
+                        sc = getattr(self, 'smart_corrector', None) or SmartPlateCorrector()
+                        variations = sc.generate_variations(normalized_plate)
+                        for var in variations:
+                            if var in self.detected_plates_set:
+                                is_duplicate = True
+                                print(f"🔄 Duplicado INTELIGENTE por variación: {var} (Matrícula: {normalized_plate})")
+                                break
+                    
+                    if not is_duplicate:
+                        # Registrar la matrícula en el set (si no es NIE)
+                        if normalized_plate:
+                            self.detected_plates_set.add(normalized_plate)
+                        
+                        # CRÍTICO: Guardar el registro completo
+                        self.detected_infractions.append(actual_infraction)
+                        self.infraction_records.append(actual_infraction)
+                        print(f"📁 Evidencia guardada en data/output: {save_text} (Total: {len(self.detected_infractions)})")
+                        
+                        # OBTENER RAZÓN TÉCNICA (Prioridad: Razón de Phase 2 -> Metadatos -> Clasificación)
+                        razon_tecnica = custom_reason
+                        if not razon_tecnica:
+                            razon_tecnica = actual_infraction.get('metadata_clasificacion', {}).get('razon', '')
+                        
+                        if not razon_tecnica and actual_infraction.get('clasificacion') == 'NIE':
+                             razon_tecnica = "Formato inválido (SIIV)" if len(normalized_plate) != 6 else "Baja confianza"
+                        
+                        try:
+                            # 🎯 PRIORIDAD ABSOLUTA AL RECORTE DE PLACA (Protocolo Abel V18)
+                            # Si no hay un recorte quirúrgico de YOLO, usamos el quirúrgico heurístico (60-95% del alto)
+                            # NUNCA enviamos el vehículo completo para no saturar el panel de 'carros'
+                            if plate is not None and plate.size > 0:
+                                display_thumb = plate
+                            else:
+                                # Fallback Quirúrgico: No usar vehicle_roi completo
+                                display_thumb = self._get_plate_crop(vehicle_img, (0, 0, vehicle_img.shape[1], vehicle_img.shape[0]))
+                                if display_thumb is None or display_thumb.size == 0:
+                                    display_thumb = vehicle_img # Último recurso
                             
-                    print(f"✅ Infracción #{inf['id']} registrada oficialmente: {plate_text}")
+                            # FILTRO V47: Si es NIE y la confianza es < 0.35, DESPEJAR PANEL (Es un faro, rueda o ruido)
+                            if save_text == "NIE" and confidence < 0.35:
+                                print(f"🧹 Descartando ruido de carro/falso positivo NIE (Conf: {confidence:.2f})")
+                            else:
+                                # Telemetría de dimensiones para asegurar recorte quirúrgico
+                                if display_thumb is not None:
+                                    th, tw = display_thumb.shape[:2]
+                                    print(f"🖼️ Enviando miniatura a panel: {tw}x{th}px (Text: {save_text})")
+                                
+                                self.player._safe_add_plate_to_panel(
+                                    plate_img=display_thumb,
+                                    plate_text=save_text,
+                                    timestamp=inf.get('timestamp'),
+                                    confidence=confidence,
+                                    vehicle_img=vehicle_img,
+                                    classification=actual_infraction.get('clasificacion'),
+                                    reason=razon_tecnica,
+                                    track_id=inf.get('track_id')
+                                )
+                        except Exception as e:
+                            print(f"⚠️ Error actualizando panel lateral: {e}")
+                    else:
+                        print(f"⏭️ Saltando duplicado: {save_text}")
+                    
+                    # 3. Añadir a placas globales para el contador de vehículos (solo si es válida)
+                    if save_text != "NIE":
+                        norm_plate = self._normalize_plate(save_text)
+                        if not hasattr(self, 'detected_plates_global'): self.detected_plates_global = set()
+                        self.detected_plates_global.add(norm_plate)
             except Exception as e:
-                print(f"⚠️ Error al registrar infracción oficialmente: {e}")
+                print(f"❌ Error registrando evidencia: {e}")
+
+        # Preparar canvas elegante (AUMENTADO A 800x450 para Phase 2)
+        display = np.zeros((450, 800, 3), dtype=np.uint8)
+        display[:, :] = (20, 20, 20) # Fondo oscuro premium (más profundo)
         
-        # Guardar resultado en el set global para de-duplicación
-        if plate_text and plate_text not in ["No detectada", "No legible", "Error OCR"]:
-            with self.plate_registry_lock:
-                self.detected_plates_global.add(plate_text)
+        # --- LADO IZQUIERDO: VEHÍCULO COMPLETO CON TARGET ---
+        cv2.putText(display, "VEHICULO INFRACTOR", (70, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        if vehicle_img is not None and vehicle_img.size > 0:
+            try:
+                vh, vw = vehicle_img.shape[:2]
+                scale = min(370/vw, 250/vh)
+                new_w, new_h = int(vw*scale), int(vh*scale)
+                v_resized = cv2.resize(vehicle_img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+                x_off = 15 + (370 - new_w) // 2
+                display[80:80+new_h, x_off:x_off+new_w] = v_resized
+                # Borde decorativo
+                cv2.rectangle(display, (x_off, 80), (x_off+new_w, 80+new_h), (80, 80, 80), 1)
+            except: pass
         
-        # Siguiente infracción (delay reducido + actualizar GUI)
+        cv2.putText(display, f"Infraccion #{inf['id']}", (120, 370), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
+        
+        # --- LADO DERECHO: ANÁLISIS OCR (RECORTE QUIRÚRGICO) ---
+        cv2.line(display, (400, 50), (400, 400), (80, 80, 80), 1)
+        cv2.putText(display, "ANALISIS OCR (TARGET)", (480, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        # PANEL DE RECORTE (Donde Abel quiere ver la placa directamente)
+        if plate is not None and plate.size > 0:
+            try:
+                ph, pw = plate.shape[:2]
+                scale = min(300/pw, 120/ph) # Recorte más grande
+                new_pw, new_ph = int(pw*scale), int(ph*scale)
+                p_resized = cv2.resize(plate, (new_pw, new_ph), interpolation=cv2.INTER_LANCZOS4)
+                # Centrado en el panel derecho
+                px_off = 450 + (300 - new_pw) // 2
+                display[90:90+new_ph, px_off:px_off+new_pw] = p_resized
+                # Recuadro VERDE de precisión (Target)
+                cv2.rectangle(display, (px_off-2, 90-2), (px_off+new_pw+2, 90+new_ph+2), (0, 255, 0), 2)
+            except: pass
+        else:
+            cv2.putText(display, "SIN RECORTE - BAJA RES", (480, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)
+
+        # Matrícula reconocida
+        cv2.rectangle(display, (450, 240), (750, 310), (0, 40, 0), -1)
+        cv2.rectangle(display, (450, 240), (750, 310), (0, 255, 0), 2)
+        cv2.putText(display, "TEXTO LPRNET:", (460, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
+        
+        plate_str = plate_text.upper() if plate_text else "---"
+        cv2.putText(display, plate_str, (470, 300), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 4)
+        
+        # Barra de confianza y clasificación
+        conf_pct = int(confidence * 100)
+        conf_color = (0, 255, 0) if confidence >= 0.85 else (0, 165, 255) if confidence >= 0.70 else (0, 0, 255)
+        status_text = "NID - VALIDO" if confidence >= 0.70 else "NIE - REVISAR"
+        
+        cv2.rectangle(display, (450, 330), (750, 350), (40, 40, 40), -1)
+        bw = int(300 * confidence)
+        cv2.rectangle(display, (450, 330), (450 + bw, 350), conf_color, -1)
+        cv2.putText(display, f"Confianza Motor: {conf_pct}%", (450, 370), cv2.FONT_HERSHEY_SIMPLEX, 0.6, conf_color, 1)
+        cv2.putText(display, status_text, (520, 420), cv2.FONT_HERSHEY_SIMPLEX, 1.1, conf_color, 3)
+        
+        # Actualizar Label con nuevo tamaño
+        try:
+            rgb = cv2.cvtColor(display, cv2.COLOR_BGR2RGB)
+            imgtk = ImageTk.PhotoImage(Image.fromarray(rgb))
+            self.video_label.config(image=imgtk)
+            self.video_label.image = imgtk
+        except:
+            pass
+
+        # Siguiente paso
         self._phase2_index += 1
-        self.dialog.update_idletasks()  # Mantener GUI responsiva
-        self.dialog.after(100, self._run_phase2_analysis)  # Reducido de 1000ms a 100ms
+        self._phase2_processing = False
+        
+        # Disparar inmediatamente el siguiente análisis sin esperar al after principal si es posible
+        self.dialog.after(50, self._run_phase2_analysis)
 
     
     def _get_plate_crop(self, frame, bbox):
@@ -2724,10 +3282,40 @@ class PreprocessingDialog:
             
             if x2 <= x1 or y2 <= y1: return None
             
-            # La placa está en el 40% inferior del vehículo (aproximadamente)
-            vh = y2 - y1
-            py1 = y1 + int(vh * 0.6)
-            return frame[py1:y2, x1:x2].copy()
+            # LÓGICA QUIRÚRGICA V20 (Protocolo Abel - Referencia Bumper)
+            vh, vw = y2 - y1, x2 - x1
+            
+            # 🎯 HEURÍSTICA DE ANCLAJE (Pista del modelo de lectura)
+            # Intentamos detectar si es un vehículo pesado (Bus/Truck) o liviano (Car)
+            # por las dimensiones de la ROI del vehículo.
+            aspect_vh = vw / vh if vh > 0 else 1.0
+            
+            if aspect_vh < 0.8: # Vehículo alto (Bus o Camión)
+                # La placa de buses en Perú está casi pegada al piso (80-98%)
+                py1 = y1 + int(vh * 0.78)
+                py2 = y1 + int(vh * 0.98)
+                px1 = x1 + int(vw * 0.25)
+                px2 = x1 + int(vw * 0.75)
+            else:
+                # Vehículo normal (Auto/Camioneta)
+                # Placa en el centro-inferior (65-95%)
+                py1 = y1 + int(vh * 0.65)
+                py2 = y1 + int(vh * 0.95)
+                px1 = x1 + int(vw * 0.20)
+                px2 = x1 + int(vw * 0.80)
+            
+            crop = frame[py1:py2, px1:px2].copy()
+            
+            # --- VALIDADOR MORFOLÓGICO V20 (Exclusión de Ruido) ---
+            # Si el recorte no tiene "energía de placa" (caracteres), no lo enviamos
+            if crop.size > 0:
+                gray_crop = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+                edges = cv2.Sobel(gray_crop, cv2.CV_64F, 1, 0, ksize=3)
+                energy = np.mean(np.abs(edges))
+                if energy < 5.0: # Muy liso para ser placa
+                    return None
+            
+            return crop if crop.size > 0 else None
         except:
             return None
 
@@ -2844,26 +3432,45 @@ class PreprocessingDialog:
             return "Error OCR", 0.0, vehicle_img
 
     def _perform_smart_ocr(self, plate_img):
-        """Lectura de placa usando el motor PaddleOCR del proyecto."""
+        """Lectura de placa con Homografía v6.3 + LPRNet (igual que test_geoloc_surgical_gui.py)."""
         if plate_img is None or plate_img.size == 0:
             return "No detectada", 0.0
         try:
             from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
 
-            
-            # Mejorar imagen antes de OCR
+            # ── PASO 0: Homografía v6.3 (padding → perspectiva) ──
+            use_autocrop = True
+            try:
+                from src.core.processing.plate_processing import rectificar_perspectiva
+                plate_rect = rectificar_perspectiva(plate_img)
+                if plate_rect is not None:
+                    # ── NUEVO: STRIP HEADER ────────────────────────
+                    # Quitar franja PERU después de la homografía (igual que test_geoloc_surgical_gui)
+                    h_rect = plate_rect.shape[0]
+                    cut_y = int(h_rect * 0.25)
+                    plate_img = plate_rect[cut_y:, :]
+                    
+                    use_autocrop = True # Activamos autocrop quirúrgico sobre la imagen ya plana
+                    print(f"📍 SmartOCR: Homografía + Strip Header OK")
+                else:
+                    print("⚠️ SmartOCR: Homografía sin result, usando fallback")
+            except Exception as _he:
+                print(f"⚠️ SmartOCR Error: {_he}")
+
+            # ── PASO 1: Mejora óptica de imagen ──
             enhanced = self._enhance_plate_for_ocr(plate_img)
-            
-            # Reconocer texto (usar motor original)
-            plate_text = recognize_plate(enhanced if enhanced is not None else plate_img)
-            
+            src_img = enhanced if enhanced is not None else plate_img
+
+            # ── PASO 2: OCR — sin autocrop si la homo tuvo éxito ──
+            plate_text = recognize_plate(src_img, autocrop=use_autocrop)
+
             if not plate_text:
                 return "No legible", 0.0
-                
-            # Calcular confianza SIIV (formato ABC-123)
+
+            # ── PASO 3: Validación SIIV (formato ABC-123) ──
             confidence, details = calculate_siiv_confidence(plate_text, 0.70)
             formatted_plate = details.get('formatted_plate', plate_text)
-            
+
             return formatted_plate, confidence
         except Exception as e:
             print(f"❌ Error en _perform_smart_ocr: {e}")
@@ -2896,7 +3503,6 @@ class PreprocessingDialog:
             
         except Exception as e:
             print(f"⚠️ Warmup parcial: {e}")
-    
     def _is_vehicle_in_polygon_simple(self, bbox):
         """
         Verifica si un vehículo está dentro del polígono de detección.
@@ -2994,10 +3600,8 @@ class PreprocessingDialog:
                                 'absolute_frame': abs_f,
                                 'segment_id': segment_id
                             })
-                            # Feedback inmediato: "Procesando..."
-                            plate_crop = self._get_plate_crop(frame, inf['bbox'])
-                            if plate_crop is not None:
-                                self.result_queue.put(("plate_monitor_status", ("Analizando...", plate_crop)))
+                            # Notificación de monitor eliminada
+                            pass
                 
                 # 📺 ACTUALIZAR UI (Ahora 'valid' ya está definido)
                 if processed % 4 == 0:
@@ -3272,72 +3876,59 @@ class PreprocessingDialog:
                     except Exception as anpr_error:
                         print(f"⚠️  Error en ANPR para frame {frame_index}: {anpr_error}")
             
-            # Método 3: OCR alternativo con mejora de imagen
-            if not plate_text or len(plate_text) < 4:
-                try:
-                    from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
-                    
-                    # Usar imagen mejorada si está disponible
-                    if enhance_plate_image is not None:
-                        is_night_scene = getattr(self, 'is_night', False)
-                        enhanced_roi = enhance_plate_image(vehicle_roi, is_night=is_night_scene)
-                        plate_text = recognize_plate(enhanced_roi)
-                        plate_img = enhanced_roi if plate_text else None
-                    else:
-                        plate_text = recognize_plate(vehicle_roi)
-                        plate_img = vehicle_roi if plate_text else None
-                    
-                    # Si se detectó placa, calcular confianza SIIV
-                    if plate_text and len(plate_text) >= 4:
-                        siiv_conf, siiv_details = calculate_siiv_confidence(plate_text, 0.70)
-                        print(f"⚠️ Método 3 (OCR alternativo): '{plate_text}' (conf: {siiv_conf:.2f})")
-                        return plate_text, plate_img, siiv_conf
-                        
-                except ImportError:
-                    pass
+            # 🚀 MÉTODO MASTER: Recorte Quirúrgico + OCR Directo
+            try:
+                from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence, get_lprnet_predictor
+                
+                predictor = get_lprnet_predictor()
+                
+                # REGLA DE ORO: No hacer cirugía sobre todo el carro (se confunde con la parrilla/faros)
+                # Primero aplicamos una "Lupa" a la zona probable (50% inferior, 80% central)
+                vh, vw = vehicle_roi.shape[:2]
+                lupa_roi = vehicle_roi[int(vh*0.5):vh, int(vw*0.1):int(vw*0.9)].copy()
+                
+                # 1. Obtener el recorte quirúrgico (Surgical Fine Crop) sobre la zona limpia
+                exact_crop = predictor.autocrop_plate(lupa_roi)
+                plate_img = exact_crop # Usar siempre el recorte fino como imagen de salida
+                
+                # 2. Reconocer texto (usando la zona de la lupa para máxima atención)
+                plate_text = recognize_plate(lupa_roi)
+                
+                if plate_text and len(plate_text) >= 4:
+                    siiv_conf, _ = calculate_siiv_confidence(plate_text, 0.90)
+                    print(f"🎯 Master Real-Time: '{plate_text}' (conf: {siiv_conf:.2f})")
+                    return plate_text, exact_crop, siiv_conf
+                
+                # Fallback: Si no hay texto pero hay recorte, devolver el recorte con NIE
+                return plate_text or "", exact_crop, 0.0
+                
+            except Exception as master_error:
+                print(f"⚠️ Error en extracción Master: {master_error}")
         
         except Exception as e:
             print(f"❌ Error extrayendo placa del frame {frame_index}: {e}")
         
-        # Si no se detectó placa, devolver valores vacíos con confianza 0.0
+        # Último recurso: devolver lo que tengamos
+        # Fallback de seguridad: Si no se encontró placa, intentar recorte heurístico central-inferior
+        if plate_img is None:
+            h, w = vehicle_roi.shape[:2]
+            # Tomar 40% inferior y 60% central
+            # Fallback de seguridad: 50% inferior y 80% central
+            py1 = int(h * 0.5)
+            px1 = int(w * 0.1)
+            px2 = int(w * 0.9)
+            plate_img = vehicle_roi[py1:h, px1:px2].copy()
+            
         return plate_text or "", plate_img, 0.0
 
     def _create_infraction_record(self, plate_text, plate_img, vehicle_img, frame_index, fps, bbox, track_id, confidence):
         """
         Crea un registro completo de infracción con archivos guardados.
-        
-        Args:
-            plate_text: Texto de la placa
-            plate_img: Imagen de la placa
-            vehicle_img: Imagen del vehículo
-            frame_index: Índice del frame
-            fps: FPS del video
-            bbox: Bounding box del vehículo
-            track_id: ID del track
-            confidence: Confianza de la detección
-            
-        Returns:
-            dict: Registro de infracción completo
         """
-        hardcoded_mappings = {
-            'T3E153': 'T3J-538', 'T3E-153': 'T3J-538',
-            'A9G886': 'A96-8B6', 'A9G-886': 'A96-8B6',
-            'AE6061': 'A3K-961', 'AE-6061': 'A3K-961',
-            'T8B147': 'APH-188', 'T8B-147': 'APH-188',
-            'A96886': 'A96-8B6', 'A-96886': 'A96-8B6', 'A96-886': 'A96-8B6',
-            'THI642': 'H1G-421', 'THI-642': 'H1G-421',
-            'L4A326': 'T4A-376', 'L4A-326': 'T4A-376',
-            'T1R538': 'T3J-538', 'T1R-538': 'T3J-538',
-            'T5T601': 'T6D-138', 'T5T-601': 'T6D-138',
-            'TFI621': 'H1G-621', 'TFI-621': 'H1G-621',
-            'T5A349': 'A3K-961', 'T5A-349': 'A3K-961',
-            'EAV619': 'AV6-190', 'EAV-619': 'AV6-190',
-        }
-        plate_text_clean = plate_text.replace('-', '').replace(' ', '').upper()
-        if plate_text_clean in hardcoded_mappings:
-            plate_text = hardcoded_mappings[plate_text_clean]
+        # ELIMINADOS MAPEOS HARDCODED (TY5-K02, etc.) PARA EVITAR INCOHERENCIAS
+        # Ahora confiamos al 100% en el modelo LPRNet Master y el Consenso Ponderado.
         
-        print(f"🔍 DEBUG _create_infraction_record: Recibida confianza: {confidence:.2f}")
+        print(f"🔍 Registro Infracción #{track_id}: Placa {plate_text} (Conf: {confidence:.2f})")
         
         # Crear directorios
         plates_dir = resource_path("data/output/placas")
@@ -3345,14 +3936,13 @@ class PreprocessingDialog:
         os.makedirs(plates_dir, exist_ok=True)
         os.makedirs(vehicles_dir, exist_ok=True)
         
-        # Aplicar mejora de imagen si está disponible
-        enhanced_plate = plate_img
-        try:
-            from src.core.processing.resolution_process import enhance_plate_image
-            if plate_img is not None:
-                enhanced_plate = enhance_plate_image(plate_img, is_night=self.is_night)
-        except ImportError:
-            enhanced_plate = plate_img if plate_img is not None else vehicle_img
+        # GUARDADO MASTER: Protocolo Abel V18 (Siempre recorte de placa)
+        if plate_img is not None and plate_img.size > 0:
+            enhanced_plate = plate_img
+        else:
+            # Fallback Quirúrgico para el reporte final
+            fallback_crop = self._get_plate_crop(vehicle_img, (0, 0, vehicle_img.shape[1], vehicle_img.shape[0]))
+            enhanced_plate = fallback_crop if (fallback_crop is not None and fallback_crop.size > 0) else vehicle_img
         
         # Guardar archivos con nombres únicos
         timestamp = int(frame_index)
@@ -3883,9 +4473,12 @@ class PreprocessingDialog:
             p1_norm = p1.replace('-', '').replace(' ', '').upper()
             p2_norm = p2.replace('-', '').replace(' ', '').upper()
             
-            # 1. VERIFICACIÓN DE IGUALDAD EXACTA
-            if p1_norm == p2_norm:
+            # 1. VERIFICACIÓN DE IGUALDA EXACTA (Excepto para NIE)
+            if p1_norm == p2_norm and p1_norm != "NIE":
                 text_similarity = 1.0
+            elif p1_norm == "NIE" and p2_norm == "NIE":
+                # Si ambas son NIE, no dar similitud por texto para evitar que todos los NIE sean el mismoauto
+                text_similarity = 0.0
             else:
                 # 2. VERIFICACIÓN DE PATRONES NUMÉRICOS
                 num_pattern1 = extract_numeric_pattern(p1_norm)
@@ -4349,9 +4942,11 @@ class PreprocessingDialog:
             # NUEVO: Filtrar primero las placas inválidas por longitud
             filtered_infractions = []
             for infraction in self.detected_infractions:
-                plate_text = infraction.get('plate', '')
+                if not isinstance(infraction, dict): 
+                    continue
+                plate_text = infraction.get('plate', 'NIE')
                 # Verificar longitud válida (máximo 8 caracteres sin contar guiones)
-                if plate_text and len(plate_text.replace('-', '')) <= 8:
+                if plate_text == 'NIE' or (plate_text and len(plate_text.replace('-', '')) <= 8):
                     filtered_infractions.append(infraction)
                 else:
                     print(f"Descartando placa inválida por longitud: {plate_text}")
@@ -4490,7 +5085,9 @@ class PreprocessingDialog:
                                 print(f"⚠️ Error mostrando análisis inteligente: {e}")
             else:
                 # Hay detecciones: mostrar ventana de éxito y reproducir sonido
-                self._show_success_detection_popup(len(self.detected_infractions))
+                # CORREGIDO: Usar el número final de vehículos únicos (unique_vehicle_infractions)
+                total_real = len(unique_vehicle_infractions) if 'unique_vehicle_infractions' in locals() else len(self.detected_infractions)
+                self._show_success_detection_popup(total_real)
                 self._play_success_sound()
             print(f"Procesamiento completado: {len(self.detected_infractions)} vehículos infractores ({guardadas} imágenes guardadas)")
             
@@ -4597,8 +5194,8 @@ class PreprocessingDialog:
             # Determinar número óptimo de clusters (entre 1 y n)
             max_clusters = min(len(infractions), 10)  # Máximo 10 clusters
             
-            # Distancia de corte para conseguir entre 1 y max_clusters
-            clusters = fcluster(Z, t=0.7*max(Z[:,2]), criterion='distance')
+            # Determinar clusters (t=0.35 es más conservador que 0.7 para evitar unir autos distintos)
+            clusters = fcluster(Z, t=0.35*max(Z[:,2]), criterion='distance')
         except Exception as e:
             print(f"Error en clustering jerárquico: {e}")
             
@@ -5594,6 +6191,11 @@ class PreprocessingDialog:
             if not hasattr(self.player, "registration_times"):
                 self.player.registration_times = []
 
+            # SINCRONIZACIÓN FINAL: Limpiar el panel antes de redibujar los resultados finales deduplicados
+            # Esto evita duplicados visuales y asegura que las métricas finales sean exactas
+            print("🧹 Limpiando panel lateral para reconstrucción final (Deduplicación activa)...")
+            self.player.clear_detected_plates()
+            
             # PASO 2: Mostrar cada detección en el panel lateral
             for inf in deduped:
                 if not all(k in inf and inf[k] is not None for k in ("plate_img", "plate", "vehicle_img")):
@@ -5623,40 +6225,22 @@ class PreprocessingDialog:
                 hist[plate] = entry
                 self.player.plate_detection_history = hist
 
-                # Clasificar placa para determinar tratamiento
-                classification, quality_score, _ = self.player.classify_detection_quality(plate)
+                # Clasificar placa para evaluar calidad
+                classification, _, _ = self.player.classify_detection_quality(plate, 
+                                                                            detection_confidence=inf.get('confidence', 0.8))
                 
-                # SINCRONIZACIÓN: Usar la misma lógica que el card para confianza
-                # Si confidence está presente en inf, usarla, sino usar quality_score
-                if 'confidence' in inf:
-                    # CRÍTICO: Clampear confianza como hace PlateCard
-                    raw_confidence = inf['confidence']
-                    clamped_confidence = max(0.0, min(1.0, raw_confidence))  # Clamp [0,1]
-                    
-                    # Recomputar quality_score usando la confianza corregida
-                    classification, card_confidence, _ = self.player.classify_detection_quality(
-                        plate, detection_confidence=clamped_confidence
-                    )
-                    # El card usará esta confidence clampada
-                    real_confidence = clamped_confidence  
-                else:
-                    # Usar quality_score calculado
-                    real_confidence = quality_score
-                    card_confidence = quality_score
-                
-                # CREAR CARD SIMPLIFICADA
-                print(f"📋 Creando card para: {plate}")
+                # RECONSTRUCCIÓN VISUAL QUIRÚRGICA: Redibujar cards en el orden final deduplicado
                 try:
                     self.player._safe_add_plate_to_panel(
                         inf["plate_img"],
                         plate,
                         inf.get("time"),
-                        confidence=real_confidence,
-                        vehicle_img=inf.get("vehicle_img")
+                        confidence=inf.get('confidence', 0.75),
+                        vehicle_img=inf.get("vehicle_img"),
+                        track_id=inf.get('track_id')
                     )
-                    print(f"✅ Card creada para: {plate}")
                 except Exception as e:
-                    print(f"❌ Error creando card: {e}")
+                    print(f"❌ Error reconstruyendo card final: {e}")
                 
                 # SOLO agregar NID a gestión de infracciones (archivo JSON)
                 if classification == "NID":
@@ -5811,9 +6395,16 @@ class PreprocessingDialog:
                 avg_proc = (sum(self.player.registration_times) /
                             len(self.player.registration_times)
                             if self.player.registration_times else 0.0)
+                
+                # Sincronización de NID / NIE en los indicadores de rendimiento del dashboard
+                nid_final = len(nid_infractions)
+                nie_final = len(nie_infractions)
+                
                 self.player.performance_indicators = {
                     "TI": len(deduped),
                     "TR": avg_proc,
+                    "NID": nid_final,
+                    "NIE": nie_final,
                     "IR": 0.0
                 }
                 if hasattr(self.player, "_update_metrics_panel"):
@@ -6109,6 +6700,7 @@ class PreprocessingDialog:
             classification, quality_score, _ = self.player.classify_detection_quality(plate)
             
             if 'confidence' in inf:
+                # Asegurar que la confianza esté en el rango válido [0.0, 1.0]
                 raw_confidence = inf['confidence']
                 clamped_confidence = max(0.0, min(1.0, raw_confidence))
                 classification, card_confidence, _ = self.player.classify_detection_quality(
@@ -6817,11 +7409,13 @@ class PlateClassificationSystem:
         self.min_plate_length = 5               # Mínimo válido SIIV (A1-234 = 5)
         self.max_plate_length = 8               # Máximo válido SIIV (ABC-1234 = 8)
         
-        # Patrones de placas peruanas válidas SIIV 2010
+        # Patrones de placas peruanas válidas SIIV 2010 + Regionales (Trujillo)
         self.valid_patterns = [
-            r'^[A-Z]{3}-?\d{3}$',        # ABC-123 o ABC123 (formato principal)
-            r'^[A-Z]{2}\d-?\d{3}$',      # AB1-234 o AB1234 (vehículos menores)
-            r'^\d{3}-?[A-Z]{3}$',        # 123-ABC (formato inverso)
+            r'^[A-Z]{3}-?\d{3}$',        # ABC-123 (Particular Nacional)
+            r'^[A-Z]\d[A-Z]-?\d{3}$',    # T1A-123 (Particular Regional/Trujillo)
+            r'^[A-Z]{2}\d-?\d{3}$',      # AB1-234 (Vehículos Menores)
+            r'^[A-Z]\d{2}-?\d{3}$',      # T42-123 (Público antiguo / Camionetas)
+            r'^\d{3}-?[A-Z]{3}$',        # 123-ABC (Formato inverso)
         ]
         
     def classify_detection(self, plate_text, confidence, frame_validations=None):
@@ -6959,8 +7553,11 @@ class PlateClassificationSystem:
         
         # 🇵🇪 PATRONES DE PLACAS PERUANAS (FORMATO OFICIAL CORRECTO)
         peruvian_patterns = {
-            'peru_official': r'^[A-Z]{3}-\d{3}$',          # ABC-123 - FORMATO OFICIAL PERUANO
-            'peru_no_dash': r'^[A-Z]{3}\d{3}$',            # ABC123 - Sin guión (a veces OCR pierde el guión)
+            'peru_particular': r'^[A-Z]{3}-?\d{3}$',       # ABC-123
+            'peru_regional': r'^[A-Z]\d[A-Z]-?\d{3}$',     # T1A-123
+            'peru_menor': r'^[A-Z]{2}\d-?\d{3}$',          # AB1-234
+            'peru_publico_antiguo': r'^[A-Z]\d{2}-?\d{3}$', # T42-499 (El que Abel reportó)
+            'peru_especial': r'^[A-Z]{1}\d{5}$',           # A-12345 (Legacy)
         }
         
         # 🌎 PATRONES DE PLACAS EXTRANJERAS (TODO LO QUE NO SEA PERUANO)
@@ -7110,11 +7707,11 @@ class PlateClassificationSystem:
             required_confidence_threshold = 0.60  # Muy permisivo
             max_problematic_ratio = 0.8  # Hasta 80% puede ser problemático
         else:
-            # 🇵🇪 PLACAS PERUANAS: Validación estricta
-            penalty_factor = 1 - (problematic_count / total_chars * 0.3) if problematic_count > 0 else 1.0
+            # 🇵🇪 PLACAS PERUANAS: Validación equilibrada (MTC Estándar)
+            penalty_factor = 1 - (problematic_count / total_chars * 0.2) if problematic_count > 0 else 1.0
             estimated_char_confidence = confidence * penalty_factor
-            required_confidence_threshold = 0.85  # Estricto
-            max_problematic_ratio = 0.5   # Máximo 50% problemático
+            required_confidence_threshold = 0.70  # Sincronizado con el umbral técnico oficial
+            max_problematic_ratio = 0.6   # Máximo 60% problemático
             
         # 6. Aplicar umbral según tipo de placa
         if problematic_count >= total_chars * max_problematic_ratio:

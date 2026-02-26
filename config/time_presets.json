@@ -34,5 +34,11 @@
     "yellow": 3,
     "red": 15,
     "time_slot": "07:00 - 19:00"
+  },
+  "VID2COLISEO.MOV": {
+    "green": 15,
+    "yellow": 3,
+    "red": 20,
+    "time_slot": "07:00 - 08:00"
   }
 }

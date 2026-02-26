@@ -9,8 +9,6 @@ scikit-learn==1.4.2
 # === COMPUTER VISION ===
 opencv-python==4.9.0.80
 pillow==9.3.0
-paddlepaddle
-paddleocr
 shapely
 pyclipper
 pytesseract==0.3.10

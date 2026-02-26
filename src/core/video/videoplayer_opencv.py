@@ -1821,14 +1821,12 @@ class VideoPlayerOpenCV:
                         if best_plate_crop is not None and confidence > 0.3:
                             # 🔍 SUPER-RESOLUCIÓN MEJORADA para placas de baja calidad
                             enhanced_plate = best_plate_crop
-                            if confidence < 0.6:  # Baja confianza = posible borrosidad
-                                try:
-                                    # Aplicar super-resolución mejorada con múltiples técnicas
-                                    enhanced_plate = self._apply_super_resolution(best_plate_crop, is_night)
-                                    print(f"🔍 Super-resolución mejorada aplicada (confianza: {confidence:.3f})")
-                                except Exception as e:
-                                    print(f"⚠️ Super-resolución falló: {e}")
-                                    enhanced_plate = best_plate_crop  # Usar original
+                            # 🔍 MODO DIRECTO MASTER: No aplicar super-resolución destructiva
+                            # LPRNet prefiere la imagen natural para extraer características CNN
+                            enhanced_plate = best_plate_crop
+                            # Solo redimensionamos si la imagen es excesivamente pequeña, pero sin filtros
+                            if best_plate_crop.shape[0] < 30:
+                                enhanced_plate = cv2.resize(best_plate_crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
                             
                             # 🔤 EXTRAER TEXTO DE LA PLACA CON OCR
                             plate_text = ""
@@ -2014,14 +2012,16 @@ class VideoPlayerOpenCV:
         MAX_CARD_H = 140
         
         def __init__(self, parent, plate_text, classification, timestamp, confidence, 
-                     razon_text, vehicle_img=None, plate_img=None):
+                     razon_text, vehicle_img=None, plate_img=None, track_id=None):
             self.parent = parent
             self.plate_text = plate_text
             self.classification = classification
             self.timestamp = timestamp
             self.confidence = confidence
             self.razon_text = razon_text
-            # Fix numpy array issue - cannot use 'or' with numpy arrays
+            self.track_id = track_id
+            # Guardar ambas imágenes por separado para priorizar plate_img en visualización
+            self.plate_img = plate_img
             self.vehicle_img = vehicle_img if vehicle_img is not None else plate_img
             
             self.create_card()
@@ -2158,14 +2158,15 @@ class VideoPlayerOpenCV:
         def create_text_content(self):
             """Crea el contenido de texto con valores dinámicos calculados"""            
             # 1. Título de placa (texto adaptativo según espacio)
+            id_prefix = f"[#{self.track_id}] " if self.track_id is not None else ""
             if self.panel_size in ['xs', 'small']:
-                plate_text = self.plate_text  # Solo la placa, sin "Placa:"
+                display_text = f"{id_prefix}N.I.E." if self.plate_text == "NIE" else f"{id_prefix}{self.plate_text}"
             else:
-                plate_text = f"Placa: {self.plate_text}"  # Texto completo
+                display_text = f"{id_prefix}SIN IDENTIFICAR" if self.plate_text == "NIE" else f"{id_prefix}Placa: {self.plate_text}"
             
             self.plate_label = tk.Label(
                 self.text_frame,
-                text=plate_text,
+                text=display_text,
                 font=("Segoe UI", self.font_title, "bold"),
                 bg=self.text_frame['bg'],
                 fg="#2c3e50",
@@ -2179,11 +2180,10 @@ class VideoPlayerOpenCV:
             symbol = "✅" if self.classification == "NID" else "❌"
             
             if self.panel_size in ['xs']:
-                status_text = symbol  # Solo emoji en espacios muy pequeños
-            elif self.panel_size in ['small']:
-                status_text = f"{symbol} {self.classification}"  # Emoji + tipo
+                status_text = symbol
             else:
-                status_text = f"{symbol} {self.classification}"  # Versión completa
+                status_nick = "VALIDO" if self.classification == "NID" else "NO IDENTIFICADO"
+                status_text = f"{symbol} {status_nick}"
                 
             status_color = "#27ae60" if self.classification == "NID" else "#e74c3c"
             
@@ -2226,8 +2226,10 @@ class VideoPlayerOpenCV:
             )
             self.tr_label.pack(fill="x", pady=0)
             
-            # 4. Confianza - Progresivamente compacta
+            # 4. Precisión OCR % (TESIS MASTER)
             validated_conf = max(0.0, min(1.0, self.confidence))
+            accuracy_pct = validated_conf * 100
+            
             if validated_conf >= 0.85:
                 conf_color = "#27ae60"  # Verde
             elif validated_conf >= 0.70:
@@ -2235,18 +2237,18 @@ class VideoPlayerOpenCV:
             else:
                 conf_color = "#e74c3c"  # Rojo
             
-            # Formato progresivo
+            # Formato responsivo
             if self.panel_size in ['xs']:
-                conf_text = f"{validated_conf:.2f}"  # Solo valor
+                conf_text = f"{accuracy_pct:.0f}%"  
             elif self.panel_size in ['small']:
-                conf_text = f"Conf: {validated_conf:.2f}"  # Abreviado
+                conf_text = f"Acc: {accuracy_pct:.1f}%"
             else:
-                conf_text = f"{self.classification} - Conf: {validated_conf:.2f}"  # Completo
+                conf_text = f"Precisión OCR: {accuracy_pct:.1f}%"
             
             self.conf_label = tk.Label(
                 self.text_frame,
                 text=conf_text,
-                font=("Segoe UI", self.font_normal),
+                font=("Segoe UI", self.font_normal, "bold"),
                 bg=self.text_frame['bg'],
                 fg=conf_color,
                 anchor="w",
@@ -2254,47 +2256,25 @@ class VideoPlayerOpenCV:
                 wraplength=self.wraplength
             )
             self.conf_label.pack(fill="x", pady=0)
-            
-            # 5. Razón - 🎯 MULTILÍNEA INTELIGENTE 
-            # Cálculo progresivo de caracteres máximos según tamaño del panel
-            if self.panel_size in ['xs']:
-                max_chars = 0  # No mostrar razón en pantallas muy pequeñas
-                max_lines = 0
-            elif self.panel_size in ['small']:
-                max_chars = 50  # Línea única corta
-                max_lines = 1
-            elif self.panel_size in ['medium']:
-                max_chars = 80  # Hasta 2 líneas
-                max_lines = 2  
-            elif self.panel_size in ['large']:
-                max_chars = 120  # Hasta 3 líneas
-                max_lines = 3
-            else:  # xl
-                max_chars = 160  # Hasta 4 líneas
-                max_lines = 4
-            
-            reason_color = "#2ecc71" if self.classification == "NID" else "#c0392b"
-            
-            # Mostrar razón solo si hay espacio suficiente
-            if max_chars > 0 and self.razon_text and self.razon_text.strip():
-                # Usar truncamiento inteligente para multilíneas
-                truncated_reason = self.truncate_reason_multiline(self.razon_text, self.wraplength, max_chars, max_lines)
+
+            # 5. Razón Técnica (TESIS MASTER)
+            if self.razon_text and self.razon_text.strip():
+                reason_color = "#95a5a6" if self.classification == "NID" else "#c0392b"
                 
                 self.reason_label = tk.Label(
                     self.text_frame,
-                    text=truncated_reason,
+                    text=self.razon_text,
                     font=("Segoe UI", self.font_small, "italic"),
                     bg=self.text_frame['bg'],
                     fg=reason_color,
-                    anchor="nw",
+                    anchor="w",
                     justify="left",
                     wraplength=self.wraplength
                 )
-                self.reason_label.pack(fill="x", pady=(1, 0))
+                self.reason_label.pack(fill="x", pady=(2, 0))
             else:
-                # En espacios muy reducidos, omitir la razón
                 self.reason_label = None
-            
+        
             # Lista para actualizar wraplength (incluyendo reason_label solo si existe)
             self.text_labels = [self.plate_label, self.status_label, self.tr_label, self.conf_label]
             if hasattr(self, 'reason_label') and self.reason_label is not None:
@@ -2302,15 +2282,36 @@ class VideoPlayerOpenCV:
         
         def create_image_content(self):
             """Crea el contenido de imagen con degradado automático"""
-            if self.vehicle_img is not None:
+            # PRIORIDAD: Usar plate_img (recorte de placa) sobre vehicle_img
+            display_img = None
+            
+            # 1. Intentar usar el recorte de placa primero
+            if hasattr(self, 'plate_img') and self.plate_img is not None:
                 try:
-                    h, w = self.vehicle_img.shape[:2]
+                    if self.plate_img.size > 0:
+                        display_img = self.plate_img
+                        print(f"🎯 Panel: Usando recorte de placa para {self.plate_text}")
+                except:
+                    pass
+            
+            # 2. Fallback a vehicle_img si no hay recorte válido
+            if display_img is None and self.vehicle_img is not None:
+                try:
+                    if self.vehicle_img.size > 0:
+                        display_img = self.vehicle_img
+                        print(f"📸 Panel: Usando imagen de vehículo para {self.plate_text}")
+                except:
+                    pass
+            
+            if display_img is not None:
+                try:
+                    h, w = display_img.shape[:2]
                     
                     # Calcular tamaño manteniendo aspect ratio
                     img_w, img_h = self.calculate_image_size(w, h)
                     
                     # Redimensionar imagen
-                    resized = cv2.resize(self.vehicle_img, (img_w, img_h))
+                    resized = cv2.resize(display_img, (img_w, img_h))
                     rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
                     img_pil = Image.fromarray(rgb)
                     self.img_tk = ImageTk.PhotoImage(image=img_pil)
@@ -2557,7 +2558,8 @@ class VideoPlayerOpenCV:
                 # Silent fail para evitar errores durante redimensionado
                 pass
 
-    def _safe_add_plate_to_panel(self, plate_img, plate_text, timestamp=None, confidence=None, vehicle_img=None):
+    def _safe_add_plate_to_panel(self, plate_img, plate_text, timestamp=None, confidence=None, 
+                                 vehicle_img=None, classification=None, reason=None, track_id=None):
         """
         Añade una placa detectada al panel lateral usando PlateCard compacto.
         """
@@ -2614,17 +2616,21 @@ class VideoPlayerOpenCV:
                 # Si falla, asumimos valor por defecto
                 pass
         
-        # Importar la función para mejorar las imágenes de placas
+        # ✂️ GUARDADO QUIRÚRGICO MASTER
         try:
-            from src.core.processing.resolution_process import enhance_plate_image
+            from src.core.ocr.recognizer import get_lprnet_predictor
+            predictor = get_lprnet_predictor()
             
-            # Aplicar super-resolución y guardar la placa si no existe
+            # Obtener el recorte exacto (Fine Crop) para la evidencia guardada
+            # plate_img es el recorte del vehículo/YOLO
+            exact_crop = predictor.autocrop_plate(plate_img)
+            
+            # Guardar la placa quirúrgica si no existe
             if not os.path.exists(plate_path):
-                # Mejorar la placa con super-resolución
-                enhanced_plate = enhance_plate_image(plate_img, is_night, plate_path)
+                cv2.imwrite(plate_path, exact_crop)
+                print(f"📸 Guardado Recorte Quirúrgico: {plate_path}")
         except Exception as e:
-            print(f"Error al mejorar la placa con super-resolución: {e}")
-            # En caso de error, intentar guardar la placa original
+            print(f"Error al generar/guardar recorte quirúrgico: {e}")
             if not os.path.exists(plate_path):
                 cv2.imwrite(plate_path, plate_img)
         
@@ -2651,11 +2657,12 @@ class VideoPlayerOpenCV:
         # Función para ejecutar en el hilo principal de Tkinter
         def _add():
             try:
-                # IMPORTANTE: Verificar duplicados en el panel
-                for widget in self.detected_plates_widgets:
-                    if isinstance(widget, dict) and widget.get("plate_text") == plate_text:
-                        print(f"Placa {plate_text} ya existe en el panel - no duplicando")
-                        return
+                # IMPORTANTE: Verificar duplicados en el panel (Excepto para NIE)
+                if plate_text != "NIE":
+                    for widget in self.detected_plates_widgets:
+                        if isinstance(widget, dict) and widget.get("plate_text") == plate_text:
+                            print(f"Placa {plate_text} ya existe en el panel - no duplicando")
+                            return
                 
                 # CRÍTICO: Verificar que el panel interno existe
                 if not hasattr(self, "plates_inner_frame") or self.plates_inner_frame is None:
@@ -2683,19 +2690,30 @@ class VideoPlayerOpenCV:
                 
                 print(f"🎯 CLASIFICACIÓN: '{plate_text}' → {classification} (confianza real: {quality_score:.2f})")
                 
-                # Preparar razón de clasificación en lenguaje natural
-                razon_text = classification_metadata.get('razon', 'Sin especificar')
-                if classification == "NIE":
-                    if razon_text == 'confianza_baja':
-                        razon_natural = "📋 Razón: Confianza de detección muy baja - requiere validación manual adicional"
-                    elif razon_text == 'formato_invalido':
-                        razon_natural = "📋 Razón: Formato de placa incorrecto detectado por el sistema de análisis"
-                    elif razon_text == 'sin_consenso':
-                        razon_natural = "📋 Razón: Múltiples lecturas inconsistentes entre diferentes algoritmos de reconocimiento"
-                    else:
-                        razon_natural = f"📋 Razón: {razon_text}"
+                # Preparar razón amigable (Protocolo Abel V15)
+                if reason:
+                    razon_natural = reason
                 else:
-                    razon_natural = "📋 Razón: Placa válida detectada correctamente por el sistema de reconocimiento óptico"
+                    # Usar el diagnóstico del metadato si existe, o generar uno amigable
+                    razon_text = classification_metadata.get('razon', '')
+                    if classification == "NIE":
+                        if plate_text == "NIE" or quality_score < 0.25:
+                            razon_natural = "❌ Objeto no identificado como placa"
+                        elif razon_text == 'confianza_baja' or quality_score < 0.35:
+                            razon_natural = "❌ Imagen ilegible (Mucho brillo/ruido)"
+                        elif quality_score < 0.70:
+                            razon_natural = "❌ Imagen muy borrosa para identificación"
+                        elif len(plate_text.replace('-','')) != 6:
+                            razon_natural = "❌ Formato incompleto (Faltan caracteres)"
+                        else:
+                            razon_natural = "❌ Formato SIIV no reconocido"
+                    elif classification == "NID":
+                        if quality_score >= 0.85:
+                            razon_natural = "✅ Placa leída correctamente"
+                        else:
+                            razon_natural = "⚠️ Letras poco claras (Duda razonable)"
+                    else:
+                        razon_natural = "🔍 Revisión manual del sistema necesaria"
                 
                 # === CREAR CARD COMPACTO USANDO CLASE PLATECARD ===
                 card = self.PlateCard(
@@ -2706,7 +2724,8 @@ class VideoPlayerOpenCV:
                     confidence=quality_score,
                     razon_text=razon_natural,
                     vehicle_img=vehicle_img,  # Usar vehicle_img del parámetro
-                    plate_img=plate_img
+                    plate_img=plate_img,
+                    track_id=track_id
                 )
                 
                 print(f"✅ CARD CREADA: Placa {plate_text} con clasificación {classification}")
@@ -4945,36 +4964,16 @@ class VideoPlayerOpenCV:
             else:
                 denoised = cv2.fastNlMeansDenoisingColored(upscaled, None, 6, 6, 7, 21)
             
-            # 3. SHARPENING para mayor nitidez en caracteres
-            kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-            sharpened = cv2.filter2D(denoised, -1, kernel)
-            
-            # 4. MEJORA DE CONTRASTE usando CLAHE
-            lab = cv2.cvtColor(sharpened, cv2.COLOR_BGR2LAB)
+            # 3. CLAHE para balance de luz (sin sharpening destructivo)
+            lab = cv2.cvtColor(upscaled, cv2.COLOR_BGR2LAB)
             l, a, b = cv2.split(lab)
-            
-            # CLAHE para mejorar contraste local
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
             l = clahe.apply(l)
+            merged = cv2.merge([l, a, b])
+            final_image = cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
             
-            enhanced = cv2.merge([l, a, b])
-            final_image = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
-            
-            # 5. CENTRAR la placa si era muy pequeña originalmente
-            if w < 100 or h < 30:  # Si la placa original era muy pequeña
-                # Crear un canvas más grande y centrar la placa
-                canvas_w, canvas_h = max(200, new_w), max(60, new_h)
-                canvas = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
-                canvas.fill(128)  # Fondo gris neutro
-                
-                # Centrar la imagen mejorada
-                start_x = (canvas_w - new_w) // 2
-                start_y = (canvas_h - new_h) // 2
-                canvas[start_y:start_y+new_h, start_x:start_x+new_w] = final_image
-                
-                print(f"🎯 Placa centrada: {w}x{h} → {canvas_w}x{canvas_h}")
-                return canvas
-            
+            # 5. RETORNAR IMAGEN MEJORADA SIN LIENZO GRIS
+            # El motor LPRNet prefiere el recorte limpio sin rellenos artificiales que confundan el stretching
             print(f"🔍 Super-resolución: {w}x{h} → {new_w}x{new_h}")
             return final_image
             

@@ -12,16 +12,16 @@ import time
 from src.gui.app_manager import AppManager
 from src.path_helper import resource_path  # <-- usamos el helper
 
-# Precarga de PaddleOCR en background
-def preload_paddle_ocr():
-    """Precarga PaddleOCR en background para inicio más rápido"""
+# Precarga de LPRNet en background
+def preload_lprnet_engine():
+    """Precarga LPRNet en background para inicio más rápido"""
     try:
-        print("⚡ Precargando PaddleOCR en background...")
-        from src.core.ocr.recognizer import get_reader
-        get_reader()  # Esto inicializa PaddleOCR
-        print("✅ PaddleOCR precargado exitosamente")
+        print("⚡ Precargando LPRNet Master Engine en background...")
+        from src.core.ocr.recognizer import get_lprnet_predictor
+        get_lprnet_predictor()  # Esto inicializa el motor LPRNet y carga pesos
+        print("✅ LPRNet Master Engine precargado exitosamente")
     except Exception as e:
-        print(f"⚠️ Error precargando PaddleOCR: {e}")
+        print(f"⚠️ Error precargando LPRNet: {e}")
 
 def get_config_path() -> str:
     """
@@ -85,9 +85,9 @@ def main():
     except Exception:
         pass
 
-    # Iniciar precarga de PaddleOCR en background
-    paddle_thread = threading.Thread(target=preload_paddle_ocr, daemon=True)
-    paddle_thread.start()
+    # Iniciar precarga de LPRNet en background
+    lpr_thread = threading.Thread(target=preload_lprnet_engine, daemon=True)
+    lpr_thread.start()
     
     # Instanciar gestor de la app
     app = AppManager(root, user_id=user_id, device_id=device_id)

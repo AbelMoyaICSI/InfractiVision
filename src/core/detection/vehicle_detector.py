@@ -9,9 +9,16 @@ class VehicleDetector:
         # Cargar modelo con configuración optimizada
         self.model = YOLO(model_path)
         
-        # Dispositivo óptimo (GPU/CPU)
+        # Dispositivo óptimo (GPU/CPU) con MODO TURBO (FP16)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.using_gpu = torch.cuda.is_available()
+        # FP16 (Half Precision) - Dobla la velocidad en GPUs modernas, igual que en cámaras ANPR
+        self.half = self.using_gpu 
+        
+        if self.using_gpu:
+            self.model.to(self.device)
+            if self.half:
+                self.model.half() # Convertir a FP16 para velocidad máxima
         
         # MEJORA: Detección avanzada de hardware y configuración ultra-adaptativa
         self.hardware_info = self._detect_hardware_capabilities()
@@ -178,6 +185,11 @@ class VehicleDetector:
         import time
         start_time = time.time()
         
+        # 🎯 SOLO VEHÍCULOS (COCO Dataset IDs): 
+        # 2: car, 5: bus, 7: truck
+        # OMITIMOS: 0: person, 3: motorcycle (según pedido del usuario)
+        valid_classes = [2, 5, 7]
+        
         # MEJORA: Configuración adaptativa automática
         if conf is None:
             # Calcular brillo promedio de la imagen
@@ -199,35 +211,28 @@ class VehicleDetector:
         # 2. Procesar en tamaño adaptativo según hardware
         orig_shape = image_bgr.shape
         
-        # 🔧 OPTIMIZACIÓN: Usar imgsz directamente en predict() para que YOLO ajuste internamente
+        # 🔧 OPTIMIZACIÓN: Usar imgsz y classes directamente en predict()
         results = self.model.predict(
             image_bgr, 
             conf=conf, 
             verbose=False, 
             max_det=self.max_det,
-            imgsz=self.imgsz,  # 🎯 CRÍTICO: Pasar el tamaño optimizado para CPU/GPU
-            device=self.device  # 🎯 Especificar dispositivo explícitamente
+            imgsz=self.imgsz,
+            device=self.device,
+            classes=valid_classes  # 🚀 FILTRO AGRESIVO: Solo carros, buses y camiones
         )
-        scale_factor = (1.0, 1.0)  # YOLO ya redimensiona internamente
         
-        # 3. Extraer detecciones - MANTENER FORMATO DE 5 VALORES
+        # 3. Extraer detecciones
         detections = []
         for r in results:
             boxes = r.boxes
             for box in boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
-                
-                # Escalar coordenadas al tamaño original
-                if scale_factor != (1.0, 1.0):
-                    x1, x2 = int(x1 * scale_factor[0]), int(x2 * scale_factor[0])
-                    y1, y2 = int(y1 * scale_factor[1]), int(y2 * scale_factor[1])
-                
                 cls_id = int(box.cls[0])
                 conf_val = float(box.conf[0])
                 
-                # IMPORTANTE: Solo guardar 5 valores (sin la confianza)
-                # Usar la confianza internamente para filtrar pero no devolverla
-                if conf_val >= conf:
+                # Doble verificación por seguridad
+                if conf_val >= conf and cls_id in valid_classes:
                     detections.append((x1, y1, x2, y2, cls_id))
         
         # 4. Guardar en caché
@@ -238,11 +243,9 @@ class VehicleDetector:
         self.detection_stats['total_detections'] += len(detections)
         self.detection_stats['processing_times'].append(processing_time)
         
-        # Mantener solo las últimas 100 mediciones para calcular promedio
         if len(self.detection_stats['processing_times']) > 100:
             self.detection_stats['processing_times'] = self.detection_stats['processing_times'][-100:]
         
-        # Calcular FPS promedio
         if self.detection_stats['processing_times']:
             avg_time = sum(self.detection_stats['processing_times']) / len(self.detection_stats['processing_times'])
             self.detection_stats['average_fps'] = 1.0 / avg_time if avg_time > 0 else 0
@@ -250,20 +253,21 @@ class VehicleDetector:
         # 5. Dibujar si es necesario
         if draw:
             for (x1, y1, x2, y2, cls_id) in detections:
-                # Color verde para todos los vehículos, independientemente del tipo
-                color = (0, 255, 0)  # Verde
-                
-                # Dibujar rectángulo
+                color = (0, 255, 0)  # Verde para vehículos
                 cv2.rectangle(image_bgr, (x1, y1), (x2, y2), color, 2)
                 
-                # Añadir etiqueta con clase (sin confianza)
-                label = self._get_class_name(cls_id)
+                label = f"{self._get_class_name(cls_id)}"
                 cv2.putText(image_bgr, label, (x1, y1-5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
             return image_bgr
         
         return detections
+
+    def _get_class_name(self, cls_id):
+        """Retorna el nombre amigable de la clase"""
+        names = {2: "Carro", 5: "Bus", 7: "Camion"}
+        return names.get(cls_id, f"Vehiculo_{cls_id}")
     
     def get_performance_stats(self):
         """Retorna estadísticas de rendimiento del detector"""

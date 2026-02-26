@@ -108,19 +108,6 @@ hiddenimports = [
     'sympy.core',
     'sympy.utilities',
     
-    # === OCR CRITICAL ===
-    'paddleocr',
-    'paddlepaddle',
-    'paddle',
-    'paddle.fluid',
-    'paddle.nn',
-    'paddle.vision',
-    'paddle.vision.transforms',
-    'paddle.inference',
-    'paddle.utils',
-    'paddle.framework',
-    'paddle.tensor',
-    'paddle.device',
     'easyocr',
     'easyocr.easyocr',
     'easyocr.utils',
@@ -280,14 +267,11 @@ excludes = [
     'datasets',
     'huggingface_hub',
     
-    # === MANTENER CRÍTICOS ===
     # 'sympy',  # ❌ NO EXCLUIR: PyTorch lo requiere
     # 'matplotlib',  # ❌ NO EXCLUIR: Requerido para análisis
     # 'numpy.f2py',     # ❌ NO EXCLUIR: scipy lo necesita
     # 'numpy.distutils', # ❌ NO EXCLUIR: scipy lo necesita
     # 'numpy.testing',  # ❌ NO EXCLUIR: scipy lo necesita
-    # 'paddleocr',  # ❌ NO EXCLUIR: CRÍTICO para OCR
-    # 'paddlepaddle',  # ❌ NO EXCLUIR: CRÍTICO para OCR
 ]
 
 # ============================================================================

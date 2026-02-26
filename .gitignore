@@ -21,12 +21,20 @@ wheels/
 *.egg
 MANIFEST
 
-# === ENTORNOS VIRTUALES ===
+# === ENTORNOS VIRTUALES Y DATASETS ===
 venv/
 env/
 ENV/
 .venv
 .env
+training_env/
+training_env*/
+LPRNet_Peru/
+LPRNet_Peru*/
+training/
+training*/
+**/checkpoint/
+**/.ipynb_checkpoints/
 
 # === ARCHIVOS DE CONFIGURACIÓN SENSIBLES ===
 secrets/
@@ -76,10 +84,10 @@ data/*.json
 videos/*.mp4
 videos/*.avi
 
-# === MODELOS GRANDES ===
 models/*.pt
 models/*.onnx
 models/*.h5
+models/*.pth
 !models/.gitkeep
 
 # === LOGS ===

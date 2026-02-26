@@ -1,0 +1,3615 @@
+LISTA DE ERRORES GRAVES PARA REVISIÓN MANUAL
+======================================================================
+
+Instrucciones:
+1. Revisa cada imagen y compara con la etiqueta 'Real'
+2. Si la etiqueta está MAL, corrige el nombre del archivo
+3. Si la imagen es ilegible, considera eliminarla
+
+======================================================================
+
+1. A0H748_#_recorte_1135_jpg.rf.c6827224350c57d07c1bef120eea42e6.jpg
+   Real: A0H748 → Pred: A0748Q
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\A0H748_#_recorte_1135_jpg.rf.c6827224350c57d07c1bef120eea42e6.jpg
+
+2. A1T837_#_recorte_2093_jpg.rf.be4fbd422a3deeda324a58ae793f8f6d.jpg
+   Real: A1T837 → Pred: A1837Q
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\A1T837_#_recorte_2093_jpg.rf.be4fbd422a3deeda324a58ae793f8f6d.jpg
+
+3. A2L308_#_recorte_44_jpg.rf.fb7cff2546e20e6c3e344ebb0a7f528c.jpg
+   Real: A2L308 → Pred: A2L08U
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\A2L308_#_recorte_44_jpg.rf.fb7cff2546e20e6c3e344ebb0a7f528c.jpg
+
+4. A3B598_#_recorte_1438_jpg.rf.2287fcfe112a9572b81ce502dd9eb478.jpg
+   Real: A3B598 → Pred: A3B98R
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\A3B598_#_recorte_1438_jpg.rf.2287fcfe112a9572b81ce502dd9eb478.jpg
+
+5. A7A576_#_recorte_677_jpg.rf.b81af639439fdb9a7353d7a6ab771276.jpg
+   Real: A7A576 → Pred: AA5762
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\A7A576_#_recorte_677_jpg.rf.b81af639439fdb9a7353d7a6ab771276.jpg
+
+6. A7T247_#_recorte_1156_jpg.rf.50372e521ec22b6af8a1bf34b1ccc7b9.jpg
+   Real: A7T247 → Pred: A7247B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\A7T247_#_recorte_1156_jpg.rf.50372e521ec22b6af8a1bf34b1ccc7b9.jpg
+
+7. A8X008_#_recorte_653_jpg.rf.ab94897cc5310cae63c5fb1d8d8f2568.jpg
+   Real: A8X008 → Pred: AX008K
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\A8X008_#_recorte_653_jpg.rf.ab94897cc5310cae63c5fb1d8d8f2568.jpg
+
+8. AB1082_#_recorte_2592_jpg.rf.591b6ce237cbb0fad7e0e7b7d2e75641.jpg
+   Real: AB1082 → Pred: AB0826
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AB1082_#_recorte_2592_jpg.rf.591b6ce237cbb0fad7e0e7b7d2e75641.jpg
+
+9. ABX870_#_recorte_758_jpg.rf.04c0c4254d8e5ac9777c77c25ac531ff.jpg
+   Real: ABX870 → Pred: AY80X6
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ABX870_#_recorte_758_jpg.rf.04c0c4254d8e5ac9777c77c25ac531ff.jpg
+
+10. ABX870_#_recorte_758_jpg.rf.4828b328d5a20761aebca799dd3a2fe5.jpg
+   Real: ABX870 → Pred: AX8701
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ABX870_#_recorte_758_jpg.rf.4828b328d5a20761aebca799dd3a2fe5.jpg
+
+11. ABX870_#_recorte_758_jpg.rf.e3dd5c458da5948de031cc03e48e05fd.jpg
+   Real: ABX870 → Pred: A6X70Y
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ABX870_#_recorte_758_jpg.rf.e3dd5c458da5948de031cc03e48e05fd.jpg
+
+12. ACF452_#_recorte_2951_jpg.rf.fe17f5ef11c407fed32c6f856c7ddeb4.jpg
+   Real: ACF452 → Pred: AC427G
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ACF452_#_recorte_2951_jpg.rf.fe17f5ef11c407fed32c6f856c7ddeb4.jpg
+
+13. ACN060_#_recorte_1391_jpg.rf.3b01f506ec28509fd5032f4044474272.jpg
+   Real: ACN060 → Pred: ACN631
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ACN060_#_recorte_1391_jpg.rf.3b01f506ec28509fd5032f4044474272.jpg
+
+14. AEN296_#_recorte_1478_jpg.rf.9cb77b28f7661faa41ce26d562d0f842.jpg
+   Real: AEN296 → Pred: AN2964
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AEN296_#_recorte_1478_jpg.rf.9cb77b28f7661faa41ce26d562d0f842.jpg
+
+15. AEN296_#_recorte_1480_jpg.rf.f55e54f072b834eb7c6efee2c3679769.jpg
+   Real: AEN296 → Pred: AH296N
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AEN296_#_recorte_1480_jpg.rf.f55e54f072b834eb7c6efee2c3679769.jpg
+
+16. AEN296_#_recorte_1482_jpg.rf.3b4ca55490152e4d587c4b314cc87a16.jpg
+   Real: AEN296 → Pred: AN296W
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AEN296_#_recorte_1482_jpg.rf.3b4ca55490152e4d587c4b314cc87a16.jpg
+
+17. AFE555_#_recorte_628_jpg.rf.0586afa2c6dfe4a104075404fa4e2dce.jpg
+   Real: AFE555 → Pred: AE5550
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFE555_#_recorte_628_jpg.rf.0586afa2c6dfe4a104075404fa4e2dce.jpg
+
+18. AFE555_#_recorte_628_jpg.rf.e886f90d13c1f17306124d150b4caacf.jpg
+   Real: AFE555 → Pred: AE5558
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFE555_#_recorte_628_jpg.rf.e886f90d13c1f17306124d150b4caacf.jpg
+
+19. AFE555_#_recorte_644_jpg.rf.fc952f15559a9ef6adf456bc7a702612.jpg
+   Real: AFE555 → Pred: AE5557
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFE555_#_recorte_644_jpg.rf.fc952f15559a9ef6adf456bc7a702612.jpg
+
+20. AFL5S5_#_recorte_1918_jpg.rf.78a5df0eddba1e655cc7df79c92d360d.jpg
+   Real: AFL5S5 → Pred: AL4556
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFL5S5_#_recorte_1918_jpg.rf.78a5df0eddba1e655cc7df79c92d360d.jpg
+
+21. AFP042_#_recorte_1075_jpg.rf.8688b1daa880109cf102bd8285edb70e.jpg
+   Real: AFP042 → Pred: AF0426
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFP042_#_recorte_1075_jpg.rf.8688b1daa880109cf102bd8285edb70e.jpg
+
+22. AFP042_#_recorte_1079_jpg.rf.608a4f660124642e0521a5e0b13d4dc5.jpg
+   Real: AFP042 → Pred: AF0427
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFP042_#_recorte_1079_jpg.rf.608a4f660124642e0521a5e0b13d4dc5.jpg
+
+23. AFP042_#_recorte_1083_jpg.rf.6d32da19220cace0e55f2fd0ce818166.jpg
+   Real: AFP042 → Pred: AP0427
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFP042_#_recorte_1083_jpg.rf.6d32da19220cace0e55f2fd0ce818166.jpg
+
+24. AFP042_#_recorte_2589_jpg.rf.000bdd8fbe71b36f2a225801f9600f78.jpg
+   Real: AFP042 → Pred: A04239
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFP042_#_recorte_2589_jpg.rf.000bdd8fbe71b36f2a225801f9600f78.jpg
+
+25. AFP042_#_recorte_2591_jpg.rf.0fd1c48de83eed9a4646a6beabb0c72a.jpg
+   Real: AFP042 → Pred: AP042B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFP042_#_recorte_2591_jpg.rf.0fd1c48de83eed9a4646a6beabb0c72a.jpg
+
+26. AFP042_#_recorte_2591_jpg.rf.4f20b045e4b3a86aefd58060c4832aa4.jpg
+   Real: AFP042 → Pred: AP042B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFP042_#_recorte_2591_jpg.rf.4f20b045e4b3a86aefd58060c4832aa4.jpg
+
+27. AFV276_#_recorte_1754_jpg.rf.09b23dd3e882fd44e6615784ee65860a.jpg
+   Real: AFV276 → Pred: AV276W
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFV276_#_recorte_1754_jpg.rf.09b23dd3e882fd44e6615784ee65860a.jpg
+
+28. AFV276_#_recorte_1754_jpg.rf.3262560282a5e1e52992d84c0ebe832e.jpg
+   Real: AFV276 → Pred: AV276W
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFV276_#_recorte_1754_jpg.rf.3262560282a5e1e52992d84c0ebe832e.jpg
+
+29. AFV276_#_recorte_1754_jpg.rf.cf941d8454d592526c4b3e88abda9025.jpg
+   Real: AFV276 → Pred: AF276E
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AFV276_#_recorte_1754_jpg.rf.cf941d8454d592526c4b3e88abda9025.jpg
+
+30. AJK088_#_recorte_1979_jpg.rf.9a0918f6a2b305eb56047519efd84aae.jpg
+   Real: AJK088 → Pred: AK088B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AJK088_#_recorte_1979_jpg.rf.9a0918f6a2b305eb56047519efd84aae.jpg
+
+31. AJK088_#_recorte_1979_jpg.rf.fbd7e02e5f9510304a6d42556a79f9d5.jpg
+   Real: AJK088 → Pred: AK088W
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AJK088_#_recorte_1979_jpg.rf.fbd7e02e5f9510304a6d42556a79f9d5.jpg
+
+32. AKF152_#_recorte_2214_jpg.rf.c5d03ed0ae46ab2be0508da795cb70dc.jpg
+   Real: AKF152 → Pred: AKF52X
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AKF152_#_recorte_2214_jpg.rf.c5d03ed0ae46ab2be0508da795cb70dc.jpg
+
+33. AKF152_#_recorte_2219_jpg.rf.917a6a12b5af4bfa95eb8f10d1c21c8f.jpg
+   Real: AKF152 → Pred: AKF52B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AKF152_#_recorte_2219_jpg.rf.917a6a12b5af4bfa95eb8f10d1c21c8f.jpg
+
+34. AKF152_#_recorte_2224_jpg.rf.25d4d0c1f334d0299e271e31139f2ed0.jpg
+   Real: AKF152 → Pred: BKF52A
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AKF152_#_recorte_2224_jpg.rf.25d4d0c1f334d0299e271e31139f2ed0.jpg
+
+35. AKF458_#_recorte_1556_jpg.rf.a1a07a349198de8d4b23a3b50e9c5417.jpg
+   Real: AKF458 → Pred: AF458T
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AKF458_#_recorte_1556_jpg.rf.a1a07a349198de8d4b23a3b50e9c5417.jpg
+
+36. ALA331_#_recorte_1815_jpg.rf.6da0e3df61f3fffe6439f425628c561c.jpg
+   Real: ALA331 → Pred: AL331B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ALA331_#_recorte_1815_jpg.rf.6da0e3df61f3fffe6439f425628c561c.jpg
+
+37. ALU384_#_recorte_2954_jpg.rf.365f4effe5a4784a069b73b1b9baa896.jpg
+   Real: ALU384 → Pred: A38421
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ALU384_#_recorte_2954_jpg.rf.365f4effe5a4784a069b73b1b9baa896.jpg
+
+38. ALU384_#_recorte_2954_jpg.rf.f4462a451d3bf1d46f754df58e5fbb7a.jpg
+   Real: ALU384 → Pred: AU384T
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ALU384_#_recorte_2954_jpg.rf.f4462a451d3bf1d46f754df58e5fbb7a.jpg
+
+39. ALZ836_#_recorte_1546_jpg.rf.8fa0af5ed7f72c248c2f9a7483f02fe7.jpg
+   Real: ALZ836 → Pred: A83648
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ALZ836_#_recorte_1546_jpg.rf.8fa0af5ed7f72c248c2f9a7483f02fe7.jpg
+
+40. ALZ836_#_recorte_1549_jpg.rf.8266dae698a3e5c19898de0747d5ea3c.jpg
+   Real: ALZ836 → Pred: AZ8368
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ALZ836_#_recorte_1549_jpg.rf.8266dae698a3e5c19898de0747d5ea3c.jpg
+
+41. AML513_#_recorte_192_jpg.rf.9aaf9a0a8f4a89ce2672cb0d363efb67.jpg
+   Real: AML513 → Pred: AM513B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AML513_#_recorte_192_jpg.rf.9aaf9a0a8f4a89ce2672cb0d363efb67.jpg
+
+42. AML513_#_recorte_193_jpg.rf.cba4e284914c7157596ce4c6fcc2bbb8.jpg
+   Real: AML513 → Pred: AM13KH
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AML513_#_recorte_193_jpg.rf.cba4e284914c7157596ce4c6fcc2bbb8.jpg
+
+43. ANL008_#_recorte_2273_jpg.rf.1ea297b5a20ac5bbce4a8e96ca189945.jpg
+   Real: ANL008 → Pred: A008Q9
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ANL008_#_recorte_2273_jpg.rf.1ea297b5a20ac5bbce4a8e96ca189945.jpg
+
+44. ANL008_#_recorte_2273_jpg.rf.546a7de4f699530717ba178a63c4fade.jpg
+   Real: ANL008 → Pred: AN008H
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ANL008_#_recorte_2273_jpg.rf.546a7de4f699530717ba178a63c4fade.jpg
+
+45. ANL008_#_recorte_2273_jpg.rf.673a65e85eb9af78fa96c367015ac5b8.jpg
+   Real: ANL008 → Pred: A008Q6
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ANL008_#_recorte_2273_jpg.rf.673a65e85eb9af78fa96c367015ac5b8.jpg
+
+46. AT1247_#_recorte_1151_jpg.rf.834a4cd82c834662eec5fb9e42ff1066.jpg
+   Real: AT1247 → Pred: AT247Z
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AT1247_#_recorte_1151_jpg.rf.834a4cd82c834662eec5fb9e42ff1066.jpg
+
+47. AT1247_#_recorte_1153_jpg.rf.1dd4bb930c4320e050a5cbc70d733cc3.jpg
+   Real: AT1247 → Pred: A1247T
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AT1247_#_recorte_1153_jpg.rf.1dd4bb930c4320e050a5cbc70d733cc3.jpg
+
+48. AT1247_#_recorte_1153_jpg.rf.779cf0d403035a6880026c3691170b7d.jpg
+   Real: AT1247 → Pred: AT2471
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AT1247_#_recorte_1153_jpg.rf.779cf0d403035a6880026c3691170b7d.jpg
+
+49. ATE611_#_recorte_1163_jpg.rf.d946fcb1fd4bd9cfdf30380c5209fddf.jpg
+   Real: ATE611 → Pred: AE6111
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ATE611_#_recorte_1163_jpg.rf.d946fcb1fd4bd9cfdf30380c5209fddf.jpg
+
+50. ATE611_#_recorte_2653_jpg.rf.338e57aa21feb512e1bf06a15e6d42ac.jpg
+   Real: ATE611 → Pred: A61T4T
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ATE611_#_recorte_2653_jpg.rf.338e57aa21feb512e1bf06a15e6d42ac.jpg
+
+51. ATE611_#_recorte_2658_jpg.rf.57df787bba04cc9c61c80f606f7453b5.jpg
+   Real: ATE611 → Pred: AE611F
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ATE611_#_recorte_2658_jpg.rf.57df787bba04cc9c61c80f606f7453b5.jpg
+
+52. ATE611_#_recorte_2658_jpg.rf.783f7e4aa16be1ba71b203264e36603a.jpg
+   Real: ATE611 → Pred: AT6116
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ATE611_#_recorte_2658_jpg.rf.783f7e4aa16be1ba71b203264e36603a.jpg
+
+53. ATE611_#_recorte_2669_jpg.rf.a11d396319c48edc0abada3fceb9db3f.jpg
+   Real: ATE611 → Pred: AT6113
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ATE611_#_recorte_2669_jpg.rf.a11d396319c48edc0abada3fceb9db3f.jpg
+
+54. ATS559_#_recorte_953_jpg.rf.114c7cd58388a4ffc38d3f490ae936ce.jpg
+   Real: ATS559 → Pred: AS559S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ATS559_#_recorte_953_jpg.rf.114c7cd58388a4ffc38d3f490ae936ce.jpg
+
+55. ATY335_#_recorte_1660_jpg.rf.a082b277e1bee698693623c14a926996.jpg
+   Real: ATY335 → Pred: AT335T
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ATY335_#_recorte_1660_jpg.rf.a082b277e1bee698693623c14a926996.jpg
+
+56. ATY335_#_recorte_1660_jpg.rf.adfae139edbe696d78e957dd07ad705e.jpg
+   Real: ATY335 → Pred: AT335S
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\ATY335_#_recorte_1660_jpg.rf.adfae139edbe696d78e957dd07ad705e.jpg
+
+57. AUA115_#_recorte_217_jpg.rf.8dda21ced33fa182aa8ca97f6e9ea863.jpg
+   Real: AUA115 → Pred: AA1153
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AUA115_#_recorte_217_jpg.rf.8dda21ced33fa182aa8ca97f6e9ea863.jpg
+
+58. AUA115_#_recorte_217_jpg.rf.9d5b07624a36e6a6bdbcdd11d020f88c.jpg
+   Real: AUA115 → Pred: BA15AF
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AUA115_#_recorte_217_jpg.rf.9d5b07624a36e6a6bdbcdd11d020f88c.jpg
+
+59. AVD175_#_recorte_1011_jpg.rf.619e5562c0ddd13af49dfa9ca098d201.jpg
+   Real: AVD175 → Pred: AD1735
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVD175_#_recorte_1011_jpg.rf.619e5562c0ddd13af49dfa9ca098d201.jpg
+
+60. AVD175_#_recorte_1014_jpg.rf.026c5b2d8e416de61df3c07c8708a5a4.jpg
+   Real: AVD175 → Pred: AV175W
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVD175_#_recorte_1014_jpg.rf.026c5b2d8e416de61df3c07c8708a5a4.jpg
+
+61. AVD175_#_recorte_1018_jpg.rf.12df68a30f7a1660fe503ff95b4d818b.jpg
+   Real: AVD175 → Pred: AD75Q0
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVD175_#_recorte_1018_jpg.rf.12df68a30f7a1660fe503ff95b4d818b.jpg
+
+62. AVD175_#_recorte_1018_jpg.rf.757b79fd07a6b098fc4bf8b61660e7e6.jpg
+   Real: AVD175 → Pred: AD175Q
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVD175_#_recorte_1018_jpg.rf.757b79fd07a6b098fc4bf8b61660e7e6.jpg
+
+63. AVD175_#_recorte_1018_jpg.rf.a697ccd5b4300b7aa2d295220fef2dec.jpg
+   Real: AVD175 → Pred: AVD75W
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVD175_#_recorte_1018_jpg.rf.a697ccd5b4300b7aa2d295220fef2dec.jpg
+
+64. AVD175_#_recorte_1022_jpg.rf.8801c6695be0a898e6ed379912250fcd.jpg
+   Real: AVD175 → Pred: AD1506
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVD175_#_recorte_1022_jpg.rf.8801c6695be0a898e6ed379912250fcd.jpg
+
+65. AVK158_#_recorte_1367_jpg.rf.4e8feb0b3af211b36a08ce93e0643740.jpg
+   Real: AVK158 → Pred: AVK58W
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVK158_#_recorte_1367_jpg.rf.4e8feb0b3af211b36a08ce93e0643740.jpg
+
+66. AVK158_#_recorte_1371_jpg.rf.42158002a40fdc6cdb8ff817bcb101fa.jpg
+   Real: AVK158 → Pred: AK158T
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVK158_#_recorte_1371_jpg.rf.42158002a40fdc6cdb8ff817bcb101fa.jpg
+
+67. AVK158_#_recorte_1371_jpg.rf.9d907aeeec0547c61a7f32e478e1cac2.jpg
+   Real: AVK158 → Pred: A158BT
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVK158_#_recorte_1371_jpg.rf.9d907aeeec0547c61a7f32e478e1cac2.jpg
+
+68. AVK158_#_recorte_1375_jpg.rf.6c7c194e4c860c0b9ad363af59ed2761.jpg
+   Real: AVK158 → Pred: AV1584
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVK158_#_recorte_1375_jpg.rf.6c7c194e4c860c0b9ad363af59ed2761.jpg
+
+69. AVN252_#_recorte_1219_jpg.rf.2817d984214685deeef2b70162884e97.jpg
+   Real: AVN252 → Pred: AN527H
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVN252_#_recorte_1219_jpg.rf.2817d984214685deeef2b70162884e97.jpg
+
+70. AVN252_#_recorte_1219_jpg.rf.49379fd875c9da68af8cdecab24c7e70.jpg
+   Real: AVN252 → Pred: AV252W
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVN252_#_recorte_1219_jpg.rf.49379fd875c9da68af8cdecab24c7e70.jpg
+
+71. AVN252_#_recorte_1219_jpg.rf.f2bfd8cf66b37fcfe611e386790e1124.jpg
+   Real: AVN252 → Pred: AN252H
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVN252_#_recorte_1219_jpg.rf.f2bfd8cf66b37fcfe611e386790e1124.jpg
+
+72. AVN252_#_recorte_1220_jpg.rf.cb0113436ec14f1b46c406585a3bda1e.jpg
+   Real: AVN252 → Pred: AV2524
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVN252_#_recorte_1220_jpg.rf.cb0113436ec14f1b46c406585a3bda1e.jpg
+
+73. AVN252_#_recorte_1221_jpg.rf.366f766f9cde9f9408ed4cb595772276.jpg
+   Real: AVN252 → Pred: A25294
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVN252_#_recorte_1221_jpg.rf.366f766f9cde9f9408ed4cb595772276.jpg
+
+74. AVN252_#_recorte_1221_jpg.rf.a1db1cb56a267997bd2e8046112256aa.jpg
+   Real: AVN252 → Pred: AN252H
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AVN252_#_recorte_1221_jpg.rf.a1db1cb56a267997bd2e8046112256aa.jpg
+
+75. AW0401_#_recorte_322_jpg.rf.9423a64001a7887751e6e0edb1c79370.jpg
+   Real: AW0401 → Pred: A0401Q
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AW0401_#_recorte_322_jpg.rf.9423a64001a7887751e6e0edb1c79370.jpg
+
+76. AW0401_#_recorte_342_jpg.rf.4e59dcc29ad921a43764a8accb925fe1.jpg
+   Real: AW0401 → Pred: AW401K
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AW0401_#_recorte_342_jpg.rf.4e59dcc29ad921a43764a8accb925fe1.jpg
+
+77. AW0401_#_recorte_342_jpg.rf.56a226a02763e5cd62511fac3c97c17c.jpg
+   Real: AW0401 → Pred: AW401Q
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AW0401_#_recorte_342_jpg.rf.56a226a02763e5cd62511fac3c97c17c.jpg
+
+78. AW0401_#_recorte_344_jpg.rf.53ba20d369d333aafaae7eb2e0b1a576.jpg
+   Real: AW0401 → Pred: AW401K
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AW0401_#_recorte_344_jpg.rf.53ba20d369d333aafaae7eb2e0b1a576.jpg
+
+79. AW0401_#_recorte_346_jpg.rf.816e5712d2f296946a9fd7e1d42fb16e.jpg
+   Real: AW0401 → Pred: AW001D
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AW0401_#_recorte_346_jpg.rf.816e5712d2f296946a9fd7e1d42fb16e.jpg
+
+80. AW0401_#_recorte_346_jpg.rf.fc297b6cf1337757f460691f92f6d46a.jpg
+   Real: AW0401 → Pred: AWQ010
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AW0401_#_recorte_346_jpg.rf.fc297b6cf1337757f460691f92f6d46a.jpg
+
+81. AWV135_#_recorte_1609_jpg.rf.4299a87a3dd9fcc0fc5091198b0dee22.jpg
+   Real: AWV135 → Pred: AV5DQD
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AWV135_#_recorte_1609_jpg.rf.4299a87a3dd9fcc0fc5091198b0dee22.jpg
+
+82. AWV135_#_recorte_1609_jpg.rf.e7e7e023b835f288194e87e6f40aa148.jpg
+   Real: AWV135 → Pred: AW351K
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AWV135_#_recorte_1609_jpg.rf.e7e7e023b835f288194e87e6f40aa148.jpg
+
+83. AWV135_#_recorte_1615_jpg.rf.24c9a57e25138981b29258f653ce46a5.jpg
+   Real: AWV135 → Pred: A135JB
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AWV135_#_recorte_1615_jpg.rf.24c9a57e25138981b29258f653ce46a5.jpg
+
+84. AWV135_#_recorte_1615_jpg.rf.e1f01a4dc0991723e68e94e7c6b56235.jpg
+   Real: AWV135 → Pred: A1353J
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AWV135_#_recorte_1615_jpg.rf.e1f01a4dc0991723e68e94e7c6b56235.jpg
+
+85. AWV676_#_recorte_1899_jpg.rf.8966005f6eca21387e89a5851721c82e.jpg
+   Real: AWV676 → Pred: AV676Y
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AWV676_#_recorte_1899_jpg.rf.8966005f6eca21387e89a5851721c82e.jpg
+
+86. AWV676_#_recorte_1905_jpg.rf.1ed9a2f9bb70ce88c2337b9cd21a2e7e.jpg
+   Real: AWV676 → Pred: AV76B4
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AWV676_#_recorte_1905_jpg.rf.1ed9a2f9bb70ce88c2337b9cd21a2e7e.jpg
+
+87. AWV676_#_recorte_1905_jpg.rf.9ab7473f69c727b6438b82f6f19d0442.jpg
+   Real: AWV676 → Pred: AWV76B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AWV676_#_recorte_1905_jpg.rf.9ab7473f69c727b6438b82f6f19d0442.jpg
+
+88. AWV676_#_recorte_1908_jpg.rf.a81674ddbc39dd269e3bf5dd2f3ac86c.jpg
+   Real: AWV676 → Pred: BWV76A
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AWV676_#_recorte_1908_jpg.rf.a81674ddbc39dd269e3bf5dd2f3ac86c.jpg
+
+89. AXS692_#_recorte_447_jpg.rf.083d9ac43e7aa89eb661bd45e17118cf.jpg
+   Real: AXS692 → Pred: AXS929
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AXS692_#_recorte_447_jpg.rf.083d9ac43e7aa89eb661bd45e17118cf.jpg
+
+90. AXS692_#_recorte_449_jpg.rf.b7b337d8ec18b709c59016e82a5461f4.jpg
+   Real: AXS692 → Pred: AS6924
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AXS692_#_recorte_449_jpg.rf.b7b337d8ec18b709c59016e82a5461f4.jpg
+
+91. AYH467_#_recorte_1448_jpg.rf.6c1c9f5715149faacf7d9760d7079e99.jpg
+   Real: AYH467 → Pred: AH467M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AYH467_#_recorte_1448_jpg.rf.6c1c9f5715149faacf7d9760d7079e99.jpg
+
+92. AYH467_#_recorte_1450_jpg.rf.bae94a5b97486a54140f0e893ea0194d.jpg
+   Real: AYH467 → Pred: AH467M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AYH467_#_recorte_1450_jpg.rf.bae94a5b97486a54140f0e893ea0194d.jpg
+
+93. AYH467_#_recorte_1450_jpg.rf.d0ba4c43267da71300ca40e794b26681.jpg
+   Real: AYH467 → Pred: AY467B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AYH467_#_recorte_1450_jpg.rf.d0ba4c43267da71300ca40e794b26681.jpg
+
+94. AYH467_#_recorte_1452_jpg.rf.9448cc17b0ac5c887ae7bdd35613cdd4.jpg
+   Real: AYH467 → Pred: AH467M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AYH467_#_recorte_1452_jpg.rf.9448cc17b0ac5c887ae7bdd35613cdd4.jpg
+
+95. AZV704_#_recorte_626_jpg.rf.00076afdf4f7e86a8c9f7c9f00b932fd.jpg
+   Real: AZV704 → Pred: AV704W
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AZV704_#_recorte_626_jpg.rf.00076afdf4f7e86a8c9f7c9f00b932fd.jpg
+
+96. AZV704_#_recorte_634_jpg.rf.2cf7d6f8c1a234f1725d667882d2a220.jpg
+   Real: AZV704 → Pred: AZV04B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AZV704_#_recorte_634_jpg.rf.2cf7d6f8c1a234f1725d667882d2a220.jpg
+
+97. AZV704_#_recorte_634_jpg.rf.c1a69b6f24a9c8b22ce93afb38b0b1ff.jpg
+   Real: AZV704 → Pred: AV7048
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AZV704_#_recorte_634_jpg.rf.c1a69b6f24a9c8b22ce93afb38b0b1ff.jpg
+
+98. AZX552_#_recorte_3087_jpg.rf.ad50029f8564c35a11f53cce29e485b8.jpg
+   Real: AZX552 → Pred: AX552S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\AZX552_#_recorte_3087_jpg.rf.ad50029f8564c35a11f53cce29e485b8.jpg
+
+99. B0C369_#_recorte_567_jpg.rf.eb9c8a2b201b40bf4c7689e441b89dd2.jpg
+   Real: B0C369 → Pred: B0369C
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B0C369_#_recorte_567_jpg.rf.eb9c8a2b201b40bf4c7689e441b89dd2.jpg
+
+100. B0C369_#_recorte_568_jpg.rf.8ef0a6f5818ca9ae91e7bbb842987435.jpg
+   Real: B0C369 → Pred: BC369S
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B0C369_#_recorte_568_jpg.rf.8ef0a6f5818ca9ae91e7bbb842987435.jpg
+
+101. B1T327_#_recorte_625_jpg.rf.1ea15e796ec6a3f31a31034e99bb419b.jpg
+   Real: B1T327 → Pred: B13271
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B1T327_#_recorte_625_jpg.rf.1ea15e796ec6a3f31a31034e99bb419b.jpg
+
+102. B1T327_#_recorte_633_jpg.rf.c4e2fedfa889aa0ae6b5f55e55226c0d.jpg
+   Real: B1T327 → Pred: B1T271
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B1T327_#_recorte_633_jpg.rf.c4e2fedfa889aa0ae6b5f55e55226c0d.jpg
+
+103. B1T327_#_recorte_633_jpg.rf.f5ec748b81ae4da6af9df0fecef394d0.jpg
+   Real: B1T327 → Pred: B13275
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B1T327_#_recorte_633_jpg.rf.f5ec748b81ae4da6af9df0fecef394d0.jpg
+
+104. B20618_#_recorte_3205_jpg.rf.a069111e0a2c563c182d429c03018285.jpg
+   Real: B20618 → Pred: B2618Z
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B20618_#_recorte_3205_jpg.rf.a069111e0a2c563c182d429c03018285.jpg
+
+105. B6J558_#_recorte_1369_jpg.rf.2d2be9dc101558635409ec608776882b.jpg
+   Real: B6J558 → Pred: B65580
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B6J558_#_recorte_1369_jpg.rf.2d2be9dc101558635409ec608776882b.jpg
+
+106. B6JJ58_#_recorte_1379_jpg.rf.20d2b8d76380687c48fa2c8d77076935.jpg
+   Real: B6JJ58 → Pred: B6J58S
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B6JJ58_#_recorte_1379_jpg.rf.20d2b8d76380687c48fa2c8d77076935.jpg
+
+107. B6JJ58_#_recorte_1379_jpg.rf.7c8c64d4dd979fec2f8871f00897c3c3.jpg
+   Real: B6JJ58 → Pred: B6J58S
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B6JJ58_#_recorte_1379_jpg.rf.7c8c64d4dd979fec2f8871f00897c3c3.jpg
+
+108. B6N399_#_recorte_306_jpg.rf.a478b9179b04e1e7f7a6ec8c6f1d927f.jpg
+   Real: B6N399 → Pred: B63997
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B6N399_#_recorte_306_jpg.rf.a478b9179b04e1e7f7a6ec8c6f1d927f.jpg
+
+109. B6N399_#_recorte_310_jpg.rf.53bd86e01ca9d096e0109435d1697f36.jpg
+   Real: B6N399 → Pred: B63998
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B6N399_#_recorte_310_jpg.rf.53bd86e01ca9d096e0109435d1697f36.jpg
+
+110. B6N399_#_recorte_350_jpg.rf.0126a1a8b7470ecb06edcad5ba1cea4a.jpg
+   Real: B6N399 → Pred: B63998
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B6N399_#_recorte_350_jpg.rf.0126a1a8b7470ecb06edcad5ba1cea4a.jpg
+
+111. B6N399_#_recorte_350_jpg.rf.fb0f4d856dc15bffb49f7fcb4feb7166.jpg
+   Real: B6N399 → Pred: B639S9
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B6N399_#_recorte_350_jpg.rf.fb0f4d856dc15bffb49f7fcb4feb7166.jpg
+
+112. B6Z803_#_recorte_728_jpg.rf.1309b0c4014133d243b2142f64a80060.jpg
+   Real: B6Z803 → Pred: B60301
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B6Z803_#_recorte_728_jpg.rf.1309b0c4014133d243b2142f64a80060.jpg
+
+113. B7U117_#_recorte_234_jpg.rf.f0db3863383e4621e4dc83e40fbd9552.jpg
+   Real: B7U117 → Pred: B71172
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\B7U117_#_recorte_234_jpg.rf.f0db3863383e4621e4dc83e40fbd9552.jpg
+
+114. BAC726_#_recorte_86_jpg.rf.ef49fe66987554b31db887ef8a7fdc5e.jpg
+   Real: BAC726 → Pred: B26747
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BAC726_#_recorte_86_jpg.rf.ef49fe66987554b31db887ef8a7fdc5e.jpg
+
+115. BAC726_#_recorte_89_jpg.rf.4bbfad9171ce5f3bb1fe7bd27158d54f.jpg
+   Real: BAC726 → Pred: BAC26Z
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BAC726_#_recorte_89_jpg.rf.4bbfad9171ce5f3bb1fe7bd27158d54f.jpg
+
+116. BAC726_#_recorte_92_jpg.rf.f105f32511b91ea5b58dcd9c25e53be9.jpg
+   Real: BAC726 → Pred: BC7269
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BAC726_#_recorte_92_jpg.rf.f105f32511b91ea5b58dcd9c25e53be9.jpg
+
+117. BAL861_#_recorte_1574_jpg.rf.9070491aad5ba2b9b56bedb3c7e6e383.jpg
+   Real: BAL861 → Pred: BA8610
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BAL861_#_recorte_1574_jpg.rf.9070491aad5ba2b9b56bedb3c7e6e383.jpg
+
+118. BAL861_#_recorte_1584_jpg.rf.a52bd105ce1ce05c0dde1d2339505925.jpg
+   Real: BAL861 → Pred: BA8610
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BAL861_#_recorte_1584_jpg.rf.a52bd105ce1ce05c0dde1d2339505925.jpg
+
+119. BC0178_#_recorte_1195_jpg.rf.b580c6d7413585129194c52711ec175b.jpg
+   Real: BC0178 → Pred: B0178A
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BC0178_#_recorte_1195_jpg.rf.b580c6d7413585129194c52711ec175b.jpg
+
+120. BC0178_#_recorte_1197_jpg.rf.c3ce03d8bce0ce284f92910c315d4c82.jpg
+   Real: BC0178 → Pred: BC078Q
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BC0178_#_recorte_1197_jpg.rf.c3ce03d8bce0ce284f92910c315d4c82.jpg
+
+121. BCL757_#_recorte_1939_jpg.rf.9842b4a2bfcd9d12edd10b7f16fb9d2b.jpg
+   Real: BCL757 → Pred: BC7570
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BCL757_#_recorte_1939_jpg.rf.9842b4a2bfcd9d12edd10b7f16fb9d2b.jpg
+
+122. BDA183_#_recorte_549_jpg.rf.1235c4f2f9fb09fa5b098752f1a57275.jpg
+   Real: BDA183 → Pred: BA1830
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BDA183_#_recorte_549_jpg.rf.1235c4f2f9fb09fa5b098752f1a57275.jpg
+
+123. BDF866_#_recorte_1953_jpg.rf.db33aca5244375f1495a2bb363f337eb.jpg
+   Real: BDF866 → Pred: B866G0
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BDF866_#_recorte_1953_jpg.rf.db33aca5244375f1495a2bb363f337eb.jpg
+
+124. BEB391_#_recorte_405_jpg.rf.eb2cddac2577bb0183a743d7b1022577.jpg
+   Real: BEB391 → Pred: BB3918
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BEB391_#_recorte_405_jpg.rf.eb2cddac2577bb0183a743d7b1022577.jpg
+
+125. BEC556_#_recorte_1034_jpg.rf.472761e6852db77c7d195e90c36a0621.jpg
+   Real: BEC556 → Pred: BE556F
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BEC556_#_recorte_1034_jpg.rf.472761e6852db77c7d195e90c36a0621.jpg
+
+126. BEC556_#_recorte_1036_jpg.rf.c709bbf1c7d1f59767d608586ed2c1e7.jpg
+   Real: BEC556 → Pred: BC5562
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BEC556_#_recorte_1036_jpg.rf.c709bbf1c7d1f59767d608586ed2c1e7.jpg
+
+127. BEC556_#_recorte_1038_jpg.rf.5fcd4122ab91d75aa0608ff32d1db729.jpg
+   Real: BEC556 → Pred: BE5568
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BEC556_#_recorte_1038_jpg.rf.5fcd4122ab91d75aa0608ff32d1db729.jpg
+
+128. BEK108_#_recorte_1361_jpg.rf.62c5258c0feb87cc45b784bbe1c71440.jpg
+   Real: BEK108 → Pred: BK108Q
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BEK108_#_recorte_1361_jpg.rf.62c5258c0feb87cc45b784bbe1c71440.jpg
+
+129. BFC235_#_recorte_685_jpg.rf.7eca8f5d1083aad8fed3e212ea6d30a4.jpg
+   Real: BFC235 → Pred: BE235F
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BFC235_#_recorte_685_jpg.rf.7eca8f5d1083aad8fed3e212ea6d30a4.jpg
+
+130. BFC235_#_recorte_685_jpg.rf.9e9aa35d461b4918ba0e100c4a056f28.jpg
+   Real: BFC235 → Pred: BC235E
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BFC235_#_recorte_685_jpg.rf.9e9aa35d461b4918ba0e100c4a056f28.jpg
+
+131. BFE469_#_recorte_529_jpg.rf.6b07b3ce5b9837628bdbe7a3c51dff3c.jpg
+   Real: BFE469 → Pred: BE4690
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BFE469_#_recorte_529_jpg.rf.6b07b3ce5b9837628bdbe7a3c51dff3c.jpg
+
+132. BKK737_#_recorte_200_jpg.rf.739b6ab39d710b3fa5a83869b6abc1a4.jpg
+   Real: BKK737 → Pred: BK379W
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BKK737_#_recorte_200_jpg.rf.739b6ab39d710b3fa5a83869b6abc1a4.jpg
+
+133. BKK737_#_recorte_200_jpg.rf.9204e5f4d32c2d2fe27dfda5262012af.jpg
+   Real: BKK737 → Pred: BK737X
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BKK737_#_recorte_200_jpg.rf.9204e5f4d32c2d2fe27dfda5262012af.jpg
+
+134. BKK737_#_recorte_202_jpg.rf.7eec038f933219fe98fb62bf916d197f.jpg
+   Real: BKK737 → Pred: BK7372
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BKK737_#_recorte_202_jpg.rf.7eec038f933219fe98fb62bf916d197f.jpg
+
+135. BKK737_#_recorte_204_jpg.rf.baafc13d446939d10515cefe21f37b59.jpg
+   Real: BKK737 → Pred: BK737W
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BKK737_#_recorte_204_jpg.rf.baafc13d446939d10515cefe21f37b59.jpg
+
+136. BKK737_#_recorte_206_jpg.rf.d4c8d3aa139545e4bd605f287e5557d5.jpg
+   Real: BKK737 → Pred: B771A1
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BKK737_#_recorte_206_jpg.rf.d4c8d3aa139545e4bd605f287e5557d5.jpg
+
+137. BKX128_#_recorte_539_jpg.rf.353db0f13dbf873b549680555d922c8a.jpg
+   Real: BKX128 → Pred: B12896
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BKX128_#_recorte_539_jpg.rf.353db0f13dbf873b549680555d922c8a.jpg
+
+138. BLR773_#_recorte_1128_jpg.rf.9a075c9efc168e43fbde693655e47b98.jpg
+   Real: BLR773 → Pred: BR7732
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BLR773_#_recorte_1128_jpg.rf.9a075c9efc168e43fbde693655e47b98.jpg
+
+139. BLY347_#_recorte_1425_jpg.rf.d63f1f8de004fc4fc5523b01caf0e351.jpg
+   Real: BLY347 → Pred: BL3472
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BLY347_#_recorte_1425_jpg.rf.d63f1f8de004fc4fc5523b01caf0e351.jpg
+
+140. BLY347_#_recorte_1427_jpg.rf.f2600be9a6868df426480c5e6c5fbc7d.jpg
+   Real: BLY347 → Pred: BL3472
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BLY347_#_recorte_1427_jpg.rf.f2600be9a6868df426480c5e6c5fbc7d.jpg
+
+141. BLY347_#_recorte_1427_jpg.rf.fa247897acd86bce7e9532eeddad1ea3.jpg
+   Real: BLY347 → Pred: BL3472
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BLY347_#_recorte_1427_jpg.rf.fa247897acd86bce7e9532eeddad1ea3.jpg
+
+142. BLY634_#_recorte_113_jpg.rf.b64e50328726f535864d1baa26ebceaf.jpg
+   Real: BLY634 → Pred: BL6346
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BLY634_#_recorte_113_jpg.rf.b64e50328726f535864d1baa26ebceaf.jpg
+
+143. BLY634_#_recorte_85_jpg.rf.acdda4ce567c5e19e4dbf6c05a46bdae.jpg
+   Real: BLY634 → Pred: BL6346
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BLY634_#_recorte_85_jpg.rf.acdda4ce567c5e19e4dbf6c05a46bdae.jpg
+
+144. BLY634_#_recorte_88_jpg.rf.1f54fa177ee99d350d77891f6b5599b9.jpg
+   Real: BLY634 → Pred: BL6341
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BLY634_#_recorte_88_jpg.rf.1f54fa177ee99d350d77891f6b5599b9.jpg
+
+145. BMA074_#_recorte_2045_jpg.rf.46afdba33c3fadd4d25975714160a00f.jpg
+   Real: BMA074 → Pred: BA0742
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BMA074_#_recorte_2045_jpg.rf.46afdba33c3fadd4d25975714160a00f.jpg
+
+146. BMK560_#_recorte_3201_jpg.rf.0048f8911354a8afc9f7a7cf9645d727.jpg
+   Real: BMK560 → Pred: B560P2
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BMK560_#_recorte_3201_jpg.rf.0048f8911354a8afc9f7a7cf9645d727.jpg
+
+147. BMT573_#_recorte_1819_jpg.rf.6918a1513d81f0a5128bd7c14fd9e7db.jpg
+   Real: BMT573 → Pred: BN573H
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BMT573_#_recorte_1819_jpg.rf.6918a1513d81f0a5128bd7c14fd9e7db.jpg
+
+148. BMT573_#_recorte_1819_jpg.rf.780506c00559a3ebc344e9c578206d9a.jpg
+   Real: BMT573 → Pred: BH573N
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BMT573_#_recorte_1819_jpg.rf.780506c00559a3ebc344e9c578206d9a.jpg
+
+149. BMT573_#_recorte_1819_jpg.rf.a007904e2498e34799e5758842f61b41.jpg
+   Real: BMT573 → Pred: B573P6
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BMT573_#_recorte_1819_jpg.rf.a007904e2498e34799e5758842f61b41.jpg
+
+150. BND908_#_recorte_838_jpg.rf.241e9d000a5231c93b269b25dd719eb6.jpg
+   Real: BND908 → Pred: B90809
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BND908_#_recorte_838_jpg.rf.241e9d000a5231c93b269b25dd719eb6.jpg
+
+151. BND908_#_recorte_838_jpg.rf.77f45f1b7d898ba09f7f98c5454f17b0.jpg
+   Real: BND908 → Pred: BN98HA
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BND908_#_recorte_838_jpg.rf.77f45f1b7d898ba09f7f98c5454f17b0.jpg
+
+152. BND908_#_recorte_848_jpg.rf.a8958217331624f926e05789f43dd6bd.jpg
+   Real: BND908 → Pred: B90890
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BND908_#_recorte_848_jpg.rf.a8958217331624f926e05789f43dd6bd.jpg
+
+153. BND908_#_recorte_879_jpg.rf.da2a37aa79857db1e5ff069af17f81b2.jpg
+   Real: BND908 → Pred: BD908Q
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BND908_#_recorte_879_jpg.rf.da2a37aa79857db1e5ff069af17f81b2.jpg
+
+154. BND908_#_recorte_885_jpg.rf.68383104c4d9d05c0fbf746aedfeade9.jpg
+   Real: BND908 → Pred: BD9086
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BND908_#_recorte_885_jpg.rf.68383104c4d9d05c0fbf746aedfeade9.jpg
+
+155. BNK270_#_recorte_225_jpg.rf.8140d3c48f584cff2af8a5a6fd1f3973.jpg
+   Real: BNK270 → Pred: BN270H
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BNK270_#_recorte_225_jpg.rf.8140d3c48f584cff2af8a5a6fd1f3973.jpg
+
+156. BNK270_#_recorte_227_jpg.rf.0a23c8b0ff8b338ffda5b30077c8afd3.jpg
+   Real: BNK270 → Pred: BN2708
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BNK270_#_recorte_227_jpg.rf.0a23c8b0ff8b338ffda5b30077c8afd3.jpg
+
+157. BPZ824_#_recorte_440_jpg.rf.99d0671b5d8f6214e7f9829339f8ef56.jpg
+   Real: BPZ824 → Pred: B22486
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BPZ824_#_recorte_440_jpg.rf.99d0671b5d8f6214e7f9829339f8ef56.jpg
+
+158. BRV002_#_recorte_3114_jpg.rf.a9d7fe47decb0196fe58496d6e6b5bf2.jpg
+   Real: BRV002 → Pred: BRV524
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BRV002_#_recorte_3114_jpg.rf.a9d7fe47decb0196fe58496d6e6b5bf2.jpg
+
+159. BRZ872_#_recorte_1946_jpg.rf.734a27e699f9b5fae283978fcdea86b5.jpg
+   Real: BRZ872 → Pred: BR8727
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BRZ872_#_recorte_1946_jpg.rf.734a27e699f9b5fae283978fcdea86b5.jpg
+
+160. BS1515_#_recorte_332_jpg.rf.6d9acba6fde6815a65555e7977100313.jpg
+   Real: BS1515 → Pred: BS5156
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BS1515_#_recorte_332_jpg.rf.6d9acba6fde6815a65555e7977100313.jpg
+
+161. BSF114_#_recorte_552_jpg.rf.f16c6347ed04cb882f8d6353ab4b3df3.jpg
+   Real: BSF114 → Pred: BF114E
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BSF114_#_recorte_552_jpg.rf.f16c6347ed04cb882f8d6353ab4b3df3.jpg
+
+162. BTE184_#_recorte_540_jpg.rf.b9aa471272c9765e6ca6fdfb002b34fe.jpg
+   Real: BTE184 → Pred: BE1849
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BTE184_#_recorte_540_jpg.rf.b9aa471272c9765e6ca6fdfb002b34fe.jpg
+
+163. BTN564_#_recorte_311_jpg.rf.6ff04db5916d0e50c7e0775a0d05d536.jpg
+   Real: BTN564 → Pred: BN5696
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BTN564_#_recorte_311_jpg.rf.6ff04db5916d0e50c7e0775a0d05d536.jpg
+
+164. BTN564_#_recorte_311_jpg.rf.81d2527e14047676a5b858b577723ced.jpg
+   Real: BTN564 → Pred: BT5643
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BTN564_#_recorte_311_jpg.rf.81d2527e14047676a5b858b577723ced.jpg
+
+165. BTU720_#_recorte_480_jpg.rf.b74dba3a1593d28eb33c2f1868d82fce.jpg
+   Real: BTU720 → Pred: BU720L
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BTU720_#_recorte_480_jpg.rf.b74dba3a1593d28eb33c2f1868d82fce.jpg
+
+166. BTU720_#_recorte_481_jpg.rf.673becabcca0076d7357b97f0b192876.jpg
+   Real: BTU720 → Pred: BT7201
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BTU720_#_recorte_481_jpg.rf.673becabcca0076d7357b97f0b192876.jpg
+
+167. BTU720_#_recorte_481_jpg.rf.c31046c4b00503f4e47beacb3f7cdeff.jpg
+   Real: BTU720 → Pred: BU720T
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BTU720_#_recorte_481_jpg.rf.c31046c4b00503f4e47beacb3f7cdeff.jpg
+
+168. BUA757_#_recorte_648_jpg.rf.586b9814b4abeb579b198fc9bc74a9fc.jpg
+   Real: BUA757 → Pred: BA5746
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BUA757_#_recorte_648_jpg.rf.586b9814b4abeb579b198fc9bc74a9fc.jpg
+
+169. BUA757_#_recorte_648_jpg.rf.996aa856d16b719c5e84d9f3ef22cb69.jpg
+   Real: BUA757 → Pred: BA7571
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BUA757_#_recorte_648_jpg.rf.996aa856d16b719c5e84d9f3ef22cb69.jpg
+
+170. BUJ816_#_recorte_1033_jpg.rf.8c5cb412720959c2542710b5df0564f6.jpg
+   Real: BUJ816 → Pred: BU8160
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BUJ816_#_recorte_1033_jpg.rf.8c5cb412720959c2542710b5df0564f6.jpg
+
+171. BUJ816_#_recorte_1035_jpg.rf.8a2085ca726c14eadc3280462a0554b2.jpg
+   Real: BUJ816 → Pred: BU816H
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BUJ816_#_recorte_1035_jpg.rf.8a2085ca726c14eadc3280462a0554b2.jpg
+
+172. BUJ816_#_recorte_1035_jpg.rf.a0c1a20a545a7bf4c1ed1d1d1b0eea5e.jpg
+   Real: BUJ816 → Pred: BU8160
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BUJ816_#_recorte_1035_jpg.rf.a0c1a20a545a7bf4c1ed1d1d1b0eea5e.jpg
+
+173. BVK695_#_recorte_819_jpg.rf.51aacd151961c022a199925206bc5a3e.jpg
+   Real: BVK695 → Pred: BK6958
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BVK695_#_recorte_819_jpg.rf.51aacd151961c022a199925206bc5a3e.jpg
+
+174. BVK695_#_recorte_819_jpg.rf.f048972e57f8f30c7cfc663bb9e0f72e.jpg
+   Real: BVK695 → Pred: BK6958
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BVK695_#_recorte_819_jpg.rf.f048972e57f8f30c7cfc663bb9e0f72e.jpg
+
+175. BVK895_#_recorte_815_jpg.rf.8ea72589ce0e67d9def07eb2564a6d4a.jpg
+   Real: BVK895 → Pred: BV5191
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BVK895_#_recorte_815_jpg.rf.8ea72589ce0e67d9def07eb2564a6d4a.jpg
+
+176. BVK895_#_recorte_815_jpg.rf.da34c2d557a3a828ccc4f6edfaba2fa7.jpg
+   Real: BVK895 → Pred: BV9531
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BVK895_#_recorte_815_jpg.rf.da34c2d557a3a828ccc4f6edfaba2fa7.jpg
+
+177. BVK895_#_recorte_817_jpg.rf.5e603411a392e9be7a5f92be19e820e0.jpg
+   Real: BVK895 → Pred: BV8956
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BVK895_#_recorte_817_jpg.rf.5e603411a392e9be7a5f92be19e820e0.jpg
+
+178. BWT338_#_recorte_3102_jpg.rf.070dae46122e1efa7eff5d619170d553.jpg
+   Real: BWT338 → Pred: BW38K0
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BWT338_#_recorte_3102_jpg.rf.070dae46122e1efa7eff5d619170d553.jpg
+
+179. BWT338_#_recorte_3102_jpg.rf.11a5e9710c0214bd2eeb88af6d0dad2d.jpg
+   Real: BWT338 → Pred: BW389B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BWT338_#_recorte_3102_jpg.rf.11a5e9710c0214bd2eeb88af6d0dad2d.jpg
+
+180. BWT338_#_recorte_3102_jpg.rf.6de5d04aceb1d8cf14fb895a2f7ce1b8.jpg
+   Real: BWT338 → Pred: BW3386
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BWT338_#_recorte_3102_jpg.rf.6de5d04aceb1d8cf14fb895a2f7ce1b8.jpg
+
+181. BWT338_#_recorte_3110_jpg.rf.a9225f66dc9018220d8de2ecedb29550.jpg
+   Real: BWT338 → Pred: BW386K
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BWT338_#_recorte_3110_jpg.rf.a9225f66dc9018220d8de2ecedb29550.jpg
+
+182. BXQ441_#_recorte_1184_jpg.rf.83f9793050c86e7f7f0dd889f692cfd7.jpg
+   Real: BXQ441 → Pred: BQ4414
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BXQ441_#_recorte_1184_jpg.rf.83f9793050c86e7f7f0dd889f692cfd7.jpg
+
+183. BYW628_#_recorte_710_jpg.rf.1413de286f4bd31a27d3bfe535d4857f.jpg
+   Real: BYW628 → Pred: B62879
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BYW628_#_recorte_710_jpg.rf.1413de286f4bd31a27d3bfe535d4857f.jpg
+
+184. BYW628_#_recorte_710_jpg.rf.f0a347f5e69a0c6a47b2ce9de4beb63f.jpg
+   Real: BYW628 → Pred: BW68K3
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BYW628_#_recorte_710_jpg.rf.f0a347f5e69a0c6a47b2ce9de4beb63f.jpg
+
+185. BYW628_#_recorte_712_jpg.rf.5b9dda670308b3694bfc113c76239d88.jpg
+   Real: BYW628 → Pred: BW62BS
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BYW628_#_recorte_712_jpg.rf.5b9dda670308b3694bfc113c76239d88.jpg
+
+186. BYW628_#_recorte_712_jpg.rf.951ad3232e79e75833ce6124f0e22ae1.jpg
+   Real: BYW628 → Pred: BW68DK
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BYW628_#_recorte_712_jpg.rf.951ad3232e79e75833ce6124f0e22ae1.jpg
+
+187. BYW628_#_recorte_714_jpg.rf.01fb156449483d9d3eea25b57171f999.jpg
+   Real: BYW628 → Pred: B28APA
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BYW628_#_recorte_714_jpg.rf.01fb156449483d9d3eea25b57171f999.jpg
+
+188. BYW628_#_recorte_714_jpg.rf.529299aa0266c7628246211a41b35a7e.jpg
+   Real: BYW628 → Pred: BY628N
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BYW628_#_recorte_714_jpg.rf.529299aa0266c7628246211a41b35a7e.jpg
+
+189. BYW628_#_recorte_714_jpg.rf.e2c841437198f249721aebca344157f2.jpg
+   Real: BYW628 → Pred: B62B8R
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BYW628_#_recorte_714_jpg.rf.e2c841437198f249721aebca344157f2.jpg
+
+190. BZ0581_#_recorte_312_jpg.rf.ec314abb73e4b08d04b4a35252d1a99c.jpg
+   Real: BZ0581 → Pred: B05814
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BZ0581_#_recorte_312_jpg.rf.ec314abb73e4b08d04b4a35252d1a99c.jpg
+
+191. BZ0581_#_recorte_315_jpg.rf.4bf6a7345fc954daf0a16a49d69f52ac.jpg
+   Real: BZ0581 → Pred: BZQ810
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\BZ0581_#_recorte_315_jpg.rf.4bf6a7345fc954daf0a16a49d69f52ac.jpg
+
+192. C0D270_#_recorte_1990_jpg.rf.0e2f23831c442c1af351b642c535b2fd.jpg
+   Real: C0D270 → Pred: CD270B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\C0D270_#_recorte_1990_jpg.rf.0e2f23831c442c1af351b642c535b2fd.jpg
+
+193. C0D270_#_recorte_1990_jpg.rf.740e0609b8cfe8ab36b84a29015cbe5a.jpg
+   Real: C0D270 → Pred: C0D70T
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\C0D270_#_recorte_1990_jpg.rf.740e0609b8cfe8ab36b84a29015cbe5a.jpg
+
+194. C1W445_#_recorte_610_jpg.rf.62e669eda6646a5787080af1610f61ef.jpg
+   Real: C1W445 → Pred: C1445T
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\C1W445_#_recorte_610_jpg.rf.62e669eda6646a5787080af1610f61ef.jpg
+
+195. C2B630_#_recorte_2531_jpg.rf.c236802d5db0e1c25bd6ed9a8aa74a0e.jpg
+   Real: C2B630 → Pred: C2B30R
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\C2B630_#_recorte_2531_jpg.rf.c236802d5db0e1c25bd6ed9a8aa74a0e.jpg
+
+196. C3U402_#_recorte_2609_jpg.rf.6db89852363cec4b8c86ff66bdf7700b.jpg
+   Real: C3U402 → Pred: C40272
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\C3U402_#_recorte_2609_jpg.rf.6db89852363cec4b8c86ff66bdf7700b.jpg
+
+197. C3U402_#_recorte_2609_jpg.rf.b6f29cb6039b4cef9e849778c07380dc.jpg
+   Real: C3U402 → Pred: C30134
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\C3U402_#_recorte_2609_jpg.rf.b6f29cb6039b4cef9e849778c07380dc.jpg
+
+198. C5G453_#_recorte_330_jpg.rf.dd074ba48550d1e67bfb104280c154f4.jpg
+   Real: C5G453 → Pred: C5G53S
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\C5G453_#_recorte_330_jpg.rf.dd074ba48550d1e67bfb104280c154f4.jpg
+
+199. C5G455_#_recorte_326_jpg.rf.eca51fedaa7634a95d4626d7e8d88880.jpg
+   Real: C5G455 → Pred: C54554
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\C5G455_#_recorte_326_jpg.rf.eca51fedaa7634a95d4626d7e8d88880.jpg
+
+200. C6L674_#_recorte_889_jpg.rf.22c4fbda9a6919cbd647b95b4f9ad5c7.jpg
+   Real: C6L674 → Pred: C6674G
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\C6L674_#_recorte_889_jpg.rf.22c4fbda9a6919cbd647b95b4f9ad5c7.jpg
+
+201. C6L674_#_recorte_893_jpg.rf.5f148ad15822d2ff9e7452bb229d15f6.jpg
+   Real: C6L674 → Pred: T6674C
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\C6L674_#_recorte_893_jpg.rf.5f148ad15822d2ff9e7452bb229d15f6.jpg
+
+202. C7Z288_#_recorte_126_jpg.rf.be7d4901ebdd17fdfcb70ba76305b028.jpg
+   Real: C7Z288 → Pred: B7Z83T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\C7Z288_#_recorte_126_jpg.rf.be7d4901ebdd17fdfcb70ba76305b028.jpg
+
+203. CAL530_#_recorte_2376_jpg.rf.7c5889fe5a4f86cda77d0d88ace50ee4.jpg
+   Real: CAL530 → Pred: CA5304
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CAL530_#_recorte_2376_jpg.rf.7c5889fe5a4f86cda77d0d88ace50ee4.jpg
+
+204. CAL530_#_recorte_2379_jpg.rf.7200bc270ad29ed62cc0d0ebd920fa06.jpg
+   Real: CAL530 → Pred: CA5308
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CAL530_#_recorte_2379_jpg.rf.7200bc270ad29ed62cc0d0ebd920fa06.jpg
+
+205. CAL530_#_recorte_2379_jpg.rf.adb6efa0a31e4fcd750832b881ba08c6.jpg
+   Real: CAL530 → Pred: CAL30U
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CAL530_#_recorte_2379_jpg.rf.adb6efa0a31e4fcd750832b881ba08c6.jpg
+
+206. CCT048_#_recorte_1733_jpg.rf.609ee0ebdefb4889743f8f897bd8b768.jpg
+   Real: CCT048 → Pred: CC048T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CCT048_#_recorte_1733_jpg.rf.609ee0ebdefb4889743f8f897bd8b768.jpg
+
+207. CCT048_#_recorte_1739_jpg.rf.ac616aed86bc3de5079f062ff2e1edac.jpg
+   Real: CCT048 → Pred: CCT48B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CCT048_#_recorte_1739_jpg.rf.ac616aed86bc3de5079f062ff2e1edac.jpg
+
+208. CCY465_#_recorte_289_jpg.rf.09793f67a4f73f2fcdd70d9ddd501281.jpg
+   Real: CCY465 → Pred: CCY65B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CCY465_#_recorte_289_jpg.rf.09793f67a4f73f2fcdd70d9ddd501281.jpg
+
+209. CCY465_#_recorte_289_jpg.rf.696a95803ce5af5d4934c4100934b8b9.jpg
+   Real: CCY465 → Pred: CC465S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CCY465_#_recorte_289_jpg.rf.696a95803ce5af5d4934c4100934b8b9.jpg
+
+210. CCY465_#_recorte_289_jpg.rf.9424813f196bac2859af70fd9011699b.jpg
+   Real: CCY465 → Pred: CCY65B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CCY465_#_recorte_289_jpg.rf.9424813f196bac2859af70fd9011699b.jpg
+
+211. CD3394_#_recorte_2041_jpg.rf.11bc8efe9c7b7a5fc8cc9b34ea8bcf28.jpg
+   Real: CD3394 → Pred: CD34T1
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CD3394_#_recorte_2041_jpg.rf.11bc8efe9c7b7a5fc8cc9b34ea8bcf28.jpg
+
+212. CD3394_#_recorte_2041_jpg.rf.ce42389cef3e204b9705fc1a25116542.jpg
+   Real: CD3394 → Pred: C0394D
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CD3394_#_recorte_2041_jpg.rf.ce42389cef3e204b9705fc1a25116542.jpg
+
+213. CD3394_#_recorte_2044_jpg.rf.b71ca186257d2fd30f9f1aa25665c67c.jpg
+   Real: CD3394 → Pred: C0394D
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CD3394_#_recorte_2044_jpg.rf.b71ca186257d2fd30f9f1aa25665c67c.jpg
+
+214. CD3394_#_recorte_2044_jpg.rf.d28f12e1a3246b92216d12e2fa808590.jpg
+   Real: CD3394 → Pred: CD3940
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CD3394_#_recorte_2044_jpg.rf.d28f12e1a3246b92216d12e2fa808590.jpg
+
+215. CEE490_#_recorte_456_jpg.rf.9b698836a7727b429a5037d951c2bec7.jpg
+   Real: CEE490 → Pred: CE490B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CEE490_#_recorte_456_jpg.rf.9b698836a7727b429a5037d951c2bec7.jpg
+
+216. CER379_#_recorte_3216_jpg.rf.8570813f506565f1f34e56d9818baa6d.jpg
+   Real: CER379 → Pred: CE379F
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CER379_#_recorte_3216_jpg.rf.8570813f506565f1f34e56d9818baa6d.jpg
+
+217. CEY361_#_recorte_1576_jpg.rf.50c00b63a35cddf5664a17617942badf.jpg
+   Real: CEY361 → Pred: CY61VF
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CEY361_#_recorte_1576_jpg.rf.50c00b63a35cddf5664a17617942badf.jpg
+
+218. CEY361_#_recorte_1576_jpg.rf.74633f02c3f4d1ed5348231fe6dbeb34.jpg
+   Real: CEY361 → Pred: CEY61F
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CEY361_#_recorte_1576_jpg.rf.74633f02c3f4d1ed5348231fe6dbeb34.jpg
+
+219. CEY361_#_recorte_1589_jpg.rf.1334f076d5a828bfc8be5835418de3b1.jpg
+   Real: CEY361 → Pred: CE3615
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CEY361_#_recorte_1589_jpg.rf.1334f076d5a828bfc8be5835418de3b1.jpg
+
+220. CEY361_#_recorte_1589_jpg.rf.a891b5a2653c13d1f19fc3419e0feb17.jpg
+   Real: CEY361 → Pred: CE361F
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CEY361_#_recorte_1589_jpg.rf.a891b5a2653c13d1f19fc3419e0feb17.jpg
+
+221. CEY361_#_recorte_1589_jpg.rf.b6b7b64c6d5f095b033a4232df32c389.jpg
+   Real: CEY361 → Pred: CE361F
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CEY361_#_recorte_1589_jpg.rf.b6b7b64c6d5f095b033a4232df32c389.jpg
+
+222. CFB115_#_recorte_508_jpg.rf.0e5b4979e90b4b90bcdb95c71a39323d.jpg
+   Real: CFB115 → Pred: CF115E
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CFB115_#_recorte_508_jpg.rf.0e5b4979e90b4b90bcdb95c71a39323d.jpg
+
+223. CFK390_#_recorte_502_jpg.rf.37148ede49da2bdbb6e5394ab4fb113f.jpg
+   Real: CFK390 → Pred: CF3909
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CFK390_#_recorte_502_jpg.rf.37148ede49da2bdbb6e5394ab4fb113f.jpg
+
+224. CFV523_#_recorte_491_jpg.rf.95710226cff68942781491a5d34d58c9.jpg
+   Real: CFV523 → Pred: CV5234
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CFV523_#_recorte_491_jpg.rf.95710226cff68942781491a5d34d58c9.jpg
+
+225. CH0002_#_recorte_463_jpg.rf.8cf23c19030e07fb0400ebd9e9cd3535.jpg
+   Real: CH0002 → Pred: C0002B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CH0002_#_recorte_463_jpg.rf.8cf23c19030e07fb0400ebd9e9cd3535.jpg
+
+226. CH0002_#_recorte_494_jpg.rf.620086c075168d0bea4db2316a2607f3.jpg
+   Real: CH0002 → Pred: CH0296
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CH0002_#_recorte_494_jpg.rf.620086c075168d0bea4db2316a2607f3.jpg
+
+227. CHN484_#_recorte_455_jpg.rf.df1afa07812b3166fca56184680ed661.jpg
+   Real: CHN484 → Pred: C484B1
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CHN484_#_recorte_455_jpg.rf.df1afa07812b3166fca56184680ed661.jpg
+
+228. CHN484_#_recorte_455_jpg.rf.eb32c45c7aa56a009432360008a52dab.jpg
+   Real: CHN484 → Pred: CN484D
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CHN484_#_recorte_455_jpg.rf.eb32c45c7aa56a009432360008a52dab.jpg
+
+229. CHN553_#_recorte_460_jpg.rf.3b691dba5ab8779317e0134d84a4e4af.jpg
+   Real: CHN553 → Pred: BN53CD
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CHN553_#_recorte_460_jpg.rf.3b691dba5ab8779317e0134d84a4e4af.jpg
+
+230. CHN553_#_recorte_460_jpg.rf.baa819e1e7ab36bd88623e19622960d2.jpg
+   Real: CHN553 → Pred: CH553B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CHN553_#_recorte_460_jpg.rf.baa819e1e7ab36bd88623e19622960d2.jpg
+
+231. CHN553_#_recorte_460_jpg.rf.c76bb574caf3d0b3dbf8818b098a55e2.jpg
+   Real: CHN553 → Pred: BH53CM
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CHN553_#_recorte_460_jpg.rf.c76bb574caf3d0b3dbf8818b098a55e2.jpg
+
+232. CHN553_#_recorte_461_jpg.rf.1f7482faf5cc865da6e3305ea8970fc2.jpg
+   Real: CHN553 → Pred: CN53H8
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CHN553_#_recorte_461_jpg.rf.1f7482faf5cc865da6e3305ea8970fc2.jpg
+
+233. CHN553_#_recorte_461_jpg.rf.b51a3537bcde9a21261cabebc2c350d3.jpg
+   Real: CHN553 → Pred: CN553H
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\CHN553_#_recorte_461_jpg.rf.b51a3537bcde9a21261cabebc2c350d3.jpg
+
+234. D0K414_#_recorte_1119_jpg.rf.631c524c18835c13c18b3890c5d7ab54.jpg
+   Real: D0K414 → Pred: DK414B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D0K414_#_recorte_1119_jpg.rf.631c524c18835c13c18b3890c5d7ab54.jpg
+
+235. D0K414_#_recorte_1121_jpg.rf.d3925cc967ed4f146df7d865be45e6ec.jpg
+   Real: D0K414 → Pred: DK414B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D0K414_#_recorte_1121_jpg.rf.d3925cc967ed4f146df7d865be45e6ec.jpg
+
+236. D0Q497_#_recorte_1348_jpg.rf.84131d1bc52eb2ee7f6f7941edd8541a.jpg
+   Real: D0Q497 → Pred: D0497B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D0Q497_#_recorte_1348_jpg.rf.84131d1bc52eb2ee7f6f7941edd8541a.jpg
+
+237. D2A06D_#_recorte_777_jpg.rf.3056e2ff804a190250cd826538ab9ec1.jpg
+   Real: D2A06D → Pred: B2A004
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D2A06D_#_recorte_777_jpg.rf.3056e2ff804a190250cd826538ab9ec1.jpg
+
+238. D4K594_#_recorte_807_jpg.rf.4da22259645fd54a13a38b01a5bef1a8.jpg
+   Real: D4K594 → Pred: D4594B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D4K594_#_recorte_807_jpg.rf.4da22259645fd54a13a38b01a5bef1a8.jpg
+
+239. D5N623_#_recorte_173_jpg.rf.2907c7d83ce9bfdc42518e4e3ff6de64.jpg
+   Real: D5N623 → Pred: D5623B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D5N623_#_recorte_173_jpg.rf.2907c7d83ce9bfdc42518e4e3ff6de64.jpg
+
+240. D5T253_#_recorte_2270_jpg.rf.0687520050aa9cad50241e49bdbf0714.jpg
+   Real: D5T253 → Pred: D5253S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D5T253_#_recorte_2270_jpg.rf.0687520050aa9cad50241e49bdbf0714.jpg
+
+241. D5T253_#_recorte_2270_jpg.rf.6790af8fe5042d162843da5e121fdee1.jpg
+   Real: D5T253 → Pred: D5253B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D5T253_#_recorte_2270_jpg.rf.6790af8fe5042d162843da5e121fdee1.jpg
+
+242. D6K219_#_recorte_831_jpg.rf.c40e4f0d38cf2a1f6af0376d1dc7a747.jpg
+   Real: D6K219 → Pred: D21982
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D6K219_#_recorte_831_jpg.rf.c40e4f0d38cf2a1f6af0376d1dc7a747.jpg
+
+243. D7X759_#_recorte_1906_jpg.rf.641956a5824db10456aacb1ea9937fa8.jpg
+   Real: D7X759 → Pred: DX759K
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D7X759_#_recorte_1906_jpg.rf.641956a5824db10456aacb1ea9937fa8.jpg
+
+244. D7X759_#_recorte_1909_jpg.rf.a3b060d930be61a362cc268871d8376d.jpg
+   Real: D7X759 → Pred: DX759A
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D7X759_#_recorte_1909_jpg.rf.a3b060d930be61a362cc268871d8376d.jpg
+
+245. D8E324_#_recorte_22_jpg.rf.09f5cd7e23467fedff55e6a22dd214ac.jpg
+   Real: D8E324 → Pred: DE324F
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D8E324_#_recorte_22_jpg.rf.09f5cd7e23467fedff55e6a22dd214ac.jpg
+
+246. D8E324_#_recorte_39_jpg.rf.0d0792b4651ed1e0150ce4b9814e289b.jpg
+   Real: D8E324 → Pred: BE324D
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D8E324_#_recorte_39_jpg.rf.0d0792b4651ed1e0150ce4b9814e289b.jpg
+
+247. D8K574_#_recorte_212_jpg.rf.b5883396f9ad5cab7ea1caa216618f18.jpg
+   Real: D8K574 → Pred: D8574B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\D8K574_#_recorte_212_jpg.rf.b5883396f9ad5cab7ea1caa216618f18.jpg
+
+248. DAC937_#_recorte_1929_jpg.rf.84ab0261d1cd2b36417ee25444d8e32c.jpg
+   Real: DAC937 → Pred: DC937E
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\DAC937_#_recorte_1929_jpg.rf.84ab0261d1cd2b36417ee25444d8e32c.jpg
+
+249. DAC937_#_recorte_1929_jpg.rf.f484bcc7fab69ab0080537032d06f52c.jpg
+   Real: DAC937 → Pred: BA97D4
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\DAC937_#_recorte_1929_jpg.rf.f484bcc7fab69ab0080537032d06f52c.jpg
+
+250. DAC939_#_recorte_1925_jpg.rf.13f9543b1c47fac86012e3cd6b386fb6.jpg
+   Real: DAC939 → Pred: DA919B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\DAC939_#_recorte_1925_jpg.rf.13f9543b1c47fac86012e3cd6b386fb6.jpg
+
+251. DAC939_#_recorte_1927_jpg.rf.045b8a1f20965b2ae0ef5512f1100772.jpg
+   Real: DAC939 → Pred: DA939B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\DAC939_#_recorte_1927_jpg.rf.045b8a1f20965b2ae0ef5512f1100772.jpg
+
+252. DNX504_#_recorte_1214_jpg.rf.02412ae6f2f22d29902c276731d6eb2c.jpg
+   Real: DNX504 → Pred: D504BA
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\DNX504_#_recorte_1214_jpg.rf.02412ae6f2f22d29902c276731d6eb2c.jpg
+
+253. EGD078_#_recorte_1922_jpg.rf.8872001be1361642b9373b38940fb322.jpg
+   Real: EGD078 → Pred: FD08TA
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\EGD078_#_recorte_1922_jpg.rf.8872001be1361642b9373b38940fb322.jpg
+
+254. EGY784_#_recorte_593_jpg.rf.078b670c579ba01206152bb132c10de8.jpg
+   Real: EGY784 → Pred: BY7841
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\EGY784_#_recorte_593_jpg.rf.078b670c579ba01206152bb132c10de8.jpg
+
+255. EGY784_#_recorte_594_jpg.rf.20175528ba829a4119f0ce3cf176939c.jpg
+   Real: EGY784 → Pred: BG784E
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\EGY784_#_recorte_594_jpg.rf.20175528ba829a4119f0ce3cf176939c.jpg
+
+256. EGY788_#_recorte_647_jpg.rf.4dda475b41717fa06e0f32ffe4ae90e4.jpg
+   Real: EGY788 → Pred: EY788F
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\EGY788_#_recorte_647_jpg.rf.4dda475b41717fa06e0f32ffe4ae90e4.jpg
+
+257. F0C949_#_recorte_1089_jpg.rf.6b8cf0efd7d323109afa09f5fd18d0ad.jpg
+   Real: F0C949 → Pred: FC949C
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\F0C949_#_recorte_1089_jpg.rf.6b8cf0efd7d323109afa09f5fd18d0ad.jpg
+
+258. F1B182_#_recorte_1305_jpg.rf.73e135f66b86f5b55c440634617e6747.jpg
+   Real: F1B182 → Pred: T1B12F
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\F1B182_#_recorte_1305_jpg.rf.73e135f66b86f5b55c440634617e6747.jpg
+
+259. F2E696_#_recorte_3010_jpg.rf.481603b7ce7441a082a1039ee4d74e55.jpg
+   Real: F2E696 → Pred: T2696F
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\F2E696_#_recorte_3010_jpg.rf.481603b7ce7441a082a1039ee4d74e55.jpg
+
+260. F4F959_#_recorte_1930_jpg.rf.2f4097dee3fe2223a768d6373616bb8c.jpg
+   Real: F4F959 → Pred: F49590
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\F4F959_#_recorte_1930_jpg.rf.2f4097dee3fe2223a768d6373616bb8c.jpg
+
+261. F4F959_#_recorte_1930_jpg.rf.66f9a8e4bb917d83c47bd3338149783d.jpg
+   Real: F4F959 → Pred: F4959C
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\F4F959_#_recorte_1930_jpg.rf.66f9a8e4bb917d83c47bd3338149783d.jpg
+
+262. F4F959_#_recorte_1932_jpg.rf.a87a906f7cc496bce62caee85b4e9fd4.jpg
+   Real: F4F959 → Pred: F4959T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\F4F959_#_recorte_1932_jpg.rf.a87a906f7cc496bce62caee85b4e9fd4.jpg
+
+263. F4F959_#_recorte_1932_jpg.rf.fb9dd5fc023e38dba9ae69ececa0dde4.jpg
+   Real: F4F959 → Pred: FE959F
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\F4F959_#_recorte_1932_jpg.rf.fb9dd5fc023e38dba9ae69ececa0dde4.jpg
+
+264. F4W566_#_recorte_1621_jpg.rf.ea8b6f345e6e6a53240b2add4416272b.jpg
+   Real: F4W566 → Pred: FW566A
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\F4W566_#_recorte_1621_jpg.rf.ea8b6f345e6e6a53240b2add4416272b.jpg
+
+265. F4W566_#_recorte_1632_jpg.rf.959ce6a30a454c62d463b7f05bb0dccb.jpg
+   Real: F4W566 → Pred: F45668
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\F4W566_#_recorte_1632_jpg.rf.959ce6a30a454c62d463b7f05bb0dccb.jpg
+
+266. F5M801_#_recorte_240_jpg.rf.440d5096a0e0753a73779c879fcbddef.jpg
+   Real: F5M801 → Pred: F01AQA
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\F5M801_#_recorte_240_jpg.rf.440d5096a0e0753a73779c879fcbddef.jpg
+
+267. F5M801_#_recorte_241_jpg.rf.fb74fa812e49c068100fbc5283ea7218.jpg
+   Real: F5M801 → Pred: FM6018
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\F5M801_#_recorte_241_jpg.rf.fb74fa812e49c068100fbc5283ea7218.jpg
+
+268. H1A308_#_recorte_1484_jpg.rf.86c951c10f51df629f1d31e0df2f9806.jpg
+   Real: H1A308 → Pred: HA308M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H1A308_#_recorte_1484_jpg.rf.86c951c10f51df629f1d31e0df2f9806.jpg
+
+269. H1A308_#_recorte_1484_jpg.rf.f725ef23a201fa59ad6097179206040a.jpg
+   Real: H1A308 → Pred: B1A08M
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H1A308_#_recorte_1484_jpg.rf.f725ef23a201fa59ad6097179206040a.jpg
+
+270. H1A308_#_recorte_1487_jpg.rf.2297ba979b700338faca0223d60b7042.jpg
+   Real: H1A308 → Pred: HA308M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H1A308_#_recorte_1487_jpg.rf.2297ba979b700338faca0223d60b7042.jpg
+
+271. H1A308_#_recorte_1487_jpg.rf.81c9bafff14e21988e5bb0937a773e8b.jpg
+   Real: H1A308 → Pred: HA308M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H1A308_#_recorte_1487_jpg.rf.81c9bafff14e21988e5bb0937a773e8b.jpg
+
+272. H1T376_#_recorte_2518_jpg.rf.47294ce3e21be3d98208e58657dff0b5.jpg
+   Real: H1T376 → Pred: H1376M
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H1T376_#_recorte_2518_jpg.rf.47294ce3e21be3d98208e58657dff0b5.jpg
+
+273. H1T376_#_recorte_2526_jpg.rf.75c56144fd30c367a146a55053079e58.jpg
+   Real: H1T376 → Pred: HT376M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H1T376_#_recorte_2526_jpg.rf.75c56144fd30c367a146a55053079e58.jpg
+
+274. H1T376_#_recorte_2526_jpg.rf.9279ac3b11dbb06a3cb2f3328f7bb1db.jpg
+   Real: H1T376 → Pred: HT376B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H1T376_#_recorte_2526_jpg.rf.9279ac3b11dbb06a3cb2f3328f7bb1db.jpg
+
+275. H1T376_#_recorte_2535_jpg.rf.e1008936ffc37dff544e1276e1bd2f0f.jpg
+   Real: H1T376 → Pred: B1376H
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H1T376_#_recorte_2535_jpg.rf.e1008936ffc37dff544e1276e1bd2f0f.jpg
+
+276. H1W695_#_recorte_1284_jpg.rf.deb806a20e7b7e663cc7a2192709600b.jpg
+   Real: H1W695 → Pred: H1695B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H1W695_#_recorte_1284_jpg.rf.deb806a20e7b7e663cc7a2192709600b.jpg
+
+277. H1Y692_#_recorte_401_jpg.rf.7bfcef806f664c7a5c1aed04808a4ae4.jpg
+   Real: H1Y692 → Pred: HY692M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H1Y692_#_recorte_401_jpg.rf.7bfcef806f664c7a5c1aed04808a4ae4.jpg
+
+278. H1Y692_#_recorte_403_jpg.rf.1fb688b111fccd7c3b03adbfe6da31fc.jpg
+   Real: H1Y692 → Pred: H1Y921
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H1Y692_#_recorte_403_jpg.rf.1fb688b111fccd7c3b03adbfe6da31fc.jpg
+
+279. H2N324_#_recorte_1304_jpg.rf.5b825a6c27a9fa335c49e72d224f3768.jpg
+   Real: H2N324 → Pred: B2324H
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H2N324_#_recorte_1304_jpg.rf.5b825a6c27a9fa335c49e72d224f3768.jpg
+
+280. H2N324_#_recorte_1304_jpg.rf.f338d9509c8273c7fce62eb690935ad9.jpg
+   Real: H2N324 → Pred: H2324M
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H2N324_#_recorte_1304_jpg.rf.f338d9509c8273c7fce62eb690935ad9.jpg
+
+281. H3T579_#_recorte_814_jpg.rf.30e067f2b2e9f166f51143a15a850fa5.jpg
+   Real: H3T579 → Pred: M37935
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H3T579_#_recorte_814_jpg.rf.30e067f2b2e9f166f51143a15a850fa5.jpg
+
+282. H3T579_#_recorte_816_jpg.rf.b7d5a368c7bf5c16422dba44dcc42c3f.jpg
+   Real: H3T579 → Pred: T3T59H
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H3T579_#_recorte_816_jpg.rf.b7d5a368c7bf5c16422dba44dcc42c3f.jpg
+
+283. H3T579_#_recorte_818_jpg.rf.321d7dca2473f6fa877e2001768b33fd.jpg
+   Real: H3T579 → Pred: TT579H
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H3T579_#_recorte_818_jpg.rf.321d7dca2473f6fa877e2001768b33fd.jpg
+
+284. H3T579_#_recorte_818_jpg.rf.4d4604770f6b314dc80a23a7a9ff27d7.jpg
+   Real: H3T579 → Pred: H3579T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H3T579_#_recorte_818_jpg.rf.4d4604770f6b314dc80a23a7a9ff27d7.jpg
+
+285. H6H762_#_recorte_1247_jpg.rf.8d3bbac0e9c5ccd24fab028f293e0d20.jpg
+   Real: H6H762 → Pred: B6H727
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\H6H762_#_recorte_1247_jpg.rf.8d3bbac0e9c5ccd24fab028f293e0d20.jpg
+
+286. M2Q097_#_recorte_101_jpg.rf.6c3f3650471cf12e2b76c14a308eee2e.jpg
+   Real: M2Q097 → Pred: MQ097F
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M2Q097_#_recorte_101_jpg.rf.6c3f3650471cf12e2b76c14a308eee2e.jpg
+
+287. M2Q097_#_recorte_84_jpg.rf.59ee0acc46ab7ada4f2b5d8de249253d.jpg
+   Real: M2Q097 → Pred: TQ0970
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M2Q097_#_recorte_84_jpg.rf.59ee0acc46ab7ada4f2b5d8de249253d.jpg
+
+288. M2Q097_#_recorte_90_jpg.rf.bcbc0f65c4b92ca83ce74c4e0e862980.jpg
+   Real: M2Q097 → Pred: MQ097T
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M2Q097_#_recorte_90_jpg.rf.bcbc0f65c4b92ca83ce74c4e0e862980.jpg
+
+289. M2T734_#_recorte_2878_jpg.rf.68936b19cf2020575e935d20433d4524.jpg
+   Real: M2T734 → Pred: M2T34H
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M2T734_#_recorte_2878_jpg.rf.68936b19cf2020575e935d20433d4524.jpg
+
+290. M2W404_#_recorte_578_jpg.rf.7ad202b55f6bba9c57143adc75ee90df.jpg
+   Real: M2W404 → Pred: T2W04B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M2W404_#_recorte_578_jpg.rf.7ad202b55f6bba9c57143adc75ee90df.jpg
+
+291. M3K767_#_recorte_1651_jpg.rf.3cf1713b80dc92e41b898b4442974131.jpg
+   Real: M3K767 → Pred: T3767M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M3K767_#_recorte_1651_jpg.rf.3cf1713b80dc92e41b898b4442974131.jpg
+
+292. M3K767_#_recorte_1661_jpg.rf.1ca570af01be434185998b44da27822a.jpg
+   Real: M3K767 → Pred: T3K67M
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M3K767_#_recorte_1661_jpg.rf.1ca570af01be434185998b44da27822a.jpg
+
+293. M3P570_#_recorte_2901_jpg.rf.90b16e41533c48f2f2431ca4b4ddf498.jpg
+   Real: M3P570 → Pred: M3P706
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M3P570_#_recorte_2901_jpg.rf.90b16e41533c48f2f2431ca4b4ddf498.jpg
+
+294. M3Q739_#_recorte_2015_jpg.rf.1785fa7dc510deaa5e19d0d6a0b527fd.jpg
+   Real: M3Q739 → Pred: M3739H
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M3Q739_#_recorte_2015_jpg.rf.1785fa7dc510deaa5e19d0d6a0b527fd.jpg
+
+295. M3S804_#_recorte_2174_jpg.rf.1a4f6925920c14396a3e14c83627ddf5.jpg
+   Real: M3S804 → Pred: M3S04T
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M3S804_#_recorte_2174_jpg.rf.1a4f6925920c14396a3e14c83627ddf5.jpg
+
+296. M4E504_#_recorte_1631_jpg.rf.601015390475182de3492e6a9d2feffb.jpg
+   Real: M4E504 → Pred: ME504B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M4E504_#_recorte_1631_jpg.rf.601015390475182de3492e6a9d2feffb.jpg
+
+297. M4E504_#_recorte_1631_jpg.rf.964427b9064f23cf8ddb94f7f94ba0e4.jpg
+   Real: M4E504 → Pred: A4504T
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M4E504_#_recorte_1631_jpg.rf.964427b9064f23cf8ddb94f7f94ba0e4.jpg
+
+298. M4E554_#_recorte_1633_jpg.rf.4573956470af70836ab0981d9a025f23.jpg
+   Real: M4E554 → Pred: M45045
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M4E554_#_recorte_1633_jpg.rf.4573956470af70836ab0981d9a025f23.jpg
+
+299. M4G240_#_recorte_1016_jpg.rf.2e53e882172fc99c925b4c1a47a20922.jpg
+   Real: M4G240 → Pred: MG240B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M4G240_#_recorte_1016_jpg.rf.2e53e882172fc99c925b4c1a47a20922.jpg
+
+300. M4G240_#_recorte_1020_jpg.rf.2af2035a6e98ce8a7f0982aa68afe5b3.jpg
+   Real: M4G240 → Pred: MG240H
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M4G240_#_recorte_1020_jpg.rf.2af2035a6e98ce8a7f0982aa68afe5b3.jpg
+
+301. M5C652_#_recorte_419_jpg.rf.6d80c8b72dabd25e52f4d45f397771a7.jpg
+   Real: M5C652 → Pred: M5C52E
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5C652_#_recorte_419_jpg.rf.6d80c8b72dabd25e52f4d45f397771a7.jpg
+
+302. M5C652_#_recorte_419_jpg.rf.e95e5968a3a2e0f0c8e43a8f1d384025.jpg
+   Real: M5C652 → Pred: M5652P
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5C652_#_recorte_419_jpg.rf.e95e5968a3a2e0f0c8e43a8f1d384025.jpg
+
+303. M5C652_#_recorte_422_jpg.rf.6afeee2e1e0e579a2b0f8532e7dd9cc6.jpg
+   Real: M5C652 → Pred: MC652G
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5C652_#_recorte_422_jpg.rf.6afeee2e1e0e579a2b0f8532e7dd9cc6.jpg
+
+304. M5C652_#_recorte_424_jpg.rf.43e9ea012faa26f41fa7fb758a736902.jpg
+   Real: M5C652 → Pred: MC652T
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5C652_#_recorte_424_jpg.rf.43e9ea012faa26f41fa7fb758a736902.jpg
+
+305. M5C652_#_recorte_426_jpg.rf.fbf77562cc63ea680c28d62c0a1b8b1a.jpg
+   Real: M5C652 → Pred: M5652H
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5C652_#_recorte_426_jpg.rf.fbf77562cc63ea680c28d62c0a1b8b1a.jpg
+
+306. M5D236_#_recorte_967_jpg.rf.0d60f76b1ff380e23b5772a79691f609.jpg
+   Real: M5D236 → Pred: M5236T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5D236_#_recorte_967_jpg.rf.0d60f76b1ff380e23b5772a79691f609.jpg
+
+307. M5D236_#_recorte_975_jpg.rf.6b55e20570a0b892da1ba4277da0aa87.jpg
+   Real: M5D236 → Pred: M5D36P
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5D236_#_recorte_975_jpg.rf.6b55e20570a0b892da1ba4277da0aa87.jpg
+
+308. M5E899_#_recorte_1275_jpg.rf.226484807ef33263b62434f6f9e24894.jpg
+   Real: M5E899 → Pred: ME899T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5E899_#_recorte_1275_jpg.rf.226484807ef33263b62434f6f9e24894.jpg
+
+309. M5E899_#_recorte_1275_jpg.rf.7e39f9a9133b84cd91d790daa25feb54.jpg
+   Real: M5E899 → Pred: ME899T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5E899_#_recorte_1275_jpg.rf.7e39f9a9133b84cd91d790daa25feb54.jpg
+
+310. M5E899_#_recorte_1275_jpg.rf.bb58f0a3c8f418aadd3793aa168c87e7.jpg
+   Real: M5E899 → Pred: TE899M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5E899_#_recorte_1275_jpg.rf.bb58f0a3c8f418aadd3793aa168c87e7.jpg
+
+311. M5H392_#_recorte_705_jpg.rf.5a052ce02fcb312d7c225bc9929d906a.jpg
+   Real: M5H392 → Pred: MH392H
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5H392_#_recorte_705_jpg.rf.5a052ce02fcb312d7c225bc9929d906a.jpg
+
+312. M5H500_#_recorte_1944_jpg.rf.3792678d6e978e10ef00cf88843e1f15.jpg
+   Real: M5H500 → Pred: M5500H
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5H500_#_recorte_1944_jpg.rf.3792678d6e978e10ef00cf88843e1f15.jpg
+
+313. M5H500_#_recorte_1944_jpg.rf.470be82700c5ee0188d7c4795a4d4ddb.jpg
+   Real: M5H500 → Pred: M5500H
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M5H500_#_recorte_1944_jpg.rf.470be82700c5ee0188d7c4795a4d4ddb.jpg
+
+314. M7Y875_#_recorte_905_jpg.rf.090efd1d261307bc92eb3896c84e9e83.jpg
+   Real: M7Y875 → Pred: M7Y75V
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M7Y875_#_recorte_905_jpg.rf.090efd1d261307bc92eb3896c84e9e83.jpg
+
+315. M7Y875_#_recorte_905_jpg.rf.e78630dba67d9fa399ba5423a3a308e6.jpg
+   Real: M7Y875 → Pred: M7875B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\M7Y875_#_recorte_905_jpg.rf.e78630dba67d9fa399ba5423a3a308e6.jpg
+
+316. N5L929_#_recorte_1451_jpg.rf.042d66926fc48b65874a7ed5c1cf4d57.jpg
+   Real: N5L929 → Pred: WL929H
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\N5L929_#_recorte_1451_jpg.rf.042d66926fc48b65874a7ed5c1cf4d57.jpg
+
+317. N5L929_#_recorte_1451_jpg.rf.84e53ffc21d21b3dd0693f0a2a980fe9.jpg
+   Real: N5L929 → Pred: H5929A
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\N5L929_#_recorte_1451_jpg.rf.84e53ffc21d21b3dd0693f0a2a980fe9.jpg
+
+318. N5L929_#_recorte_1453_jpg.rf.ea77b127c0be9a979227fb772ffbf58d.jpg
+   Real: N5L929 → Pred: B59297
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\N5L929_#_recorte_1453_jpg.rf.ea77b127c0be9a979227fb772ffbf58d.jpg
+
+319. P1B957_#_recorte_1015_jpg.rf.ac956f44338f505c150340f8ad991861.jpg
+   Real: P1B957 → Pred: PB957B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\P1B957_#_recorte_1015_jpg.rf.ac956f44338f505c150340f8ad991861.jpg
+
+320. P1B957_#_recorte_1019_jpg.rf.3f53998ba71913955b826cc8f61fee35.jpg
+   Real: P1B957 → Pred: P1957B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\P1B957_#_recorte_1019_jpg.rf.3f53998ba71913955b826cc8f61fee35.jpg
+
+321. P2J581_#_recorte_1457_jpg.rf.8f013524551f0ad48e5c65e8c9e709ce.jpg
+   Real: P2J581 → Pred: P25819
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\P2J581_#_recorte_1457_jpg.rf.8f013524551f0ad48e5c65e8c9e709ce.jpg
+
+322. P2S128_#_recorte_764_jpg.rf.5666bb72aef6162cb96fddb153b5d7d7.jpg
+   Real: P2S128 → Pred: P2S28F
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\P2S128_#_recorte_764_jpg.rf.5666bb72aef6162cb96fddb153b5d7d7.jpg
+
+323. P2S128_#_recorte_764_jpg.rf.e30f6ad40d26d5dcac0b3e746bde3376.jpg
+   Real: P2S128 → Pred: P2S28F
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\P2S128_#_recorte_764_jpg.rf.e30f6ad40d26d5dcac0b3e746bde3376.jpg
+
+324. P3H502_#_recorte_711_jpg.rf.f1b76684743d0eb47712d2e8e4f53359.jpg
+   Real: P3H502 → Pred: B52373
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\P3H502_#_recorte_711_jpg.rf.f1b76684743d0eb47712d2e8e4f53359.jpg
+
+325. P3W367_#_recorte_2618_jpg.rf.64a80a863837c9ad4f58d7165dd5a60d.jpg
+   Real: P3W367 → Pred: P3W746
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\P3W367_#_recorte_2618_jpg.rf.64a80a863837c9ad4f58d7165dd5a60d.jpg
+
+326. S1B009_#_recorte_1347_jpg.rf.58534a57e47510b63eb97cab24d0b8e5.jpg
+   Real: S1B009 → Pred: SB009B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\S1B009_#_recorte_1347_jpg.rf.58534a57e47510b63eb97cab24d0b8e5.jpg
+
+327. S1B009_#_recorte_1349_jpg.rf.f9b7d07c371ddb76ce74490cf90fdcb5.jpg
+   Real: S1B009 → Pred: S10098
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\S1B009_#_recorte_1349_jpg.rf.f9b7d07c371ddb76ce74490cf90fdcb5.jpg
+
+328. S1B0Q9_#_recorte_1342_jpg.rf.2dab107c9c3a28fad2390d88c9fc72e1.jpg
+   Real: S1B0Q9 → Pred: T1B09S
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\S1B0Q9_#_recorte_1342_jpg.rf.2dab107c9c3a28fad2390d88c9fc72e1.jpg
+
+329. T0K870_#_recorte_2343_jpg.rf.24e830c7665dd00012f0f3de4473750b.jpg
+   Real: T0K870 → Pred: TDK80C
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T0K870_#_recorte_2343_jpg.rf.24e830c7665dd00012f0f3de4473750b.jpg
+
+330. T0K870_#_recorte_2349_jpg.rf.86fc2f9423a367453b03a5a171f865d7.jpg
+   Real: T0K870 → Pred: T0K70D
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T0K870_#_recorte_2349_jpg.rf.86fc2f9423a367453b03a5a171f865d7.jpg
+
+331. T10778_#_recorte_2631_jpg.rf.589a25249709dcb2b24aacd1e74c2b3a.jpg
+   Real: T10778 → Pred: T1Q780
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T10778_#_recorte_2631_jpg.rf.589a25249709dcb2b24aacd1e74c2b3a.jpg
+
+332. T10778_#_recorte_2631_jpg.rf.e73028c7da0f4afb5f3fbdb7f8ae2dcc.jpg
+   Real: T10778 → Pred: T1Q780
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T10778_#_recorte_2631_jpg.rf.e73028c7da0f4afb5f3fbdb7f8ae2dcc.jpg
+
+333. T10783_#_recorte_1039_jpg.rf.257fe95c8d030c3031a1955a6cf93c10.jpg
+   Real: T10783 → Pred: T1783B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T10783_#_recorte_1039_jpg.rf.257fe95c8d030c3031a1955a6cf93c10.jpg
+
+334. T11542_#_recorte_2008_jpg.rf.501a720026b47de7e1d4d6f212edd3c2.jpg
+   Real: T11542 → Pred: T1142T
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T11542_#_recorte_2008_jpg.rf.501a720026b47de7e1d4d6f212edd3c2.jpg
+
+335. T11765_#_recorte_1183_jpg.rf.a869d4c0f90d0bc2fd6e84782478260a.jpg
+   Real: T11765 → Pred: T17654
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T11765_#_recorte_1183_jpg.rf.a869d4c0f90d0bc2fd6e84782478260a.jpg
+
+336. T11765_#_recorte_1189_jpg.rf.842f1c76e6e48b42e6deaa4f36d19726.jpg
+   Real: T11765 → Pred: T17656
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T11765_#_recorte_1189_jpg.rf.842f1c76e6e48b42e6deaa4f36d19726.jpg
+
+337. T117B8_#_recorte_890_jpg.rf.e3a3ee0ebb99b04b8f89182fba29cc7e.jpg
+   Real: T117B8 → Pred: T17882
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T117B8_#_recorte_890_jpg.rf.e3a3ee0ebb99b04b8f89182fba29cc7e.jpg
+
+338. T1A093_#_recorte_327_jpg.rf.19eef54afdf9cf7e3e923a0489b8aef6.jpg
+   Real: T1A093 → Pred: TA093K
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1A093_#_recorte_327_jpg.rf.19eef54afdf9cf7e3e923a0489b8aef6.jpg
+
+339. T1B962_#_recorte_2019_jpg.rf.96ea41c0a47b83bf46715214a5df1412.jpg
+   Real: T1B962 → Pred: T19627
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1B962_#_recorte_2019_jpg.rf.96ea41c0a47b83bf46715214a5df1412.jpg
+
+340. T1B962_#_recorte_2019_jpg.rf.db2d8a3a893884f7b0c76e2fb799b67e.jpg
+   Real: T1B962 → Pred: T19627
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1B962_#_recorte_2019_jpg.rf.db2d8a3a893884f7b0c76e2fb799b67e.jpg
+
+341. T1C747_#_recorte_1890_jpg.rf.7611e2f6b5d50060d577d2601b0fc1a7.jpg
+   Real: T1C747 → Pred: T17471
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1C747_#_recorte_1890_jpg.rf.7611e2f6b5d50060d577d2601b0fc1a7.jpg
+
+342. T1D207_#_recorte_452_jpg.rf.8a9d20b1719f09d2bc57cc4f4c843fdd.jpg
+   Real: T1D207 → Pred: T1207D
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1D207_#_recorte_452_jpg.rf.8a9d20b1719f09d2bc57cc4f4c843fdd.jpg
+
+343. T1D207_#_recorte_452_jpg.rf.ca29935a7daca422d7c938145f47f748.jpg
+   Real: T1D207 → Pred: T12727
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1D207_#_recorte_452_jpg.rf.ca29935a7daca422d7c938145f47f748.jpg
+
+344. T1D764_#_recorte_1912_jpg.rf.5f58fd9983f6124301ca03f71537b655.jpg
+   Real: T1D764 → Pred: T16436
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1D764_#_recorte_1912_jpg.rf.5f58fd9983f6124301ca03f71537b655.jpg
+
+345. T1E630_#_recorte_2550_jpg.rf.b41594542b1fd7e46aabcaeefe841a0c.jpg
+   Real: T1E630 → Pred: T16302
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1E630_#_recorte_2550_jpg.rf.b41594542b1fd7e46aabcaeefe841a0c.jpg
+
+346. T1E704_#_recorte_1341_jpg.rf.62d5dc61c4b80e4b21d0d035405d6981.jpg
+   Real: T1E704 → Pred: T17042
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1E704_#_recorte_1341_jpg.rf.62d5dc61c4b80e4b21d0d035405d6981.jpg
+
+347. T1E704_#_recorte_1341_jpg.rf.671b7f389a7b307da9906b5578033099.jpg
+   Real: T1E704 → Pred: T1704Q
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1E704_#_recorte_1341_jpg.rf.671b7f389a7b307da9906b5578033099.jpg
+
+348. T1G716_#_recorte_1520_jpg.rf.ae2e3872e43283f3af34d0ae2d1671bf.jpg
+   Real: T1G716 → Pred: T1G163
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1G716_#_recorte_1520_jpg.rf.ae2e3872e43283f3af34d0ae2d1671bf.jpg
+
+349. T1K120_#_recorte_1647_jpg.rf.6cfd944058ee946ac475b4a2f343fb4d.jpg
+   Real: T1K120 → Pred: T1120S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1K120_#_recorte_1647_jpg.rf.6cfd944058ee946ac475b4a2f343fb4d.jpg
+
+350. T1M759_#_recorte_1681_jpg.rf.affd7dd1a23104e552e179c3eba8ab02.jpg
+   Real: T1M759 → Pred: T1759S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1M759_#_recorte_1681_jpg.rf.affd7dd1a23104e552e179c3eba8ab02.jpg
+
+351. T1N539_#_recorte_2229_jpg.rf.02b22739277cdaea80956875bdd483de.jpg
+   Real: T1N539 → Pred: TN539Q
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1N539_#_recorte_2229_jpg.rf.02b22739277cdaea80956875bdd483de.jpg
+
+352. T1N539_#_recorte_2883_jpg.rf.96dd095b7cccc4554de452dff3fa9294.jpg
+   Real: T1N539 → Pred: T15930
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1N539_#_recorte_2883_jpg.rf.96dd095b7cccc4554de452dff3fa9294.jpg
+
+353. T1N642_#_recorte_2366_jpg.rf.868ef0a1fc4d09b0d43f158cbd5f4925.jpg
+   Real: T1N642 → Pred: T16421
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1N642_#_recorte_2366_jpg.rf.868ef0a1fc4d09b0d43f158cbd5f4925.jpg
+
+354. T1U683_#_recorte_253_jpg.rf.41083567d75e3b11e8cbdd9dfb55af83.jpg
+   Real: T1U683 → Pred: T16838
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1U683_#_recorte_253_jpg.rf.41083567d75e3b11e8cbdd9dfb55af83.jpg
+
+355. T1U683_#_recorte_253_jpg.rf.aa0432a98df8f1f241d1832b72956483.jpg
+   Real: T1U683 → Pred: T16836
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1U683_#_recorte_253_jpg.rf.aa0432a98df8f1f241d1832b72956483.jpg
+
+356. T1X346_#_recorte_645_jpg.rf.c9e245d87ba7ad11f7a96cff36d1532a.jpg
+   Real: T1X346 → Pred: T13464
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1X346_#_recorte_645_jpg.rf.c9e245d87ba7ad11f7a96cff36d1532a.jpg
+
+357. T1X526_#_recorte_670_jpg.rf.1293c9a4398af1461ffddde1c237ee33.jpg
+   Real: T1X526 → Pred: T15264
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1X526_#_recorte_670_jpg.rf.1293c9a4398af1461ffddde1c237ee33.jpg
+
+358. T1X526_#_recorte_670_jpg.rf.4a3536399ec39e22693071788aa43f18.jpg
+   Real: T1X526 → Pred: T1526S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1X526_#_recorte_670_jpg.rf.4a3536399ec39e22693071788aa43f18.jpg
+
+359. T1Y297_#_recorte_760_jpg.rf.310833ca4163d0e44e39f28656430b03.jpg
+   Real: T1Y297 → Pred: T12971
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1Y297_#_recorte_760_jpg.rf.310833ca4163d0e44e39f28656430b03.jpg
+
+360. T1Y297_#_recorte_760_jpg.rf.f742716e187f8bbec50557b4fd15b0ef.jpg
+   Real: T1Y297 → Pred: T1297T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T1Y297_#_recorte_760_jpg.rf.f742716e187f8bbec50557b4fd15b0ef.jpg
+
+361. T20732_#_recorte_2478_jpg.rf.407856b5415f7edc9b1f125df153f598.jpg
+   Real: T20732 → Pred: T0732D
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T20732_#_recorte_2478_jpg.rf.407856b5415f7edc9b1f125df153f598.jpg
+
+362. T21535_#_recorte_1335_jpg.rf.3035478280dec74fe731775167171b78.jpg
+   Real: T21535 → Pred: T15353
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T21535_#_recorte_1335_jpg.rf.3035478280dec74fe731775167171b78.jpg
+
+363. T21787_#_recorte_1407_jpg.rf.7b1a3c8ce516cb93436cca036cd995f1.jpg
+   Real: T21787 → Pred: T27872
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T21787_#_recorte_1407_jpg.rf.7b1a3c8ce516cb93436cca036cd995f1.jpg
+
+364. T21787_#_recorte_1411_jpg.rf.6bbc7bbb24160da5c124c48116fd4932.jpg
+   Real: T21787 → Pred: T287B6
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T21787_#_recorte_1411_jpg.rf.6bbc7bbb24160da5c124c48116fd4932.jpg
+
+365. T2A543_#_recorte_176_jpg.rf.f41affe705e7e78fc6c52db3fbcb1225.jpg
+   Real: T2A543 → Pred: T25433
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2A543_#_recorte_176_jpg.rf.f41affe705e7e78fc6c52db3fbcb1225.jpg
+
+366. T2A543_#_recorte_178_jpg.rf.95510863bc57a50f487a8e7c35e5a90b.jpg
+   Real: T2A543 → Pred: T25438
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2A543_#_recorte_178_jpg.rf.95510863bc57a50f487a8e7c35e5a90b.jpg
+
+367. T2A694_#_recorte_2749_jpg.rf.cf2cb4c6cd9cb8a35cffb01283d07e50.jpg
+   Real: T2A694 → Pred: T2A942
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2A694_#_recorte_2749_jpg.rf.cf2cb4c6cd9cb8a35cffb01283d07e50.jpg
+
+368. T2B132_#_recorte_977_jpg.rf.1adf5749afb86a2c60f2ec4f00dd8a6a.jpg
+   Real: T2B132 → Pred: TB32D4
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2B132_#_recorte_977_jpg.rf.1adf5749afb86a2c60f2ec4f00dd8a6a.jpg
+
+369. T2B132_#_recorte_981_jpg.rf.9433f28e7256f8b73ee650c01f79cb9e.jpg
+   Real: T2B132 → Pred: T2B321
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2B132_#_recorte_981_jpg.rf.9433f28e7256f8b73ee650c01f79cb9e.jpg
+
+370. T2B132_#_recorte_985_jpg.rf.03d67b71e897eb837c83081aaa4a389f.jpg
+   Real: T2B132 → Pred: TB1328
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2B132_#_recorte_985_jpg.rf.03d67b71e897eb837c83081aaa4a389f.jpg
+
+371. T2B132_#_recorte_985_jpg.rf.5978cf40884d91663ae57923c5b0d400.jpg
+   Real: T2B132 → Pred: TB3284
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2B132_#_recorte_985_jpg.rf.5978cf40884d91663ae57923c5b0d400.jpg
+
+372. T2B132_#_recorte_985_jpg.rf.fe2a5807d5ac117cd6d3ef7a49c78a4a.jpg
+   Real: T2B132 → Pred: TB132D
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2B132_#_recorte_985_jpg.rf.fe2a5807d5ac117cd6d3ef7a49c78a4a.jpg
+
+373. T2B452_#_recorte_1170_jpg.rf.69cdf12b04d1ac0dd970820eb5f972c1.jpg
+   Real: T2B452 → Pred: T24526
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2B452_#_recorte_1170_jpg.rf.69cdf12b04d1ac0dd970820eb5f972c1.jpg
+
+374. T2B452_#_recorte_1171_jpg.rf.f9ba9135fb38f6b80c808e1b92ddad5e.jpg
+   Real: T2B452 → Pred: T24528
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2B452_#_recorte_1171_jpg.rf.f9ba9135fb38f6b80c808e1b92ddad5e.jpg
+
+375. T2B452_#_recorte_1179_jpg.rf.a02eb903d69b931f1ae2809399aaffa1.jpg
+   Real: T2B452 → Pred: TB4528
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2B452_#_recorte_1179_jpg.rf.a02eb903d69b931f1ae2809399aaffa1.jpg
+
+376. T2D719_#_recorte_2724_jpg.rf.9ed42e7c7558a4d46a327c60e741539c.jpg
+   Real: T2D719 → Pred: T2D19B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2D719_#_recorte_2724_jpg.rf.9ed42e7c7558a4d46a327c60e741539c.jpg
+
+377. T2J523_#_recorte_2744_jpg.rf.cfa32749c5de3201bb5125da02431f39.jpg
+   Real: T2J523 → Pred: T2523Z
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2J523_#_recorte_2744_jpg.rf.cfa32749c5de3201bb5125da02431f39.jpg
+
+378. T2J543_#_recorte_3179_jpg.rf.6df4818403ae29ef5ac5b4c21bbcd073.jpg
+   Real: T2J543 → Pred: T2543Z
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2J543_#_recorte_3179_jpg.rf.6df4818403ae29ef5ac5b4c21bbcd073.jpg
+
+379. T2J790_#_recorte_1799_jpg.rf.53011926ad67525273fc958774993588.jpg
+   Real: T2J790 → Pred: T27908
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2J790_#_recorte_1799_jpg.rf.53011926ad67525273fc958774993588.jpg
+
+380. T2J798_#_recorte_1807_jpg.rf.b68f7870eb66270ddc9f3126979a3f2e.jpg
+   Real: T2J798 → Pred: T27986
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2J798_#_recorte_1807_jpg.rf.b68f7870eb66270ddc9f3126979a3f2e.jpg
+
+381. T2M716_#_recorte_943_jpg.rf.5a1e63cc769730d9e0b99ff7023bdd37.jpg
+   Real: T2M716 → Pred: T27168
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2M716_#_recorte_943_jpg.rf.5a1e63cc769730d9e0b99ff7023bdd37.jpg
+
+382. T2M716_#_recorte_946_jpg.rf.a0a8c56caca5cbf7ae6c3b772906d862.jpg
+   Real: T2M716 → Pred: T2M16H
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2M716_#_recorte_946_jpg.rf.a0a8c56caca5cbf7ae6c3b772906d862.jpg
+
+383. T2M716_#_recorte_946_jpg.rf.ebe50f336e36a503c2865f00f0fd113e.jpg
+   Real: T2M716 → Pred: T2M16H
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2M716_#_recorte_946_jpg.rf.ebe50f336e36a503c2865f00f0fd113e.jpg
+
+384. T2N451_#_recorte_1250_jpg.rf.6345a7b39b6539a0e16ceff47b25e5ca.jpg
+   Real: T2N451 → Pred: T2N51Y
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2N451_#_recorte_1250_jpg.rf.6345a7b39b6539a0e16ceff47b25e5ca.jpg
+
+385. T2N451_#_recorte_1250_jpg.rf.75a4527997f69297cf2a46d6d336f121.jpg
+   Real: T2N451 → Pred: T24171
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2N451_#_recorte_1250_jpg.rf.75a4527997f69297cf2a46d6d336f121.jpg
+
+386. T2N451_#_recorte_1252_jpg.rf.d80eb181e0803cff3b26e17751b75e2b.jpg
+   Real: T2N451 → Pred: T24517
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2N451_#_recorte_1252_jpg.rf.d80eb181e0803cff3b26e17751b75e2b.jpg
+
+387. T2P465_#_recorte_372_jpg.rf.f61470b181ddfeba60f453bd84688ef1.jpg
+   Real: T2P465 → Pred: T24656
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2P465_#_recorte_372_jpg.rf.f61470b181ddfeba60f453bd84688ef1.jpg
+
+388. T2P465_#_recorte_373_jpg.rf.dc938c5f1748eb3beb2427e962a1e676.jpg
+   Real: T2P465 → Pred: TP465P
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2P465_#_recorte_373_jpg.rf.dc938c5f1748eb3beb2427e962a1e676.jpg
+
+389. T2P811_#_recorte_1134_jpg.rf.5709ddba95b57ec7540f46f5bbb56fcc.jpg
+   Real: T2P811 → Pred: T2811B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2P811_#_recorte_1134_jpg.rf.5709ddba95b57ec7540f46f5bbb56fcc.jpg
+
+390. T2P811_#_recorte_1134_jpg.rf.ca4bffd542ee81773c75cd6418f7195f.jpg
+   Real: T2P811 → Pred: T28113
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2P811_#_recorte_1134_jpg.rf.ca4bffd542ee81773c75cd6418f7195f.jpg
+
+391. T2R595_#_recorte_824_jpg.rf.573a42e5d10f9784ab5abf13cc55eba7.jpg
+   Real: T2R595 → Pred: T25957
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2R595_#_recorte_824_jpg.rf.573a42e5d10f9784ab5abf13cc55eba7.jpg
+
+392. T2R595_#_recorte_824_jpg.rf.cd9492b9aba3f238af4f6828ac97e63d.jpg
+   Real: T2R595 → Pred: T25959
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2R595_#_recorte_824_jpg.rf.cd9492b9aba3f238af4f6828ac97e63d.jpg
+
+393. T2R611_#_recorte_681_jpg.rf.35c2f6903c1fe1371f586536575cf28f.jpg
+   Real: T2R611 → Pred: T26117
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2R611_#_recorte_681_jpg.rf.35c2f6903c1fe1371f586536575cf28f.jpg
+
+394. T2V376_#_recorte_3211_jpg.rf.07833545baf85a805deb05121a89d9a2.jpg
+   Real: T2V376 → Pred: T23764
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2V376_#_recorte_3211_jpg.rf.07833545baf85a805deb05121a89d9a2.jpg
+
+395. T2W554_#_recorte_2140_jpg.rf.9aa3585e19f6c663c1a9a667353d74bb.jpg
+   Real: T2W554 → Pred: T75546
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2W554_#_recorte_2140_jpg.rf.9aa3585e19f6c663c1a9a667353d74bb.jpg
+
+396. T2Y967_#_recorte_1049_jpg.rf.a85243670a6d9c508cef1f898be110e3.jpg
+   Real: T2Y967 → Pred: T29672
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2Y967_#_recorte_1049_jpg.rf.a85243670a6d9c508cef1f898be110e3.jpg
+
+397. T2Y967_#_recorte_1057_jpg.rf.2fec5fcc57ecc7dac80620ec41816d2c.jpg
+   Real: T2Y967 → Pred: T2Y672
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2Y967_#_recorte_1057_jpg.rf.2fec5fcc57ecc7dac80620ec41816d2c.jpg
+
+398. T2Y967_#_recorte_1062_jpg.rf.4a1e3b7cc50c7b7485e984ecfe6ae805.jpg
+   Real: T2Y967 → Pred: T2Y624
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2Y967_#_recorte_1062_jpg.rf.4a1e3b7cc50c7b7485e984ecfe6ae805.jpg
+
+399. T2Z004_#_recorte_1265_jpg.rf.19547e30e56e081e0f0825441258b469.jpg
+   Real: T2Z004 → Pred: T20046
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2Z004_#_recorte_1265_jpg.rf.19547e30e56e081e0f0825441258b469.jpg
+
+400. T2Z004_#_recorte_1273_jpg.rf.0d19f3b8b59bb13b12658e6f26b3addc.jpg
+   Real: T2Z004 → Pred: T20047
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T2Z004_#_recorte_1273_jpg.rf.0d19f3b8b59bb13b12658e6f26b3addc.jpg
+
+401. T30549_#_recorte_957_jpg.rf.c702b11d7d44969ffc79f8dea568e313.jpg
+   Real: T30549 → Pred: T05492
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T30549_#_recorte_957_jpg.rf.c702b11d7d44969ffc79f8dea568e313.jpg
+
+402. T30549_#_recorte_958_jpg.rf.5e03c2afa8d2fd9f70d4dc75ca885654.jpg
+   Real: T30549 → Pred: T35492
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T30549_#_recorte_958_jpg.rf.5e03c2afa8d2fd9f70d4dc75ca885654.jpg
+
+403. T31107_#_recorte_466_jpg.rf.98657f20961d4bec3d42966a46879ac8.jpg
+   Real: T31107 → Pred: T1107T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T31107_#_recorte_466_jpg.rf.98657f20961d4bec3d42966a46879ac8.jpg
+
+404. T31121_#_recorte_624_jpg.rf.7703837f90956a7fe95a466013ab09ac.jpg
+   Real: T31121 → Pred: T3121Q
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T31121_#_recorte_624_jpg.rf.7703837f90956a7fe95a466013ab09ac.jpg
+
+405. T31121_#_recorte_624_jpg.rf.dde7bc84337fc2c632ed3d3060d3ff1c.jpg
+   Real: T31121 → Pred: T1119T
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T31121_#_recorte_624_jpg.rf.dde7bc84337fc2c632ed3d3060d3ff1c.jpg
+
+406. T31173_#_recorte_379_jpg.rf.9f3016ec4cd157fc7343124eef1fc54c.jpg
+   Real: T31173 → Pred: T31737
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T31173_#_recorte_379_jpg.rf.9f3016ec4cd157fc7343124eef1fc54c.jpg
+
+407. T31173_#_recorte_379_jpg.rf.b6a90ae24ab7b8013b70da6e6dd514ec.jpg
+   Real: T31173 → Pred: T31736
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T31173_#_recorte_379_jpg.rf.b6a90ae24ab7b8013b70da6e6dd514ec.jpg
+
+408. T38851_#_recorte_2423_jpg.rf.10f0a4dff82526192956fbb3f3e3bfac.jpg
+   Real: T38851 → Pred: T3B51S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T38851_#_recorte_2423_jpg.rf.10f0a4dff82526192956fbb3f3e3bfac.jpg
+
+409. T38951_#_recorte_2407_jpg.rf.9e36db5ce993618046563bf585613321.jpg
+   Real: T38951 → Pred: T31434
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T38951_#_recorte_2407_jpg.rf.9e36db5ce993618046563bf585613321.jpg
+
+410. T3A315_#_recorte_960_jpg.rf.994963e4d7005bdc2ff2137f48702999.jpg
+   Real: T3A315 → Pred: T3315S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3A315_#_recorte_960_jpg.rf.994963e4d7005bdc2ff2137f48702999.jpg
+
+411. T3C485_#_recorte_1972_jpg.rf.7f55252bb14a36eb77650d7cd9ea03d8.jpg
+   Real: T3C485 → Pred: TC485B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3C485_#_recorte_1972_jpg.rf.7f55252bb14a36eb77650d7cd9ea03d8.jpg
+
+412. T3D151_#_recorte_931_jpg.rf.e562de108024c92dd63e65f92ce9ef90.jpg
+   Real: T3D151 → Pred: T31513
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3D151_#_recorte_931_jpg.rf.e562de108024c92dd63e65f92ce9ef90.jpg
+
+413. T3D151_#_recorte_936_jpg.rf.cb2be5bba7af17bb1a352e54147082aa.jpg
+   Real: T3D151 → Pred: T31513
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3D151_#_recorte_936_jpg.rf.cb2be5bba7af17bb1a352e54147082aa.jpg
+
+414. T3D182_#_recorte_1540_jpg.rf.2451f6e00af1b9052ca304be1b7ff6ce.jpg
+   Real: T3D182 → Pred: T182B7
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3D182_#_recorte_1540_jpg.rf.2451f6e00af1b9052ca304be1b7ff6ce.jpg
+
+415. T3D643_#_recorte_1670_jpg.rf.a193f65f75d838dd202965f872da02d4.jpg
+   Real: T3D643 → Pred: TD643A
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3D643_#_recorte_1670_jpg.rf.a193f65f75d838dd202965f872da02d4.jpg
+
+416. T3F386_#_recorte_1842_jpg.rf.f4a864742c683629520a82cf282f8e3c.jpg
+   Real: T3F386 → Pred: T33865
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3F386_#_recorte_1842_jpg.rf.f4a864742c683629520a82cf282f8e3c.jpg
+
+417. T3H149_#_recorte_2102_jpg.rf.944556e19ff01bdcb04102f7a8b35fac.jpg
+   Real: T3H149 → Pred: TH149N
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3H149_#_recorte_2102_jpg.rf.944556e19ff01bdcb04102f7a8b35fac.jpg
+
+418. T3H285_#_recorte_478_jpg.rf.7ae3402d7b380eeb3961d85ee7739208.jpg
+   Real: T3H285 → Pred: T3H85M
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3H285_#_recorte_478_jpg.rf.7ae3402d7b380eeb3961d85ee7739208.jpg
+
+419. T3H320_#_recorte_3116_jpg.rf.f84785bcc27e9ccf08eb118696517eff.jpg
+   Real: T3H320 → Pred: TH320M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3H320_#_recorte_3116_jpg.rf.f84785bcc27e9ccf08eb118696517eff.jpg
+
+420. T3M407_#_recorte_446_jpg.rf.9a7a0ff79c7e18d8176d63013222484b.jpg
+   Real: T3M407 → Pred: T3407Q
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3M407_#_recorte_446_jpg.rf.9a7a0ff79c7e18d8176d63013222484b.jpg
+
+421. T3P096_#_recorte_2190_jpg.rf.77d62e3aaba6353e4eb988a278e013c1.jpg
+   Real: T3P096 → Pred: TP0964
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3P096_#_recorte_2190_jpg.rf.77d62e3aaba6353e4eb988a278e013c1.jpg
+
+422. T3P096_#_recorte_2190_jpg.rf.8c95951f03110364567c46db4583c79b.jpg
+   Real: T3P096 → Pred: T3096J
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3P096_#_recorte_2190_jpg.rf.8c95951f03110364567c46db4583c79b.jpg
+
+423. T3P096_#_recorte_2198_jpg.rf.7b76a036958571bd8dd0a4a62b65a478.jpg
+   Real: T3P096 → Pred: TP0964
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3P096_#_recorte_2198_jpg.rf.7b76a036958571bd8dd0a4a62b65a478.jpg
+
+424. T3P298_#_recorte_116_jpg.rf.d90c7495e21f04df984c0ec0efaebdb1.jpg
+   Real: T3P298 → Pred: T29892
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3P298_#_recorte_116_jpg.rf.d90c7495e21f04df984c0ec0efaebdb1.jpg
+
+425. T3P298_#_recorte_118_jpg.rf.7cc618fa817d8cbb9b37f80e604e6f4f.jpg
+   Real: T3P298 → Pred: T32968
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3P298_#_recorte_118_jpg.rf.7cc618fa817d8cbb9b37f80e604e6f4f.jpg
+
+426. T3P298_#_recorte_118_jpg.rf.7f0cea52efdd1ac37f2763d722d06b9e.jpg
+   Real: T3P298 → Pred: T3P98B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3P298_#_recorte_118_jpg.rf.7f0cea52efdd1ac37f2763d722d06b9e.jpg
+
+427. T3T110_#_recorte_718_jpg.rf.59ccbf065b5773b6e8c85e9737bcd6d4.jpg
+   Real: T3T110 → Pred: TT110Q
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3T110_#_recorte_718_jpg.rf.59ccbf065b5773b6e8c85e9737bcd6d4.jpg
+
+428. T3U095_#_recorte_304_jpg.rf.e165f63f88a78c9c61f2b917ba7be09f.jpg
+   Real: T3U095 → Pred: TU0952
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3U095_#_recorte_304_jpg.rf.e165f63f88a78c9c61f2b917ba7be09f.jpg
+
+429. T3U630_#_recorte_778_jpg.rf.67fc1970d303bab6c80933d5c83edc02.jpg
+   Real: T3U630 → Pred: T36305
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3U630_#_recorte_778_jpg.rf.67fc1970d303bab6c80933d5c83edc02.jpg
+
+430. T3V259_#_recorte_2135_jpg.rf.df7fbf19821f0f0f2b66590cf5c8ad0d.jpg
+   Real: T3V259 → Pred: T3V59W
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3V259_#_recorte_2135_jpg.rf.df7fbf19821f0f0f2b66590cf5c8ad0d.jpg
+
+431. T3V575_#_recorte_1545_jpg.rf.7f1867f9605c2bfb9980427bc55a9819.jpg
+   Real: T3V575 → Pred: T3V75W
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3V575_#_recorte_1545_jpg.rf.7f1867f9605c2bfb9980427bc55a9819.jpg
+
+432. T3V872_#_recorte_1261_jpg.rf.8a3b01b1e7314b23bba77fa1c742d412.jpg
+   Real: T3V872 → Pred: T3872Z
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3V872_#_recorte_1261_jpg.rf.8a3b01b1e7314b23bba77fa1c742d412.jpg
+
+433. T3V877_#_recorte_1266_jpg.rf.1e567df8bbf6220dc3030b3d7cd4c3bb.jpg
+   Real: T3V877 → Pred: TV8772
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3V877_#_recorte_1266_jpg.rf.1e567df8bbf6220dc3030b3d7cd4c3bb.jpg
+
+434. T3W091_#_recorte_1711_jpg.rf.16ce8bdb2172fb2ac0d03bedf3772696.jpg
+   Real: T3W091 → Pred: T3W91K
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3W091_#_recorte_1711_jpg.rf.16ce8bdb2172fb2ac0d03bedf3772696.jpg
+
+435. T3W091_#_recorte_1711_jpg.rf.5ca826a3fa7349228acd6064a26de95e.jpg
+   Real: T3W091 → Pred: T3W917
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3W091_#_recorte_1711_jpg.rf.5ca826a3fa7349228acd6064a26de95e.jpg
+
+436. T3W091_#_recorte_1711_jpg.rf.a4aa16f79adf24317989798e2ee80930.jpg
+   Real: T3W091 → Pred: TW91KQ
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3W091_#_recorte_1711_jpg.rf.a4aa16f79adf24317989798e2ee80930.jpg
+
+437. T3W147_#_recorte_895_jpg.rf.3e10e1166d2a9f5ae383f3ec3b028f24.jpg
+   Real: T3W147 → Pred: T31472
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3W147_#_recorte_895_jpg.rf.3e10e1166d2a9f5ae383f3ec3b028f24.jpg
+
+438. T3W147_#_recorte_896_jpg.rf.74f833994adbabac3e503d99947c63c2.jpg
+   Real: T3W147 → Pred: T3W47K
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3W147_#_recorte_896_jpg.rf.74f833994adbabac3e503d99947c63c2.jpg
+
+439. T3W147_#_recorte_897_jpg.rf.d5b50c81c3d9410e17b0d483cdd552dd.jpg
+   Real: T3W147 → Pred: T3W47J
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3W147_#_recorte_897_jpg.rf.d5b50c81c3d9410e17b0d483cdd552dd.jpg
+
+440. T3W147_#_recorte_897_jpg.rf.eb2599e72c2cf32ef69c0dba5e711378.jpg
+   Real: T3W147 → Pred: T3W47V
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3W147_#_recorte_897_jpg.rf.eb2599e72c2cf32ef69c0dba5e711378.jpg
+
+441. T3X055_#_recorte_2824_jpg.rf.5e06996ade6989370b0a23335458d484.jpg
+   Real: T3X055 → Pred: TX055K
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3X055_#_recorte_2824_jpg.rf.5e06996ade6989370b0a23335458d484.jpg
+
+442. T3Y587_#_recorte_197_jpg.rf.42a0fa1b68a0a9df79f366305807722e.jpg
+   Real: T3Y587 → Pred: T3Y87B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3Y587_#_recorte_197_jpg.rf.42a0fa1b68a0a9df79f366305807722e.jpg
+
+443. T3Y674_#_recorte_2218_jpg.rf.2d840aa9c855280fa7cd3dbf8852d2cd.jpg
+   Real: T3Y674 → Pred: T3Y74V
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3Y674_#_recorte_2218_jpg.rf.2d840aa9c855280fa7cd3dbf8852d2cd.jpg
+
+444. T3Y674_#_recorte_2218_jpg.rf.8eeb6ddf685d7614fae71d3ee3eb8ed9.jpg
+   Real: T3Y674 → Pred: T3Y742
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T3Y674_#_recorte_2218_jpg.rf.8eeb6ddf685d7614fae71d3ee3eb8ed9.jpg
+
+445. T40149_#_recorte_316_jpg.rf.001224743715fa5e8b72662a781e3352.jpg
+   Real: T40149 → Pred: T01929
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T40149_#_recorte_316_jpg.rf.001224743715fa5e8b72662a781e3352.jpg
+
+446. T40149_#_recorte_316_jpg.rf.5135932c8463190f6bfc39ad9667f7cd.jpg
+   Real: T40149 → Pred: T4498C
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T40149_#_recorte_316_jpg.rf.5135932c8463190f6bfc39ad9667f7cd.jpg
+
+447. T40149_#_recorte_352_jpg.rf.e7646f043c1100109e0d11a0fc096dd7.jpg
+   Real: T40149 → Pred: T41499
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T40149_#_recorte_352_jpg.rf.e7646f043c1100109e0d11a0fc096dd7.jpg
+
+448. T40149_#_recorte_354_jpg.rf.28a2b45a5b6d9cc6d444e200e4630f6f.jpg
+   Real: T40149 → Pred: T049QD
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T40149_#_recorte_354_jpg.rf.28a2b45a5b6d9cc6d444e200e4630f6f.jpg
+
+449. T40244_#_recorte_586_jpg.rf.8147e75d8c5b40464080af6a444ea2b4.jpg
+   Real: T40244 → Pred: T42441
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T40244_#_recorte_586_jpg.rf.8147e75d8c5b40464080af6a444ea2b4.jpg
+
+450. T41172_#_recorte_2020_jpg.rf.d418f9ea51c7c6a82d79f3a1c51fa6ce.jpg
+   Real: T41172 → Pred: T41727
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T41172_#_recorte_2020_jpg.rf.d418f9ea51c7c6a82d79f3a1c51fa6ce.jpg
+
+451. T41288_#_recorte_801_jpg.rf.d7506801b7469b1e04a185dc6b3a77d9.jpg
+   Real: T41288 → Pred: T42886
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T41288_#_recorte_801_jpg.rf.d7506801b7469b1e04a185dc6b3a77d9.jpg
+
+452. T41288_#_recorte_804_jpg.rf.b7b605c05d06d40fc1249f43b83a09c2.jpg
+   Real: T41288 → Pred: T42890
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T41288_#_recorte_804_jpg.rf.b7b605c05d06d40fc1249f43b83a09c2.jpg
+
+453. T4D293_#_recorte_643_jpg.rf.efedc64183d96f6b87f5af2bc6cd9af5.jpg
+   Real: T4D293 → Pred: T42937
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4D293_#_recorte_643_jpg.rf.efedc64183d96f6b87f5af2bc6cd9af5.jpg
+
+454. T4D409_#_recorte_2576_jpg.rf.a38154cab8980eaa13b03c411f66fe18.jpg
+   Real: T4D409 → Pred: TD409C
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4D409_#_recorte_2576_jpg.rf.a38154cab8980eaa13b03c411f66fe18.jpg
+
+455. T4D409_#_recorte_2586_jpg.rf.37b341908463036faa341b803246af6e.jpg
+   Real: T4D409 → Pred: T44096
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4D409_#_recorte_2586_jpg.rf.37b341908463036faa341b803246af6e.jpg
+
+456. T4F514_#_recorte_2036_jpg.rf.7e95ecac969a36af3b595b2fab0cbcbf.jpg
+   Real: T4F514 → Pred: T45142
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4F514_#_recorte_2036_jpg.rf.7e95ecac969a36af3b595b2fab0cbcbf.jpg
+
+457. T4F514_#_recorte_2036_jpg.rf.dbbb5f062d0d1087521dce3823287e1e.jpg
+   Real: T4F514 → Pred: T4F14E
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4F514_#_recorte_2036_jpg.rf.dbbb5f062d0d1087521dce3823287e1e.jpg
+
+458. T4F514_#_recorte_2038_jpg.rf.2521709f0d868ca67193cc3028ad9608.jpg
+   Real: T4F514 → Pred: T4F14E
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4F514_#_recorte_2038_jpg.rf.2521709f0d868ca67193cc3028ad9608.jpg
+
+459. T4G045_#_recorte_1858_jpg.rf.9f0eb1f7d7ed1e72dc25d3fbedd60f80.jpg
+   Real: T4G045 → Pred: T4045Q
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4G045_#_recorte_1858_jpg.rf.9f0eb1f7d7ed1e72dc25d3fbedd60f80.jpg
+
+460. T4G045_#_recorte_1858_jpg.rf.c69441e69d008c80df6b86ab4cd658e2.jpg
+   Real: T4G045 → Pred: T4G45S
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4G045_#_recorte_1858_jpg.rf.c69441e69d008c80df6b86ab4cd658e2.jpg
+
+461. T4G102_#_recorte_934_jpg.rf.2330468ed84631411eb1be5b5bf290e1.jpg
+   Real: T4G102 → Pred: TG102E
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4G102_#_recorte_934_jpg.rf.2330468ed84631411eb1be5b5bf290e1.jpg
+
+462. T4H022_#_recorte_1840_jpg.rf.aa0fb54f15c9795d4080b0463ee0ace1.jpg
+   Real: T4H022 → Pred: T4N22H
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4H022_#_recorte_1840_jpg.rf.aa0fb54f15c9795d4080b0463ee0ace1.jpg
+
+463. T4H022_#_recorte_1840_jpg.rf.cb1ca5798c7dac31a8337df9847b20a6.jpg
+   Real: T4H022 → Pred: T42838
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4H022_#_recorte_1840_jpg.rf.cb1ca5798c7dac31a8337df9847b20a6.jpg
+
+464. T4H022_#_recorte_1846_jpg.rf.f66e9977627b0a355527464031406b5c.jpg
+   Real: T4H022 → Pred: T42220
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4H022_#_recorte_1846_jpg.rf.f66e9977627b0a355527464031406b5c.jpg
+
+465. T4H022_#_recorte_1851_jpg.rf.93dc543846d5b4f24c4b3a9337ac7438.jpg
+   Real: T4H022 → Pred: T42232
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4H022_#_recorte_1851_jpg.rf.93dc543846d5b4f24c4b3a9337ac7438.jpg
+
+466. T4H205_#_recorte_186_jpg.rf.f3394e5964030abd2c149bd73addb502.jpg
+   Real: T4H205 → Pred: T42056
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4H205_#_recorte_186_jpg.rf.f3394e5964030abd2c149bd73addb502.jpg
+
+467. T4H263_#_recorte_1936_jpg.rf.b515c68a69ff70cc2cce5630b4a0e19f.jpg
+   Real: T4H263 → Pred: T42639
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4H263_#_recorte_1936_jpg.rf.b515c68a69ff70cc2cce5630b4a0e19f.jpg
+
+468. T4J283_#_recorte_1162_jpg.rf.999814cdd2b33aedde2b7ccc43ec76e7.jpg
+   Real: T4J283 → Pred: T42837
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4J283_#_recorte_1162_jpg.rf.999814cdd2b33aedde2b7ccc43ec76e7.jpg
+
+469. T4J283_#_recorte_1162_jpg.rf.d642cc221510fb8a023c62bfaa18ed44.jpg
+   Real: T4J283 → Pred: T4283A
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4J283_#_recorte_1162_jpg.rf.d642cc221510fb8a023c62bfaa18ed44.jpg
+
+470. T4J283_#_recorte_1165_jpg.rf.29b1f79c44f247005f2003754c5f9e3c.jpg
+   Real: T4J283 → Pred: T4283B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4J283_#_recorte_1165_jpg.rf.29b1f79c44f247005f2003754c5f9e3c.jpg
+
+471. T4J301_#_recorte_1235_jpg.rf.0b790ec96b77d1b59b3bd2a6aa45ae29.jpg
+   Real: T4J301 → Pred: T401Q3
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4J301_#_recorte_1235_jpg.rf.0b790ec96b77d1b59b3bd2a6aa45ae29.jpg
+
+472. T4J301_#_recorte_1235_jpg.rf.c526d168b60b18f7d6a5500db7cc3ba7.jpg
+   Real: T4J301 → Pred: T43015
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4J301_#_recorte_1235_jpg.rf.c526d168b60b18f7d6a5500db7cc3ba7.jpg
+
+473. T4K415_#_recorte_839_jpg.rf.7754346f38258364fe413cd5d432ab2d.jpg
+   Real: T4K415 → Pred: TK4153
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4K415_#_recorte_839_jpg.rf.7754346f38258364fe413cd5d432ab2d.jpg
+
+474. T4L600_#_recorte_1498_jpg.rf.bcfa45c3d55ebae7522f2e8397334edb.jpg
+   Real: T4L600 → Pred: T4600Q
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4L600_#_recorte_1498_jpg.rf.bcfa45c3d55ebae7522f2e8397334edb.jpg
+
+475. T4L600_#_recorte_1501_jpg.rf.4d14633813586286e09dd3fba2561595.jpg
+   Real: T4L600 → Pred: T4600C
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4L600_#_recorte_1501_jpg.rf.4d14633813586286e09dd3fba2561595.jpg
+
+476. T4P270_#_recorte_961_jpg.rf.b943d91ae29f5fbc081925fdcdbfe816.jpg
+   Real: T4P270 → Pred: T42708
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4P270_#_recorte_961_jpg.rf.b943d91ae29f5fbc081925fdcdbfe816.jpg
+
+477. T4P270_#_recorte_965_jpg.rf.6257286abea2abdcdc3781f85ad9324d.jpg
+   Real: T4P270 → Pred: T42703
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4P270_#_recorte_965_jpg.rf.6257286abea2abdcdc3781f85ad9324d.jpg
+
+478. T4Q629_#_recorte_927_jpg.rf.20c3474ab4899107bd517cb002ae3321.jpg
+   Real: T4Q629 → Pred: T4Q297
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4Q629_#_recorte_927_jpg.rf.20c3474ab4899107bd517cb002ae3321.jpg
+
+479. T4Q629_#_recorte_927_jpg.rf.9bd681ea974409e48d4bed6e55e49681.jpg
+   Real: T4Q629 → Pred: T4069Q
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4Q629_#_recorte_927_jpg.rf.9bd681ea974409e48d4bed6e55e49681.jpg
+
+480. T4Q639_#_recorte_1106_jpg.rf.e1640b25ff0c85d38da503f597e18c11.jpg
+   Real: T4Q639 → Pred: TQ6390
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4Q639_#_recorte_1106_jpg.rf.e1640b25ff0c85d38da503f597e18c11.jpg
+
+481. T4R462_#_recorte_1962_jpg.rf.43fc94130ebed451044a523f034d4c25.jpg
+   Real: T4R462 → Pred: T44629
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4R462_#_recorte_1962_jpg.rf.43fc94130ebed451044a523f034d4c25.jpg
+
+482. T4T255_#_recorte_2177_jpg.rf.689042619c613797cb7bb3d32c843299.jpg
+   Real: T4T255 → Pred: T42556
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4T255_#_recorte_2177_jpg.rf.689042619c613797cb7bb3d32c843299.jpg
+
+483. T4T255_#_recorte_2183_jpg.rf.19870c8348c4280c26874dea3eeb4c30.jpg
+   Real: T4T255 → Pred: T42557
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4T255_#_recorte_2183_jpg.rf.19870c8348c4280c26874dea3eeb4c30.jpg
+
+484. T4T255_#_recorte_2188_jpg.rf.857a0d67a7e404aa02e15ae504d3c184.jpg
+   Real: T4T255 → Pred: T42553
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4T255_#_recorte_2188_jpg.rf.857a0d67a7e404aa02e15ae504d3c184.jpg
+
+485. T4U493_#_recorte_2997_jpg.rf.ef4a2f1940a30e0c9bbfacebdf354a53.jpg
+   Real: T4U493 → Pred: T44936
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4U493_#_recorte_2997_jpg.rf.ef4a2f1940a30e0c9bbfacebdf354a53.jpg
+
+486. T4U504_#_recorte_1099_jpg.rf.b08900e11f3a49760409066b7c83db4f.jpg
+   Real: T4U504 → Pred: T4U046
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4U504_#_recorte_1099_jpg.rf.b08900e11f3a49760409066b7c83db4f.jpg
+
+487. T4U504_#_recorte_1101_jpg.rf.4a3acd1d9387d3b332e6e02fc3ee9a6b.jpg
+   Real: T4U504 → Pred: T45043
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4U504_#_recorte_1101_jpg.rf.4a3acd1d9387d3b332e6e02fc3ee9a6b.jpg
+
+488. T4U504_#_recorte_1101_jpg.rf.f3921a40e1cee8538fa22b8596a0e3e3.jpg
+   Real: T4U504 → Pred: T4504Q
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4U504_#_recorte_1101_jpg.rf.f3921a40e1cee8538fa22b8596a0e3e3.jpg
+
+489. T4U504_#_recorte_1103_jpg.rf.0a003ec9e1ee98a1f0615f84638eb9f4.jpg
+   Real: T4U504 → Pred: T45046
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4U504_#_recorte_1103_jpg.rf.0a003ec9e1ee98a1f0615f84638eb9f4.jpg
+
+490. T4U504_#_recorte_1103_jpg.rf.d89bf5ab6ce1121ae7e34eb94ca494a4.jpg
+   Real: T4U504 → Pred: T45041
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4U504_#_recorte_1103_jpg.rf.d89bf5ab6ce1121ae7e34eb94ca494a4.jpg
+
+491. T4U850_#_recorte_1778_jpg.rf.49efea3a05df5f88ea3116e3a6a682d0.jpg
+   Real: T4U850 → Pred: T48503
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4U850_#_recorte_1778_jpg.rf.49efea3a05df5f88ea3116e3a6a682d0.jpg
+
+492. T4W261_#_recorte_662_jpg.rf.b1e584502f50c46e7d6b83413b3c5874.jpg
+   Real: T4W261 → Pred: T4261T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4W261_#_recorte_662_jpg.rf.b1e584502f50c46e7d6b83413b3c5874.jpg
+
+493. T4W611_#_recorte_1218_jpg.rf.78fbf6482a7912f566906a25b320ef17.jpg
+   Real: T4W611 → Pred: T4119L
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4W611_#_recorte_1218_jpg.rf.78fbf6482a7912f566906a25b320ef17.jpg
+
+494. T4W843_#_recorte_2819_jpg.rf.ffcb4999a89cc70fcb6ecad050e4e8b9.jpg
+   Real: T4W843 → Pred: T4W43K
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4W843_#_recorte_2819_jpg.rf.ffcb4999a89cc70fcb6ecad050e4e8b9.jpg
+
+495. T4X613_#_recorte_1177_jpg.rf.11ae05d2be1719d3c668f027f3732669.jpg
+   Real: T4X613 → Pred: T46131
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4X613_#_recorte_1177_jpg.rf.11ae05d2be1719d3c668f027f3732669.jpg
+
+496. T4Y427_#_recorte_77_jpg.rf.7859f4f41a80f3a7da6e2f145ec6ca68.jpg
+   Real: T4Y427 → Pred: T4Y276
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4Y427_#_recorte_77_jpg.rf.7859f4f41a80f3a7da6e2f145ec6ca68.jpg
+
+497. T4Y533_#_recorte_2649_jpg.rf.b82c8c9d41abe2b43d68a9b16357c5eb.jpg
+   Real: T4Y533 → Pred: T4537T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4Y533_#_recorte_2649_jpg.rf.b82c8c9d41abe2b43d68a9b16357c5eb.jpg
+
+498. T4Y641_#_recorte_2160_jpg.rf.0de4c7f7a54ad053658110f08462a2ff.jpg
+   Real: T4Y641 → Pred: T46417
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4Y641_#_recorte_2160_jpg.rf.0de4c7f7a54ad053658110f08462a2ff.jpg
+
+499. T4Z113_#_recorte_600_jpg.rf.a16631b592c069fbc6bc69fc17064c9b.jpg
+   Real: T4Z113 → Pred: T41131
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T4Z113_#_recorte_600_jpg.rf.a16631b592c069fbc6bc69fc17064c9b.jpg
+
+500. T50667_#_recorte_602_jpg.rf.c16fd80154c47b47bab07616b3013c31.jpg
+   Real: T50667 → Pred: T66748
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T50667_#_recorte_602_jpg.rf.c16fd80154c47b47bab07616b3013c31.jpg
+
+501. T51372_#_recorte_1742_jpg.rf.2cd1429a1390dd6340b82824565f5877.jpg
+   Real: T51372 → Pred: T53727
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T51372_#_recorte_1742_jpg.rf.2cd1429a1390dd6340b82824565f5877.jpg
+
+502. T5B419_#_recorte_30_jpg.rf.a2332fdf9e20002b7d5f60db3c47c81e.jpg
+   Real: T5B419 → Pred: T54196
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5B419_#_recorte_30_jpg.rf.a2332fdf9e20002b7d5f60db3c47c81e.jpg
+
+503. T5B655_#_recorte_2294_jpg.rf.e7bd1599ea8bac454d82ce5bc31e8a6d.jpg
+   Real: T5B655 → Pred: T56553
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5B655_#_recorte_2294_jpg.rf.e7bd1599ea8bac454d82ce5bc31e8a6d.jpg
+
+504. T5B665_#_recorte_601_jpg.rf.93804e1250f4708c5663d3e3f4c8c1b0.jpg
+   Real: T5B665 → Pred: TB665D
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5B665_#_recorte_601_jpg.rf.93804e1250f4708c5663d3e3f4c8c1b0.jpg
+
+505. T5B665_#_recorte_603_jpg.rf.0822917132808f25160ef6c543a7e34d.jpg
+   Real: T5B665 → Pred: TB665S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5B665_#_recorte_603_jpg.rf.0822917132808f25160ef6c543a7e34d.jpg
+
+506. T5C693_#_recorte_269_jpg.rf.0c04bbb21b10a43dfead67b7e5be928a.jpg
+   Real: T5C693 → Pred: T56935
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5C693_#_recorte_269_jpg.rf.0c04bbb21b10a43dfead67b7e5be928a.jpg
+
+507. T5C693_#_recorte_269_jpg.rf.97f8349f362fd3bde3559bf41cfdde4d.jpg
+   Real: T5C693 → Pred: T56935
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5C693_#_recorte_269_jpg.rf.97f8349f362fd3bde3559bf41cfdde4d.jpg
+
+508. T5D395_#_recorte_995_jpg.rf.5c555657e60dbd66ccfd488937dd9a2a.jpg
+   Real: T5D395 → Pred: TD395B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5D395_#_recorte_995_jpg.rf.5c555657e60dbd66ccfd488937dd9a2a.jpg
+
+509. T5D667_#_recorte_604_jpg.rf.4ccbf91f108fdbf455b3e715c4078875.jpg
+   Real: T5D667 → Pred: T56671
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5D667_#_recorte_604_jpg.rf.4ccbf91f108fdbf455b3e715c4078875.jpg
+
+510. T5E006_#_recorte_2881_jpg.rf.be5a5c887bbd84baab51b014571fd6d9.jpg
+   Real: T5E006 → Pred: TE006Z
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5E006_#_recorte_2881_jpg.rf.be5a5c887bbd84baab51b014571fd6d9.jpg
+
+511. T5E053_#_recorte_2382_jpg.rf.8846e31f38a4c07a8012375a88673e07.jpg
+   Real: T5E053 → Pred: TE053Q
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5E053_#_recorte_2382_jpg.rf.8846e31f38a4c07a8012375a88673e07.jpg
+
+512. T5E536_#_recorte_278_jpg.rf.715dc98a9be5a74ce69b3edb21eed2a4.jpg
+   Real: T5E536 → Pred: T5E36F
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5E536_#_recorte_278_jpg.rf.715dc98a9be5a74ce69b3edb21eed2a4.jpg
+
+513. T5E631_#_recorte_1124_jpg.rf.7f9cdefe2dde729db123a1fabcd3ebc8.jpg
+   Real: T5E631 → Pred: TE6318
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5E631_#_recorte_1124_jpg.rf.7f9cdefe2dde729db123a1fabcd3ebc8.jpg
+
+514. T5F230_#_recorte_1223_jpg.rf.7e4ea7042b6928bd9d635c40285a0eb7.jpg
+   Real: T5F230 → Pred: T5F60E
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5F230_#_recorte_1223_jpg.rf.7e4ea7042b6928bd9d635c40285a0eb7.jpg
+
+515. T5F230_#_recorte_1223_jpg.rf.d6371edfa0e620a6456e205725b72e3f.jpg
+   Real: T5F230 → Pred: TF6305
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5F230_#_recorte_1223_jpg.rf.d6371edfa0e620a6456e205725b72e3f.jpg
+
+516. T5F262_#_recorte_874_jpg.rf.65fecc7cc1117da61e57ebd4ba6cdbf5.jpg
+   Real: T5F262 → Pred: T5262Z
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5F262_#_recorte_874_jpg.rf.65fecc7cc1117da61e57ebd4ba6cdbf5.jpg
+
+517. T5G663_#_recorte_1624_jpg.rf.ae27cf2961c58e25d581e0a767fdf28f.jpg
+   Real: T5G663 → Pred: T56631
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5G663_#_recorte_1624_jpg.rf.ae27cf2961c58e25d581e0a767fdf28f.jpg
+
+518. T5J197_#_recorte_639_jpg.rf.5933b2e972fd376f9e62c90ff9971cc2.jpg
+   Real: T5J197 → Pred: T5197S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5J197_#_recorte_639_jpg.rf.5933b2e972fd376f9e62c90ff9971cc2.jpg
+
+519. T5J197_#_recorte_639_jpg.rf.71fa3a26f1a4f3ec56f6ad5ca53254a8.jpg
+   Real: T5J197 → Pred: T5197S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5J197_#_recorte_639_jpg.rf.71fa3a26f1a4f3ec56f6ad5ca53254a8.jpg
+
+520. T5K256_#_recorte_1196_jpg.rf.19507b749e1e785093c83480c1ac67a5.jpg
+   Real: T5K256 → Pred: T256C0
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5K256_#_recorte_1196_jpg.rf.19507b749e1e785093c83480c1ac67a5.jpg
+
+521. T5K256_#_recorte_1200_jpg.rf.4506bce6582a0e2cf3518c98a6048d07.jpg
+   Real: T5K256 → Pred: T5K560
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5K256_#_recorte_1200_jpg.rf.4506bce6582a0e2cf3518c98a6048d07.jpg
+
+522. T5K305_#_recorte_1563_jpg.rf.34d965e02b4c2d519b271ce7c3378dd7.jpg
+   Real: T5K305 → Pred: T5305D
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5K305_#_recorte_1563_jpg.rf.34d965e02b4c2d519b271ce7c3378dd7.jpg
+
+523. T5K641_#_recorte_247_jpg.rf.9dc7bd6365426cb77d7f9f2f242694d2.jpg
+   Real: T5K641 → Pred: T56410
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5K641_#_recorte_247_jpg.rf.9dc7bd6365426cb77d7f9f2f242694d2.jpg
+
+524. T5L399_#_recorte_1381_jpg.rf.a51008ec56617d65193fd537a435dc23.jpg
+   Real: T5L399 → Pred: T53995
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5L399_#_recorte_1381_jpg.rf.a51008ec56617d65193fd537a435dc23.jpg
+
+525. T5P139_#_recorte_188_jpg.rf.f081254fe7b44223287d1456ac742270.jpg
+   Real: T5P139 → Pred: T5P393
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5P139_#_recorte_188_jpg.rf.f081254fe7b44223287d1456ac742270.jpg
+
+526. T5P139_#_recorte_189_jpg.rf.88dff895f53cb81cdd403fc79e0aafe7.jpg
+   Real: T5P139 → Pred: T5139S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5P139_#_recorte_189_jpg.rf.88dff895f53cb81cdd403fc79e0aafe7.jpg
+
+527. T5R716_#_recorte_376_jpg.rf.2956d05084591087055231269f407c73.jpg
+   Real: T5R716 → Pred: T576S1
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5R716_#_recorte_376_jpg.rf.2956d05084591087055231269f407c73.jpg
+
+528. T5T203_#_recorte_864_jpg.rf.ed36d36d8e15eaaf7d9e810a19bd1ef0.jpg
+   Real: T5T203 → Pred: T5203T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5T203_#_recorte_864_jpg.rf.ed36d36d8e15eaaf7d9e810a19bd1ef0.jpg
+
+529. T5T881_#_recorte_1868_jpg.rf.61cc62cc6dac6abbb249920c54840cd2.jpg
+   Real: T5T881 → Pred: T58813
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5T881_#_recorte_1868_jpg.rf.61cc62cc6dac6abbb249920c54840cd2.jpg
+
+530. T5U017_#_recorte_2652_jpg.rf.b6a295e2181ba2eb847a8bb6809c20e5.jpg
+   Real: T5U017 → Pred: T50172
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U017_#_recorte_2652_jpg.rf.b6a295e2181ba2eb847a8bb6809c20e5.jpg
+
+531. T5U017_#_recorte_2657_jpg.rf.42ad622d9bcbc8cfce839941ec7855e8.jpg
+   Real: T5U017 → Pred: T5017D
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U017_#_recorte_2657_jpg.rf.42ad622d9bcbc8cfce839941ec7855e8.jpg
+
+532. T5U197_#_recorte_623_jpg.rf.23a638c5700e0b8ec0eab5e5e5603bbd.jpg
+   Real: T5U197 → Pred: T51979
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U197_#_recorte_623_jpg.rf.23a638c5700e0b8ec0eab5e5e5603bbd.jpg
+
+533. T5U197_#_recorte_623_jpg.rf.d267c667c9317de2c6d7cf3b5d5006a6.jpg
+   Real: T5U197 → Pred: T5197S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U197_#_recorte_623_jpg.rf.d267c667c9317de2c6d7cf3b5d5006a6.jpg
+
+534. T5U319_#_recorte_2496_jpg.rf.6ad0311b38cca391285d3439333e0f7c.jpg
+   Real: T5U319 → Pred: T5319S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U319_#_recorte_2496_jpg.rf.6ad0311b38cca391285d3439333e0f7c.jpg
+
+535. T5U319_#_recorte_2500_jpg.rf.317a75e45ef66545f6841ce7fbe5d0ec.jpg
+   Real: T5U319 → Pred: T53193
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U319_#_recorte_2500_jpg.rf.317a75e45ef66545f6841ce7fbe5d0ec.jpg
+
+536. T5U610_#_recorte_3222_jpg.rf.87bf0f7e2bddc5de5439c28434a95146.jpg
+   Real: T5U610 → Pred: T56103
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U610_#_recorte_3222_jpg.rf.87bf0f7e2bddc5de5439c28434a95146.jpg
+
+537. T5U639_#_recorte_117_jpg.rf.757781e77db94f725edec9b30f212b56.jpg
+   Real: T5U639 → Pred: T56391
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U639_#_recorte_117_jpg.rf.757781e77db94f725edec9b30f212b56.jpg
+
+538. T5U639_#_recorte_119_jpg.rf.51e6dbbb9412e48bbbe0c6876c28ca42.jpg
+   Real: T5U639 → Pred: T56393
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U639_#_recorte_119_jpg.rf.51e6dbbb9412e48bbbe0c6876c28ca42.jpg
+
+539. T5U639_#_recorte_119_jpg.rf.ebe99d27dcea8f567853ed4013118643.jpg
+   Real: T5U639 → Pred: T56392
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U639_#_recorte_119_jpg.rf.ebe99d27dcea8f567853ed4013118643.jpg
+
+540. T5U639_#_recorte_121_jpg.rf.1845eb69c0901bc4113848e71c22e15c.jpg
+   Real: T5U639 → Pred: T5U39S
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U639_#_recorte_121_jpg.rf.1845eb69c0901bc4113848e71c22e15c.jpg
+
+541. T5U639_#_recorte_121_jpg.rf.56472023a625de8989575a60a89606ae.jpg
+   Real: T5U639 → Pred: T63971
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U639_#_recorte_121_jpg.rf.56472023a625de8989575a60a89606ae.jpg
+
+542. T5U692_#_recorte_2111_jpg.rf.5faa99d8364d50961f796a65504eba7b.jpg
+   Real: T5U692 → Pred: T5692Q
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5U692_#_recorte_2111_jpg.rf.5faa99d8364d50961f796a65504eba7b.jpg
+
+543. T5V259_#_recorte_915_jpg.rf.be9dd121238f2c3217342730c2689591.jpg
+   Real: T5V259 → Pred: TV2597
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5V259_#_recorte_915_jpg.rf.be9dd121238f2c3217342730c2689591.jpg
+
+544. T5W212_#_recorte_1720_jpg.rf.f2a16d074e0e416127af3b2ac0ba8bf0.jpg
+   Real: T5W212 → Pred: T52127
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5W212_#_recorte_1720_jpg.rf.f2a16d074e0e416127af3b2ac0ba8bf0.jpg
+
+545. T5W509_#_recorte_1534_jpg.rf.4d18a3a9c1c83703f530f4f52256a2cf.jpg
+   Real: T5W509 → Pred: T5509R
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5W509_#_recorte_1534_jpg.rf.4d18a3a9c1c83703f530f4f52256a2cf.jpg
+
+546. T5W657_#_recorte_687_jpg.rf.6f60c474730be36dd9b0fb2694314187.jpg
+   Real: T5W657 → Pred: T5657T
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5W657_#_recorte_687_jpg.rf.6f60c474730be36dd9b0fb2694314187.jpg
+
+547. T5W657_#_recorte_690_jpg.rf.328aafae1da48fddfc72b3e2f673799e.jpg
+   Real: T5W657 → Pred: T5657S
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T5W657_#_recorte_690_jpg.rf.328aafae1da48fddfc72b3e2f673799e.jpg
+
+548. T60149_#_recorte_313_jpg.rf.6451670a990dedf81427aaeff37d13ed.jpg
+   Real: T60149 → Pred: T0149A
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T60149_#_recorte_313_jpg.rf.6451670a990dedf81427aaeff37d13ed.jpg
+
+549. T60149_#_recorte_313_jpg.rf.7fe200cf4ef15c683a0438c2f4abcef2.jpg
+   Real: T60149 → Pred: T09QAQ
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T60149_#_recorte_313_jpg.rf.7fe200cf4ef15c683a0438c2f4abcef2.jpg
+
+550. T60149_#_recorte_313_jpg.rf.ab3deaa0a699414407fc681a87b47f14.jpg
+   Real: T60149 → Pred: T61494
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T60149_#_recorte_313_jpg.rf.ab3deaa0a699414407fc681a87b47f14.jpg
+
+551. T60213_#_recorte_875_jpg.rf.d45b0d55af9f547e8b671a61e4bddcc6.jpg
+   Real: T60213 → Pred: T62134
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T60213_#_recorte_875_jpg.rf.d45b0d55af9f547e8b671a61e4bddcc6.jpg
+
+552. T60514_#_recorte_2365_jpg.rf.eb9728e14ba87b1c0b53e5205683b90e.jpg
+   Real: T60514 → Pred: T65143
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T60514_#_recorte_2365_jpg.rf.eb9728e14ba87b1c0b53e5205683b90e.jpg
+
+553. T61020_#_recorte_812_jpg.rf.21bc42021d29012e25e0fa6b74b10aa7.jpg
+   Real: T61020 → Pred: T60209
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T61020_#_recorte_812_jpg.rf.21bc42021d29012e25e0fa6b74b10aa7.jpg
+
+554. T6A307_#_recorte_884_jpg.rf.86946c4f1d5f2118140fa371880b82c5.jpg
+   Real: T6A307 → Pred: T63074
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6A307_#_recorte_884_jpg.rf.86946c4f1d5f2118140fa371880b82c5.jpg
+
+555. T6A453_#_recorte_2510_jpg.rf.1d1250133d1677f3255f16dcaa014709.jpg
+   Real: T6A453 → Pred: TA4531
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6A453_#_recorte_2510_jpg.rf.1d1250133d1677f3255f16dcaa014709.jpg
+
+556. T6A496_#_recorte_395_jpg.rf.b7b490a05dd411f42a74afadbef32c9f.jpg
+   Real: T6A496 → Pred: T6A964
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6A496_#_recorte_395_jpg.rf.b7b490a05dd411f42a74afadbef32c9f.jpg
+
+557. T6A639_#_recorte_1234_jpg.rf.352e18c84aafe811f0e6977328d027db.jpg
+   Real: T6A639 → Pred: T66391
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6A639_#_recorte_1234_jpg.rf.352e18c84aafe811f0e6977328d027db.jpg
+
+558. T6B397_#_recorte_495_jpg.rf.c036780e1fbf1a83ea8c6f200b6da4d6.jpg
+   Real: T6B397 → Pred: T63974
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6B397_#_recorte_495_jpg.rf.c036780e1fbf1a83ea8c6f200b6da4d6.jpg
+
+559. T6D227_#_recorte_984_jpg.rf.5d748ff4b98112718bac6967882c7c23.jpg
+   Real: T6D227 → Pred: TD2272
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6D227_#_recorte_984_jpg.rf.5d748ff4b98112718bac6967882c7c23.jpg
+
+560. T6D373_#_recorte_108_jpg.rf.baecb71eb7c375ab8542bd5ddc010fac.jpg
+   Real: T6D373 → Pred: T63G4G
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6D373_#_recorte_108_jpg.rf.baecb71eb7c375ab8542bd5ddc010fac.jpg
+
+561. T6D373_#_recorte_69_jpg.rf.962c8230b967f1436ad2620e23aafd89.jpg
+   Real: T6D373 → Pred: T6D736
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6D373_#_recorte_69_jpg.rf.962c8230b967f1436ad2620e23aafd89.jpg
+
+562. T6D612_#_recorte_201_jpg.rf.69759e76ddc859a2e9aeb51ef5e2d3da.jpg
+   Real: T6D612 → Pred: T66124
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6D612_#_recorte_201_jpg.rf.69759e76ddc859a2e9aeb51ef5e2d3da.jpg
+
+563. T6D612_#_recorte_203_jpg.rf.5e0ba1451c9ba02c6af1d17e260f35cb.jpg
+   Real: T6D612 → Pred: T66124
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6D612_#_recorte_203_jpg.rf.5e0ba1451c9ba02c6af1d17e260f35cb.jpg
+
+564. T6D612_#_recorte_207_jpg.rf.0f1d57d987737ba40641770e37dda55c.jpg
+   Real: T6D612 → Pred: T66124
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6D612_#_recorte_207_jpg.rf.0f1d57d987737ba40641770e37dda55c.jpg
+
+565. T6D612_#_recorte_209_jpg.rf.70bae78376e0a820db3ea2f8e09796b6.jpg
+   Real: T6D612 → Pred: T66123
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6D612_#_recorte_209_jpg.rf.70bae78376e0a820db3ea2f8e09796b6.jpg
+
+566. T6E205_#_recorte_2411_jpg.rf.074bc63eae73ccdf3ccc16feec879505.jpg
+   Real: T6E205 → Pred: T6E054
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6E205_#_recorte_2411_jpg.rf.074bc63eae73ccdf3ccc16feec879505.jpg
+
+567. T6E205_#_recorte_2411_jpg.rf.11b0ac50150cbdffe1fde3259f045dca.jpg
+   Real: T6E205 → Pred: T6E059
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6E205_#_recorte_2411_jpg.rf.11b0ac50150cbdffe1fde3259f045dca.jpg
+
+568. T6H193_#_recorte_471_jpg.rf.9fd0cd60b89afcface16c0b625f601b4.jpg
+   Real: T6H193 → Pred: TH1937
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6H193_#_recorte_471_jpg.rf.9fd0cd60b89afcface16c0b625f601b4.jpg
+
+569. T6J635_#_recorte_1111_jpg.rf.370e6422465ef0ec1e7254ea07905c67.jpg
+   Real: T6J635 → Pred: T6J35T
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6J635_#_recorte_1111_jpg.rf.370e6422465ef0ec1e7254ea07905c67.jpg
+
+570. T6K617_#_recorte_899_jpg.rf.dbe19aab9dfe45467243c4000ac11321.jpg
+   Real: T6K617 → Pred: T66172
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6K617_#_recorte_899_jpg.rf.dbe19aab9dfe45467243c4000ac11321.jpg
+
+571. T6M154_#_recorte_1940_jpg.rf.16566ab3437f20ab44822a3b73839d1a.jpg
+   Real: T6M154 → Pred: T6M54H
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6M154_#_recorte_1940_jpg.rf.16566ab3437f20ab44822a3b73839d1a.jpg
+
+572. T6M223_#_recorte_123_jpg.rf.a596ddaeed411f6910fa5ca684741181.jpg
+   Real: T6M223 → Pred: T623ZH
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6M223_#_recorte_123_jpg.rf.a596ddaeed411f6910fa5ca684741181.jpg
+
+573. T6M223_#_recorte_125_jpg.rf.ec23377a88c805d80acc0662aa69caa7.jpg
+   Real: T6M223 → Pred: T62237
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6M223_#_recorte_125_jpg.rf.ec23377a88c805d80acc0662aa69caa7.jpg
+
+574. T6N515_#_recorte_1435_jpg.rf.a34e10801750a4d4a6fcbdf49709f723.jpg
+   Real: T6N515 → Pred: T65158
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6N515_#_recorte_1435_jpg.rf.a34e10801750a4d4a6fcbdf49709f723.jpg
+
+575. T6P662_#_recorte_2402_jpg.rf.9f212e6f978cd4cf647b849c3ecf15ce.jpg
+   Real: T6P662 → Pred: TP6624
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6P662_#_recorte_2402_jpg.rf.9f212e6f978cd4cf647b849c3ecf15ce.jpg
+
+576. T6Q180_#_recorte_1577_jpg.rf.e6e46c711e17c6b628e509e2cbb0e9a0.jpg
+   Real: T6Q180 → Pred: T61807
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6Q180_#_recorte_1577_jpg.rf.e6e46c711e17c6b628e509e2cbb0e9a0.jpg
+
+577. T6R030_#_recorte_1076_jpg.rf.254779a9962d5b8d8067b0257a68c548.jpg
+   Real: T6R030 → Pred: TR309B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6R030_#_recorte_1076_jpg.rf.254779a9962d5b8d8067b0257a68c548.jpg
+
+578. T6R030_#_recorte_1080_jpg.rf.7ebad372da402e61775c240b118f8287.jpg
+   Real: T6R030 → Pred: T6R30B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6R030_#_recorte_1080_jpg.rf.7ebad372da402e61775c240b118f8287.jpg
+
+579. T6R365_#_recorte_1091_jpg.rf.41d81b9dedefa8de34994240f0496a2f.jpg
+   Real: T6R365 → Pred: T63653
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6R365_#_recorte_1091_jpg.rf.41d81b9dedefa8de34994240f0496a2f.jpg
+
+580. T6S475_#_recorte_1406_jpg.rf.f6569958042e2fe27d80212e35681d73.jpg
+   Real: T6S475 → Pred: TS4756
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6S475_#_recorte_1406_jpg.rf.f6569958042e2fe27d80212e35681d73.jpg
+
+581. T6T956_#_recorte_1109_jpg.rf.236168e141bb27e9ee3a0bbd2c27ebc8.jpg
+   Real: T6T956 → Pred: T6T561
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6T956_#_recorte_1109_jpg.rf.236168e141bb27e9ee3a0bbd2c27ebc8.jpg
+
+582. T6U676_#_recorte_1750_jpg.rf.2e5fd37377a40d1d2a2b2579393effeb.jpg
+   Real: T6U676 → Pred: T67648
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6U676_#_recorte_1750_jpg.rf.2e5fd37377a40d1d2a2b2579393effeb.jpg
+
+583. T6U920_#_recorte_1980_jpg.rf.d7416c090f89b8f900cee443efe44ac4.jpg
+   Real: T6U920 → Pred: T69206
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6U920_#_recorte_1980_jpg.rf.d7416c090f89b8f900cee443efe44ac4.jpg
+
+584. T6V050_#_recorte_1761_jpg.rf.bf745e1c10ebbbb526fac43a25202dc7.jpg
+   Real: T6V050 → Pred: T6V50S
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6V050_#_recorte_1761_jpg.rf.bf745e1c10ebbbb526fac43a25202dc7.jpg
+
+585. T6V050_#_recorte_1763_jpg.rf.6157a36cbf662887d6a0bac74b4bf4a1.jpg
+   Real: T6V050 → Pred: T6V509
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6V050_#_recorte_1763_jpg.rf.6157a36cbf662887d6a0bac74b4bf4a1.jpg
+
+586. T6W335_#_recorte_1766_jpg.rf.d10d1d44cd36f5c6742bbdd97d074b5b.jpg
+   Real: T6W335 → Pred: T6335M
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6W335_#_recorte_1766_jpg.rf.d10d1d44cd36f5c6742bbdd97d074b5b.jpg
+
+587. T6W564_#_recorte_589_jpg.rf.036d166ff3813132a3fb9b61832d7688.jpg
+   Real: T6W564 → Pred: T6W64K
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6W564_#_recorte_589_jpg.rf.036d166ff3813132a3fb9b61832d7688.jpg
+
+588. T6W564_#_recorte_591_jpg.rf.fb07df0f582f48c793ebe282d0a55029.jpg
+   Real: T6W564 → Pred: T65648
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6W564_#_recorte_591_jpg.rf.fb07df0f582f48c793ebe282d0a55029.jpg
+
+589. T6W675_#_recorte_2597_jpg.rf.8bd09dab14acd4063b241a0dcdb70eb2.jpg
+   Real: T6W675 → Pred: T66752
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6W675_#_recorte_2597_jpg.rf.8bd09dab14acd4063b241a0dcdb70eb2.jpg
+
+590. T6X245_#_recorte_1312_jpg.rf.b83f666e1ca1c34688cf6a2abcc37265.jpg
+   Real: T6X245 → Pred: T62457
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6X245_#_recorte_1312_jpg.rf.b83f666e1ca1c34688cf6a2abcc37265.jpg
+
+591. T6Y114_#_recorte_1282_jpg.rf.974e3a365094bed1b1e0d151d9158380.jpg
+   Real: T6Y114 → Pred: T6Y446
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6Y114_#_recorte_1282_jpg.rf.974e3a365094bed1b1e0d151d9158380.jpg
+
+592. T6Y289_#_recorte_1050_jpg.rf.c2cc5ea59532edaabfbefe4d3b029e5b.jpg
+   Real: T6Y289 → Pred: T62951
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6Y289_#_recorte_1050_jpg.rf.c2cc5ea59532edaabfbefe4d3b029e5b.jpg
+
+593. T6Y289_#_recorte_1055_jpg.rf.14b043106b89b02a6b25c1e0044a0eeb.jpg
+   Real: T6Y289 → Pred: T6Y89X
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6Y289_#_recorte_1055_jpg.rf.14b043106b89b02a6b25c1e0044a0eeb.jpg
+
+594. T6Y593_#_recorte_1677_jpg.rf.dfe6e396bb3425be23186f97d632b843.jpg
+   Real: T6Y593 → Pred: T6593G
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6Y593_#_recorte_1677_jpg.rf.dfe6e396bb3425be23186f97d632b843.jpg
+
+595. T6Y674_#_recorte_796_jpg.rf.aa5c10e40272d1c843cd1fdf0dd68aa3.jpg
+   Real: T6Y674 → Pred: T664NH
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T6Y674_#_recorte_796_jpg.rf.aa5c10e40272d1c843cd1fdf0dd68aa3.jpg
+
+596. T71927_#_recorte_916_jpg.rf.c58efaf8754f8ee1bde051530c78e8a0.jpg
+   Real: T71927 → Pred: T7127T
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T71927_#_recorte_916_jpg.rf.c58efaf8754f8ee1bde051530c78e8a0.jpg
+
+597. T7A088_#_recorte_2079_jpg.rf.c8bf1737c8289dc1252d77f63286de06.jpg
+   Real: T7A088 → Pred: TA8846
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7A088_#_recorte_2079_jpg.rf.c8bf1737c8289dc1252d77f63286de06.jpg
+
+598. T7A491_#_recorte_1506_jpg.rf.1372add1d988ce22bcf40a9e568ea307.jpg
+   Real: T7A491 → Pred: TA4910
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7A491_#_recorte_1506_jpg.rf.1372add1d988ce22bcf40a9e568ea307.jpg
+
+599. T7B363_#_recorte_1860_jpg.rf.d416b16769f80c998864547c12111c7e.jpg
+   Real: T7B363 → Pred: TB363D
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7B363_#_recorte_1860_jpg.rf.d416b16769f80c998864547c12111c7e.jpg
+
+600. T7C639_#_recorte_2207_jpg.rf.b2eaf5acce37fae4d6b65d5bf27de044.jpg
+   Real: T7C639 → Pred: TC6390
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7C639_#_recorte_2207_jpg.rf.b2eaf5acce37fae4d6b65d5bf27de044.jpg
+
+601. T7D600_#_recorte_2811_jpg.rf.2baee9cce7b67017dd9796ff59939ada.jpg
+   Real: T7D600 → Pred: TD600R
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7D600_#_recorte_2811_jpg.rf.2baee9cce7b67017dd9796ff59939ada.jpg
+
+602. T7D600_#_recorte_2811_jpg.rf.303f18337c24663ced379e125363d1e9.jpg
+   Real: T7D600 → Pred: T70098
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7D600_#_recorte_2811_jpg.rf.303f18337c24663ced379e125363d1e9.jpg
+
+603. T7D600_#_recorte_2815_jpg.rf.23de0886c6c7cd27e5257a119c97fd6e.jpg
+   Real: T7D600 → Pred: T76002
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7D600_#_recorte_2815_jpg.rf.23de0886c6c7cd27e5257a119c97fd6e.jpg
+
+604. T7D600_#_recorte_2815_jpg.rf.724e69a8dece7bf57218baf380a800ee.jpg
+   Real: T7D600 → Pred: T76008
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7D600_#_recorte_2815_jpg.rf.724e69a8dece7bf57218baf380a800ee.jpg
+
+605. T7D600_#_recorte_2816_jpg.rf.8929c4283e20fb8ae8a8fc4729948105.jpg
+   Real: T7D600 → Pred: TD600B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7D600_#_recorte_2816_jpg.rf.8929c4283e20fb8ae8a8fc4729948105.jpg
+
+606. T7F672_#_recorte_1531_jpg.rf.3f1c95730cfa8fe419a245c7887e5676.jpg
+   Real: T7F672 → Pred: TF672E
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7F672_#_recorte_1531_jpg.rf.3f1c95730cfa8fe419a245c7887e5676.jpg
+
+607. T7G680_#_recorte_2262_jpg.rf.b7d2bb31f95268d7d4ae2af15a638eba.jpg
+   Real: T7G680 → Pred: T76803
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7G680_#_recorte_2262_jpg.rf.b7d2bb31f95268d7d4ae2af15a638eba.jpg
+
+608. T7H647_#_recorte_261_jpg.rf.6ac86da02f32fe08459a1cf3a2f7d3b2.jpg
+   Real: T7H647 → Pred: T47464
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7H647_#_recorte_261_jpg.rf.6ac86da02f32fe08459a1cf3a2f7d3b2.jpg
+
+609. T7H647_#_recorte_261_jpg.rf.d37b4b717e6f058723343989a4ae9bf3.jpg
+   Real: T7H647 → Pred: TH647T
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7H647_#_recorte_261_jpg.rf.d37b4b717e6f058723343989a4ae9bf3.jpg
+
+610. T7J659_#_recorte_1368_jpg.rf.f9b217d3a3db43ecc505f06b72fe1e14.jpg
+   Real: T7J659 → Pred: TJ6597
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7J659_#_recorte_1368_jpg.rf.f9b217d3a3db43ecc505f06b72fe1e14.jpg
+
+611. T7K622_#_recorte_180_jpg.rf.5c82b04a49d93ce466eb63eacf0ffd30.jpg
+   Real: T7K622 → Pred: TK6222
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7K622_#_recorte_180_jpg.rf.5c82b04a49d93ce466eb63eacf0ffd30.jpg
+
+612. T7K647_#_recorte_1752_jpg.rf.4b669df062c0618cf609921d692d8791.jpg
+   Real: T7K647 → Pred: TK647W
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7K647_#_recorte_1752_jpg.rf.4b669df062c0618cf609921d692d8791.jpg
+
+613. T7L652_#_recorte_511_jpg.rf.6f42928cffda08069b996fa04088ba3d.jpg
+   Real: T7L652 → Pred: T6527V
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7L652_#_recorte_511_jpg.rf.6f42928cffda08069b996fa04088ba3d.jpg
+
+614. T7N687_#_recorte_2030_jpg.rf.24b5d4e52f720926059631623ec293b6.jpg
+   Real: T7N687 → Pred: T76872
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7N687_#_recorte_2030_jpg.rf.24b5d4e52f720926059631623ec293b6.jpg
+
+615. T7P632_#_recorte_2961_jpg.rf.74246da263ba3092156908e3af04bf2f.jpg
+   Real: T7P632 → Pred: T7P729
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7P632_#_recorte_2961_jpg.rf.74246da263ba3092156908e3af04bf2f.jpg
+
+616. T7R182_#_recorte_2697_jpg.rf.02739d418ccd70d064eaafab6688632b.jpg
+   Real: T7R182 → Pred: TR1827
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7R182_#_recorte_2697_jpg.rf.02739d418ccd70d064eaafab6688632b.jpg
+
+617. T7R182_#_recorte_2697_jpg.rf.c2074b78debbf14a57d4296ba4c2cc58.jpg
+   Real: T7R182 → Pred: T2R127
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T7R182_#_recorte_2697_jpg.rf.c2074b78debbf14a57d4296ba4c2cc58.jpg
+
+618. T8G861_#_recorte_704_jpg.rf.d2d4dd11432150fc0242a7c816c797a4.jpg
+   Real: T8G861 → Pred: TG861C
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T8G861_#_recorte_704_jpg.rf.d2d4dd11432150fc0242a7c816c797a4.jpg
+
+619. T8G861_#_recorte_704_jpg.rf.e5f476a6a7fa7627320a6814aa1d74ef.jpg
+   Real: T8G861 → Pred: T88619
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T8G861_#_recorte_704_jpg.rf.e5f476a6a7fa7627320a6814aa1d74ef.jpg
+
+620. T8G861_#_recorte_706_jpg.rf.62f4ab373803c77e1e215fe52b48590d.jpg
+   Real: T8G861 → Pred: T8861B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T8G861_#_recorte_706_jpg.rf.62f4ab373803c77e1e215fe52b48590d.jpg
+
+621. T8G861_#_recorte_708_jpg.rf.b78d7a794eb509e0fc200716d4b95fe2.jpg
+   Real: T8G861 → Pred: T8G61B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T8G861_#_recorte_708_jpg.rf.b78d7a794eb509e0fc200716d4b95fe2.jpg
+
+622. T8Q874_#_recorte_522_jpg.rf.c11ede9e567597c401262a5ba09a282a.jpg
+   Real: T8Q874 → Pred: T8874B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T8Q874_#_recorte_522_jpg.rf.c11ede9e567597c401262a5ba09a282a.jpg
+
+623. T8Q886_#_recorte_1262_jpg.rf.22dcc0d2964307e94182b738f7a8f375.jpg
+   Real: T8Q886 → Pred: T8886B
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T8Q886_#_recorte_1262_jpg.rf.22dcc0d2964307e94182b738f7a8f375.jpg
+
+624. T8W963_#_recorte_1938_jpg.rf.392eb57877d219b71d05c96252e5e8f6.jpg
+   Real: T8W963 → Pred: T8963B
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T8W963_#_recorte_1938_jpg.rf.392eb57877d219b71d05c96252e5e8f6.jpg
+
+625. T8Y861_#_recorte_1147_jpg.rf.483be45892a3ce17e5d8539293bf495a.jpg
+   Real: T8Y861 → Pred: T8Y614
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T8Y861_#_recorte_1147_jpg.rf.483be45892a3ce17e5d8539293bf495a.jpg
+
+626. T8Y861_#_recorte_1147_jpg.rf.bcca5dafd55ff01c75a5983d8277bc7a.jpg
+   Real: T8Y861 → Pred: T88616
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T8Y861_#_recorte_1147_jpg.rf.bcca5dafd55ff01c75a5983d8277bc7a.jpg
+
+627. T9D900_#_recorte_2577_jpg.rf.7b6cd7b6b08a8197fef6d54447ba4d95.jpg
+   Real: T9D900 → Pred: T9900Q
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9D900_#_recorte_2577_jpg.rf.7b6cd7b6b08a8197fef6d54447ba4d95.jpg
+
+628. T9G902_#_recorte_1465_jpg.rf.96266b39d6e7d307b4238cf3733323a2.jpg
+   Real: T9G902 → Pred: T9G029
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9G902_#_recorte_1465_jpg.rf.96266b39d6e7d307b4238cf3733323a2.jpg
+
+629. T9G902_#_recorte_1467_jpg.rf.62a6a9879a07b50113259017b887d5fb.jpg
+   Real: T9G902 → Pred: T99027
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9G902_#_recorte_1467_jpg.rf.62a6a9879a07b50113259017b887d5fb.jpg
+
+630. T9G902_#_recorte_1467_jpg.rf.8ee3d0ed5504602aef8210b3b094534b.jpg
+   Real: T9G902 → Pred: TG902Q
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9G902_#_recorte_1467_jpg.rf.8ee3d0ed5504602aef8210b3b094534b.jpg
+
+631. T9G902_#_recorte_1477_jpg.rf.18498c3837a8f17c9be2053ef8d30e5e.jpg
+   Real: T9G902 → Pred: T9G027
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9G902_#_recorte_1477_jpg.rf.18498c3837a8f17c9be2053ef8d30e5e.jpg
+
+632. T9K931_#_recorte_2765_jpg.rf.8cdd1b7b60f476e3aa9ea0309890774f.jpg
+   Real: T9K931 → Pred: TK931X
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9K931_#_recorte_2765_jpg.rf.8cdd1b7b60f476e3aa9ea0309890774f.jpg
+
+633. T9L873_#_recorte_3029_jpg.rf.0ac9136c4a0b25e3669a282cf2b6fa47.jpg
+   Real: T9L873 → Pred: TL8734
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9L873_#_recorte_3029_jpg.rf.0ac9136c4a0b25e3669a282cf2b6fa47.jpg
+
+634. T9T829_#_recorte_2085_jpg.rf.75f2b0ed78b77d1cd462e265e8446830.jpg
+   Real: T9T829 → Pred: TT829J
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9T829_#_recorte_2085_jpg.rf.75f2b0ed78b77d1cd462e265e8446830.jpg
+
+635. T9U963_#_recorte_2848_jpg.rf.0366678347e9128523b7ed6e872b6500.jpg
+   Real: T9U963 → Pred: T9U630
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9U963_#_recorte_2848_jpg.rf.0366678347e9128523b7ed6e872b6500.jpg
+
+636. T9U963_#_recorte_2848_jpg.rf.e1174373122d4b5183fc6b4c9f206892.jpg
+   Real: T9U963 → Pred: T9U631
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9U963_#_recorte_2848_jpg.rf.e1174373122d4b5183fc6b4c9f206892.jpg
+
+637. T9W968_#_recorte_1694_jpg.rf.41276d138da2e9d27d44e2545cdcb4c2.jpg
+   Real: T9W968 → Pred: TW968K
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9W968_#_recorte_1694_jpg.rf.41276d138da2e9d27d44e2545cdcb4c2.jpg
+
+638. T9X952_#_recorte_781_jpg.rf.fbd1daa048535c89f8d0631c084f2215.jpg
+   Real: T9X952 → Pred: T99527
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\T9X952_#_recorte_781_jpg.rf.fbd1daa048535c89f8d0631c084f2215.jpg
+
+639. TAD803_#_recorte_2827_jpg.rf.e3aca63a13149e46076f87a8ff70c6ae.jpg
+   Real: TAD803 → Pred: TAD031
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TAD803_#_recorte_2827_jpg.rf.e3aca63a13149e46076f87a8ff70c6ae.jpg
+
+640. TBD813_#_recorte_220_jpg.rf.643bb7f43efaaedc852c5466c1ebb50f.jpg
+   Real: TBD813 → Pred: TD8131
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TBD813_#_recorte_220_jpg.rf.643bb7f43efaaedc852c5466c1ebb50f.jpg
+
+641. TBD813_#_recorte_220_jpg.rf.78baf908acbec8f55f31d07f4d498246.jpg
+   Real: TBD813 → Pred: TD813R
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TBD813_#_recorte_220_jpg.rf.78baf908acbec8f55f31d07f4d498246.jpg
+
+642. TBG802_#_recorte_784_jpg.rf.b27db2531e71058fe6dc9f56145ec056.jpg
+   Real: TBG802 → Pred: TG8026
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TBG802_#_recorte_784_jpg.rf.b27db2531e71058fe6dc9f56145ec056.jpg
+
+643. TBL921_#_recorte_1779_jpg.rf.2ab35e548436e15c78ff2ba889c9f72a.jpg
+   Real: TBL921 → Pred: TB9218
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TBL921_#_recorte_1779_jpg.rf.2ab35e548436e15c78ff2ba889c9f72a.jpg
+
+644. TBL921_#_recorte_1779_jpg.rf.ae948a53f8ff24808a402349ddc523ce.jpg
+   Real: TBL921 → Pred: TB9218
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TBL921_#_recorte_1779_jpg.rf.ae948a53f8ff24808a402349ddc523ce.jpg
+
+645. TBL921_#_recorte_1785_jpg.rf.0dd75ad09b27581c29e4fcf6d3a1619d.jpg
+   Real: TBL921 → Pred: TL921Q
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TBL921_#_recorte_1785_jpg.rf.0dd75ad09b27581c29e4fcf6d3a1619d.jpg
+
+646. TBS810_#_recorte_2314_jpg.rf.25f7d0711601fafb4f117968f304620a.jpg
+   Real: TBS810 → Pred: TS8106
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TBS810_#_recorte_2314_jpg.rf.25f7d0711601fafb4f117968f304620a.jpg
+
+647. TBS810_#_recorte_2314_jpg.rf.dee729fc3ae31709cdac975984245935.jpg
+   Real: TBS810 → Pred: TS810G
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TBS810_#_recorte_2314_jpg.rf.dee729fc3ae31709cdac975984245935.jpg
+
+648. TBX847_#_recorte_324_jpg.rf.3e77282570fa328c9493baef22634645.jpg
+   Real: TBX847 → Pred: TX847K
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TBX847_#_recorte_324_jpg.rf.3e77282570fa328c9493baef22634645.jpg
+
+649. TBX847_#_recorte_324_jpg.rf.55c5cf82d07ff28e427980dbbfcd50fb.jpg
+   Real: TBX847 → Pred: TBX478
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TBX847_#_recorte_324_jpg.rf.55c5cf82d07ff28e427980dbbfcd50fb.jpg
+
+650. TCJ943_#_recorte_3217_jpg.rf.8d79fde307db45a12fd7605fc2a8fdd7.jpg
+   Real: TCJ943 → Pred: TC9438
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TCJ943_#_recorte_3217_jpg.rf.8d79fde307db45a12fd7605fc2a8fdd7.jpg
+
+651. TCK870_#_recorte_1295_jpg.rf.09bb539b3885b57fd81856c85d442d77.jpg
+   Real: TCK870 → Pred: TCK70D
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TCK870_#_recorte_1295_jpg.rf.09bb539b3885b57fd81856c85d442d77.jpg
+
+652. TCK870_#_recorte_1295_jpg.rf.30516d32df9032c86ade188999c7daf6.jpg
+   Real: TCK870 → Pred: TC870D
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TCK870_#_recorte_1295_jpg.rf.30516d32df9032c86ade188999c7daf6.jpg
+
+653. TCK870_#_recorte_1299_jpg.rf.3868e7bbf4ea712404db3fcab9ee434f.jpg
+   Real: TCK870 → Pred: TC8703
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TCK870_#_recorte_1299_jpg.rf.3868e7bbf4ea712404db3fcab9ee434f.jpg
+
+654. TCK870_#_recorte_1301_jpg.rf.7cad4e31a94c97aa9838482e33e15f40.jpg
+   Real: TCK870 → Pred: TK8709
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TCK870_#_recorte_1301_jpg.rf.7cad4e31a94c97aa9838482e33e15f40.jpg
+
+655. TCL866_#_recorte_2388_jpg.rf.49443dd1046fc2820ea736ea350fda12.jpg
+   Real: TCL866 → Pred: TC8668
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TCL866_#_recorte_2388_jpg.rf.49443dd1046fc2820ea736ea350fda12.jpg
+
+656. TCW807_#_recorte_407_jpg.rf.4fbb2e65f0d68b97137959accf74243c.jpg
+   Real: TCW807 → Pred: TW807K
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TCW807_#_recorte_407_jpg.rf.4fbb2e65f0d68b97137959accf74243c.jpg
+
+657. TCW807_#_recorte_409_jpg.rf.26883707163b170c0ef3ed7cf32ee097.jpg
+   Real: TCW807 → Pred: TCW07K
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TCW807_#_recorte_409_jpg.rf.26883707163b170c0ef3ed7cf32ee097.jpg
+
+658. TCW807_#_recorte_409_jpg.rf.ef8483f3502695e2489a3b89a30806ea.jpg
+   Real: TCW807 → Pred: TW8079
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TCW807_#_recorte_409_jpg.rf.ef8483f3502695e2489a3b89a30806ea.jpg
+
+659. TDE865_#_recorte_2564_jpg.rf.2c1550ebc3212ab7402e338b58240dab.jpg
+   Real: TDE865 → Pred: TDE650
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TDE865_#_recorte_2564_jpg.rf.2c1550ebc3212ab7402e338b58240dab.jpg
+
+660. TDH861_#_recorte_3108_jpg.rf.1069daa398eef2500d525b14886423cf.jpg
+   Real: TDH861 → Pred: TDH610
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TDH861_#_recorte_3108_jpg.rf.1069daa398eef2500d525b14886423cf.jpg
+
+661. TDH861_#_recorte_3112_jpg.rf.6b2d4ad1cc204f61d83231f2f0601c9d.jpg
+   Real: TDH861 → Pred: TH861M
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TDH861_#_recorte_3112_jpg.rf.6b2d4ad1cc204f61d83231f2f0601c9d.jpg
+
+662. TDH861_#_recorte_3112_jpg.rf.cfc0b6da890ccd1f16a3e1b20f40c5ce.jpg
+   Real: TDH861 → Pred: T66153
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TDH861_#_recorte_3112_jpg.rf.cfc0b6da890ccd1f16a3e1b20f40c5ce.jpg
+
+663. TDK870_#_recorte_2346_jpg.rf.44672e62ac832a36c45bcd73bf929d19.jpg
+   Real: TDK870 → Pred: T0K70D
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TDK870_#_recorte_2346_jpg.rf.44672e62ac832a36c45bcd73bf929d19.jpg
+
+664. TDL816_#_recorte_519_jpg.rf.6eb3839f5fdb8f6db46fde0a1202a072.jpg
+   Real: TDL816 → Pred: TD8160
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TDL816_#_recorte_519_jpg.rf.6eb3839f5fdb8f6db46fde0a1202a072.jpg
+
+665. TDL816_#_recorte_520_jpg.rf.b5c3e3b52935cbcc9d0b7e8e10535098.jpg
+   Real: TDL816 → Pred: TL8161
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TDL816_#_recorte_520_jpg.rf.b5c3e3b52935cbcc9d0b7e8e10535098.jpg
+
+666. TDL816_#_recorte_520_jpg.rf.d9e25e11d7bcef0feb791e61631c37af.jpg
+   Real: TDL816 → Pred: TD8160
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TDL816_#_recorte_520_jpg.rf.d9e25e11d7bcef0feb791e61631c37af.jpg
+
+667. TSE644_#_recorte_1583_jpg.rf.df86e125405403a789695d5b30491c13.jpg
+   Real: TSE644 → Pred: TS644E
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\TSE644_#_recorte_1583_jpg.rf.df86e125405403a789695d5b30491c13.jpg
+
+668. UFC235_#_recorte_688_jpg.rf.1c3edafba9ee4219ba886fa70358b806.jpg
+   Real: UFC235 → Pred: TC2356
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\UFC235_#_recorte_688_jpg.rf.1c3edafba9ee4219ba886fa70358b806.jpg
+
+669. UFC235_#_recorte_688_jpg.rf.2ec8212e8882b4dc9a77284fdcf01662.jpg
+   Real: UFC235 → Pred: TEC239
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\UFC235_#_recorte_688_jpg.rf.2ec8212e8882b4dc9a77284fdcf01662.jpg
+
+670. UFC235_#_recorte_688_jpg.rf.552cad5f5efbe73dd36e90fe9c1441cf.jpg
+   Real: UFC235 → Pred: BC235A
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\UFC235_#_recorte_688_jpg.rf.552cad5f5efbe73dd36e90fe9c1441cf.jpg
+
+671. V0K158_#_recorte_1558_jpg.rf.72d9d810a02e99f776ee3cf05f284f36.jpg
+   Real: V0K158 → Pred: DK158V
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\V0K158_#_recorte_1558_jpg.rf.72d9d810a02e99f776ee3cf05f284f36.jpg
+
+672. V0K158_#_recorte_1560_jpg.rf.7a8749310b1e854284ab53d894e8189e.jpg
+   Real: V0K158 → Pred: A8DBDB
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\V0K158_#_recorte_1560_jpg.rf.7a8749310b1e854284ab53d894e8189e.jpg
+
+673. V0K158_#_recorte_1562_jpg.rf.1caf7ef4809d341d45f51e91b6fc84f9.jpg
+   Real: V0K158 → Pred: VK158W
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\V0K158_#_recorte_1562_jpg.rf.1caf7ef4809d341d45f51e91b6fc84f9.jpg
+
+674. W3P184_#_recorte_2241_jpg.rf.8c7928cfdb63c1f8e4d63b6494c36a8c.jpg
+   Real: W3P184 → Pred: BP184A
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\W3P184_#_recorte_2241_jpg.rf.8c7928cfdb63c1f8e4d63b6494c36a8c.jpg
+
+675. W3P184_#_recorte_2241_jpg.rf.a3627dd8ad4fc657d0fc530ee30bdf5c.jpg
+   Real: W3P184 → Pred: WP184B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\W3P184_#_recorte_2241_jpg.rf.a3627dd8ad4fc657d0fc530ee30bdf5c.jpg
+
+676. W4A957_#_recorte_1533_jpg.rf.7a218cf611cd18269253c3be279d7156.jpg
+   Real: W4A957 → Pred: WA957A
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\W4A957_#_recorte_1533_jpg.rf.7a218cf611cd18269253c3be279d7156.jpg
+
+677. W4A957_#_recorte_1533_jpg.rf.d159da50d18a25143cfdd43cf3b7beca.jpg
+   Real: W4A957 → Pred: WA957A
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\W4A957_#_recorte_1533_jpg.rf.d159da50d18a25143cfdd43cf3b7beca.jpg
+
+678. W4A957_#_recorte_1537_jpg.rf.de506e68826cbe0d0a1e0e3fa35a00cd.jpg
+   Real: W4A957 → Pred: A4A97W
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\W4A957_#_recorte_1537_jpg.rf.de506e68826cbe0d0a1e0e3fa35a00cd.jpg
+
+679. Y2S120_#_recorte_1492_jpg.rf.6ccdebf6408aa6d2eb292eb604a604a3.jpg
+   Real: Y2S120 → Pred: T2S207
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\Y2S120_#_recorte_1492_jpg.rf.6ccdebf6408aa6d2eb292eb604a604a3.jpg
+
+680. Y4Z052_#_recorte_749_jpg.rf.5b39a298357f2e9683d91340b5c00157.jpg
+   Real: Y4Z052 → Pred: T4Z52Y
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\Y4Z052_#_recorte_749_jpg.rf.5b39a298357f2e9683d91340b5c00157.jpg
+
+681. Z6Z198_#_recorte_1730_jpg.rf.309ea4f70006a8a2df6f3af7f63532dc.jpg
+   Real: Z6Z198 → Pred: TZ198Z
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\Z6Z198_#_recorte_1730_jpg.rf.309ea4f70006a8a2df6f3af7f63532dc.jpg
+
+682. Z6Z198_#_recorte_1732_jpg.rf.93d7d56921d33051b3c670f168d6ba2b.jpg
+   Real: Z6Z198 → Pred: T6198Z
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\Z6Z198_#_recorte_1732_jpg.rf.93d7d56921d33051b3c670f168d6ba2b.jpg
+
+683. Z6Z198_#_recorte_1734_jpg.rf.2d0ccc80546f2110c707fe023a5393a1.jpg
+   Real: Z6Z198 → Pred: T6198Z
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\train\Z6Z198_#_recorte_1734_jpg.rf.2d0ccc80546f2110c707fe023a5393a1.jpg
+
+684. AB1082_#_recorte_2595_jpg.rf.609e6540da3a2de85f444a7f7cecdb64.jpg
+   Real: AB1082 → Pred: A10829
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\AB1082_#_recorte_2595_jpg.rf.609e6540da3a2de85f444a7f7cecdb64.jpg
+
+685. ADG944_#_recorte_2405_jpg.rf.c81830bb23e095d37a596aa1fd28bdfa.jpg
+   Real: ADG944 → Pred: BDG44A
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\ADG944_#_recorte_2405_jpg.rf.c81830bb23e095d37a596aa1fd28bdfa.jpg
+
+686. AFE555_#_recorte_1928_jpg.rf.a54cef44099d9a6e1be3fc6e15790773.jpg
+   Real: AFE555 → Pred: A55586
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\AFE555_#_recorte_1928_jpg.rf.a54cef44099d9a6e1be3fc6e15790773.jpg
+
+687. AFP042_#_recorte_2596_jpg.rf.3ea14fa80c6a3236bb2c5c236fcca917.jpg
+   Real: AFP042 → Pred: AEPQ47
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\AFP042_#_recorte_2596_jpg.rf.3ea14fa80c6a3236bb2c5c236fcca917.jpg
+
+688. AUD782_#_recorte_2335_jpg.rf.a201e06e7455413b5aeb05db88290a89.jpg
+   Real: AUD782 → Pred: AD7820
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\AUD782_#_recorte_2335_jpg.rf.a201e06e7455413b5aeb05db88290a89.jpg
+
+689. AWV676_#_recorte_1902_jpg.rf.a262f89fb507705724f1e47e8f30df4b.jpg
+   Real: AWV676 → Pred: AWV76Y
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\AWV676_#_recorte_1902_jpg.rf.a262f89fb507705724f1e47e8f30df4b.jpg
+
+690. BMK560_#_recorte_3207_jpg.rf.9057e09f701dc28487872dd5e45a4d63.jpg
+   Real: BMK560 → Pred: BK560R
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\BMK560_#_recorte_3207_jpg.rf.9057e09f701dc28487872dd5e45a4d63.jpg
+
+691. BR0842_#_recorte_1140_jpg.rf.1316c2b7aaa0ea4328e67fa0b81bf13a.jpg
+   Real: BR0842 → Pred: BQ8420
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\BR0842_#_recorte_1140_jpg.rf.1316c2b7aaa0ea4328e67fa0b81bf13a.jpg
+
+692. CCTQ48_#_recorte_1728_jpg.rf.ba3c06554b44635e1974e1f363a45709.jpg
+   Real: CCTQ48 → Pred: C0T046
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\CCTQ48_#_recorte_1728_jpg.rf.ba3c06554b44635e1974e1f363a45709.jpg
+
+693. D8R476_#_recorte_3119_jpg.rf.aa3432fcc04cecdf59ada83304b195ca.jpg
+   Real: D8R476 → Pred: DR476C
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\D8R476_#_recorte_3119_jpg.rf.aa3432fcc04cecdf59ada83304b195ca.jpg
+
+694. DST253_#_recorte_2260_jpg.rf.81aabbe2e4648da8f3b4625163ad4f61.jpg
+   Real: DST253 → Pred: T253SD
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\DST253_#_recorte_2260_jpg.rf.81aabbe2e4648da8f3b4625163ad4f61.jpg
+
+695. EG0201_#_recorte_2118_jpg.rf.c6a4b5b8d6ffd89caf1a19e422917219.jpg
+   Real: EG0201 → Pred: FQ201E
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\EG0201_#_recorte_2118_jpg.rf.c6a4b5b8d6ffd89caf1a19e422917219.jpg
+
+696. H1T376_#_recorte_2532_jpg.rf.a67b86bb17b955a935af2fe2da23a01e.jpg
+   Real: H1T376 → Pred: HT76BM
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\H1T376_#_recorte_2532_jpg.rf.a67b86bb17b955a935af2fe2da23a01e.jpg
+
+697. H1Y692_#_recorte_402_jpg.rf.4d1404afbaf717be3cc4e7c466fce64a.jpg
+   Real: H1Y692 → Pred: B6Y620
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\H1Y692_#_recorte_402_jpg.rf.4d1404afbaf717be3cc4e7c466fce64a.jpg
+
+698. S1D287_#_recorte_618_jpg.rf.93bd3d5f03107f877195dec8e96f1fc2.jpg
+   Real: S1D287 → Pred: SD287B
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\S1D287_#_recorte_618_jpg.rf.93bd3d5f03107f877195dec8e96f1fc2.jpg
+
+699. S1D287_#_recorte_620_jpg.rf.08d127aa93bde20a590005fbbdaf6f48.jpg
+   Real: S1D287 → Pred: BD287T
+   Diferencias: 6 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\S1D287_#_recorte_620_jpg.rf.08d127aa93bde20a590005fbbdaf6f48.jpg
+
+700. T1E630_#_recorte_2585_jpg.rf.3936147753a7a99b51df12879eb0ca61.jpg
+   Real: T1E630 → Pred: T1630Z
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T1E630_#_recorte_2585_jpg.rf.3936147753a7a99b51df12879eb0ca61.jpg
+
+701. T27639_#_recorte_3194_jpg.rf.cc63c11a4a01054475cd9ac7f58c2e46.jpg
+   Real: T27639 → Pred: T26397
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T27639_#_recorte_3194_jpg.rf.cc63c11a4a01054475cd9ac7f58c2e46.jpg
+
+702. T2D480_#_recorte_3064_jpg.rf.c178c3656bc9cec4454a54a2b85da006.jpg
+   Real: T2D480 → Pred: T20610
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T2D480_#_recorte_3064_jpg.rf.c178c3656bc9cec4454a54a2b85da006.jpg
+
+703. T2J798_#_recorte_1791_jpg.rf.1c005a3b85532ec7d957e0d06b1ebca4.jpg
+   Real: T2J798 → Pred: T2J985
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T2J798_#_recorte_1791_jpg.rf.1c005a3b85532ec7d957e0d06b1ebca4.jpg
+
+704. T31386_#_recorte_1833_jpg.rf.938b070814310e8b017819af617bf20b.jpg
+   Real: T31386 → Pred: T386B8
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T31386_#_recorte_1833_jpg.rf.938b070814310e8b017819af617bf20b.jpg
+
+705. T3F386_#_recorte_1845_jpg.rf.349ee1cc2c1d49e1b04b1bbb2868923f.jpg
+   Real: T3F386 → Pred: T33864
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T3F386_#_recorte_1845_jpg.rf.349ee1cc2c1d49e1b04b1bbb2868923f.jpg
+
+706. T3K089_#_recorte_3206_jpg.rf.27fd6b15f8f178824ca51a352337c7d3.jpg
+   Real: T3K089 → Pred: TR089K
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T3K089_#_recorte_3206_jpg.rf.27fd6b15f8f178824ca51a352337c7d3.jpg
+
+707. T3S082_#_recorte_2239_jpg.rf.4b4635326defc660aec051919dbc0460.jpg
+   Real: T3S082 → Pred: T3S825
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T3S082_#_recorte_2239_jpg.rf.4b4635326defc660aec051919dbc0460.jpg
+
+708. T3V311_#_recorte_3047_jpg.rf.45884a65047a3ef8dafd1064f4c188ec.jpg
+   Real: T3V311 → Pred: TV311Y
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T3V311_#_recorte_3047_jpg.rf.45884a65047a3ef8dafd1064f4c188ec.jpg
+
+709. T4H022_#_recorte_1854_jpg.rf.b2dc56a374ca5c98cabc97a15b2871cf.jpg
+   Real: T4H022 → Pred: T82280
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T4H022_#_recorte_1854_jpg.rf.b2dc56a374ca5c98cabc97a15b2871cf.jpg
+
+710. T4P102_#_recorte_2282_jpg.rf.27fd2673ec99c3f70bd76eb6780cfe6a.jpg
+   Real: T4P102 → Pred: T41028
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T4P102_#_recorte_2282_jpg.rf.27fd2673ec99c3f70bd76eb6780cfe6a.jpg
+
+711. T4W843_#_recorte_2812_jpg.rf.b759de925863576fc825ca8047762bc2.jpg
+   Real: T4W843 → Pred: T4W43H
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T4W843_#_recorte_2812_jpg.rf.b759de925863576fc825ca8047762bc2.jpg
+
+712. T5E006_#_recorte_2228_jpg.rf.bdcd95aa771eb14d3037d3028288a898.jpg
+   Real: T5E006 → Pred: TE0068
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T5E006_#_recorte_2228_jpg.rf.bdcd95aa771eb14d3037d3028288a898.jpg
+
+713. T5E631_#_recorte_1120_jpg.rf.76fcf7ec2c332e277e316b42fb23aab1.jpg
+   Real: T5E631 → Pred: TE631F
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T5E631_#_recorte_1120_jpg.rf.76fcf7ec2c332e277e316b42fb23aab1.jpg
+
+714. T5R134_#_recorte_380_jpg.rf.b96ad04e6b2806593dc3a15b426198cc.jpg
+   Real: T5R134 → Pred: TR1348
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T5R134_#_recorte_380_jpg.rf.b96ad04e6b2806593dc3a15b426198cc.jpg
+
+715. T5R254_#_recorte_487_jpg.rf.2cc8b9e8117c1fa828d41a6b590c0f74.jpg
+   Real: T5R254 → Pred: TR2549
+   Diferencias: 5 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T5R254_#_recorte_487_jpg.rf.2cc8b9e8117c1fa828d41a6b590c0f74.jpg
+
+716. T6N522_#_recorte_548_jpg.rf.c35ab74948c1197614979a8b100331b1.jpg
+   Real: T6N522 → Pred: T65229
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T6N522_#_recorte_548_jpg.rf.c35ab74948c1197614979a8b100331b1.jpg
+
+717. T6Y679_#_recorte_2231_jpg.rf.488e183aaf5b168527d2291ea81b6ee2.jpg
+   Real: T6Y679 → Pred: T6Y297
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T6Y679_#_recorte_2231_jpg.rf.488e183aaf5b168527d2291ea81b6ee2.jpg
+
+718. T6Y679_#_recorte_2894_jpg.rf.59d457e403f0d17aea3466b61c5711f0.jpg
+   Real: T6Y679 → Pred: T6Y792
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T6Y679_#_recorte_2894_jpg.rf.59d457e403f0d17aea3466b61c5711f0.jpg
+
+719. T7R917_#_recorte_3189_jpg.rf.7599ecca1dd0e48b9d90aba12502a76a.jpg
+   Real: T7R917 → Pred: T2Q912
+   Diferencias: 3 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T7R917_#_recorte_3189_jpg.rf.7599ecca1dd0e48b9d90aba12502a76a.jpg
+
+720. T9V959_#_recorte_2115_jpg.rf.61a372adae5a726dc351c5d482c1c61d.jpg
+   Real: T9V959 → Pred: T99592
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\T9V959_#_recorte_2115_jpg.rf.61a372adae5a726dc351c5d482c1c61d.jpg
+
+721. TCL866_#_recorte_2384_jpg.rf.3e3b85534eca4302a2729ffd42838403.jpg
+   Real: TCL866 → Pred: TL8665
+   Diferencias: 4 caracteres
+   Ruta: c:\Users\Abel\Desktop\LPRNet_Peru\data_real\val\TCL866_#_recorte_2384_jpg.rf.3e3b85534eca4302a2729ffd42838403.jpg
+

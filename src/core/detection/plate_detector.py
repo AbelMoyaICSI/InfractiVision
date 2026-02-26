@@ -48,13 +48,18 @@ class PlateDetector:
                 
         except Exception as e:
             print(f"Error al cargar modelo de detección de placas: {e}")
-            # Crear un modelo alternativo fallback
-            try:
-                self.model = YOLO("yolov8n.pt")
-                print("PlateDetector: Usando modelo genérico como fallback")
-            except Exception as e:
-                print(f"Error crítico, no se pudo cargar ningún modelo: {e}")
-                self.model = None
+            self.model = None
+        
+        # 🚀 CONFIGURACIÓN EDGE TURBO (GPU + FP16)
+        import torch
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.half = torch.cuda.is_available()
+        
+        if self.model and torch.cuda.is_available():
+            self.model.to(self.device)
+            if self.half:
+                self.model.half()
+            print(f"🚀 PlateDetector: MODO TURBO ACTIVADO ({self.device})")
         
         # Estadísticas de rendimiento
         self.detection_stats = {
@@ -143,29 +148,64 @@ class PlateDetector:
                     score = float(confs[i])
                     class_id = int(classes_detected[i])
                     
-                    # Filtros geométricos mejorados
+                    # === FILTROS GEOMÉTRICOS Y ESPACIALES AVANZADOS (Protocolo Abel V19 - Equilibrado) ===
                     width, height = x2 - x1, y2 - y1
                     if height == 0 or width == 0:
                         continue
                         
                     aspect_ratio = width / height
                     area = width * height
-                    image_area = image.shape[0] * image.shape[1]
+                    img_h, img_w = image.shape[:2]
+                    image_area = img_h * img_w
                     area_ratio = area / image_area
                     
-                    # ULTRA PERMISSIVE filters for night detection
-                    if (0.7 <= aspect_ratio <= 15.0 and  # Ultra flexible aspect ratio
-                        0.00005 <= area_ratio <= 0.7 and  # Even larger size range
-                        width >= 10 and height >= 4):    # Much lower minimum size
-                        
+                    # 1. Filtro de Aspect Ratio (Más permisivo para ángulos)
+                    # Placa peruana: ~2.85. Rango: 1.5 a 6.0
+                    is_valid_shape = 1.5 <= aspect_ratio <= 6.0
+                    
+                    # 2. Filtro de Tamaño Relativo (Física del Objeto)
+                    is_valid_size = 0.0004 <= area_ratio <= 0.25
+                    
+                    # 3. FILTRO DE ANCHO RELATIVO (Fundamental para Buses)
+                    width_ratio = width / img_w
+                    is_valid_width = width_ratio <= 0.65 
+
+                    # 4. FILTRO DE GEOLOCALIZACIÓN INTERNA (Grounding Espacial V20)
+                    y_center_rel = (y1 + y2) / (2 * img_h)
+                    # BUMPER AFFINITY: Las placas están en el parachoques (Bumper)
+                    # CAR/SUV: 60-95% | BUS/TRUCK: 75-98%
+                    # Permitimos un rango base de 35-98% pero damos prioridad a la zona de parachoques.
+                    is_in_plate_zone = 0.35 <= y_center_rel <= 0.98
+                    
+                    # 5. ESCÁNER DE ENERGÍA DE CARACTERES (V20)
+                    has_plate_energy = True
+                    if width > 35 and height > 12:
+                        roi = image[y1:y2, x1:x2]
+                        if roi.size > 0:
+                            gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                            edges_x = cv2.Sobel(gray_roi, cv2.CV_64F, 1, 0, ksize=3)
+                            energy = np.mean(np.abs(edges_x))
+                            # Si es zona de 'luces' (arriba) pedimos energía extrema
+                            # Si la confianza de YOLO es alta (>0.85), somos más permisivos
+                            # de lo contrario, aplicamos Escáner de Energía (V21 - Densidad de Caracteres)
+                            if score < 0.85:
+                                # 🔠 DENSIDAD DE CARACTERES: Las placas tienen picos de cambios negros/blancos
+                                # proyectamos los bordes horizontalmente para ver "clústeres" de letras
+                                projection = np.sum(np.abs(edges_x), axis=0)
+                                peaks = np.sum(projection > (np.max(projection) * 0.5))
+                                # Una placa real tiene al menos 5-10 zonas de alta densidad (letras)
+                                plate_density = peaks / width
+                                has_plate_energy = (energy > 5.5) and (0.15 <= plate_density <= 0.85)
+
+                    if is_valid_shape and is_valid_size and is_valid_width and is_in_plate_zone and has_plate_energy and width >= 18 and height >= 6:
                         detections.append((x1, y1, x2, y2, score, class_id))
                         
                         # Dibujar si se solicita
                         if draw:
-                            color = (0, 255, 0)  # Verde para placas
+                            color = (0, 255, 0)
                             cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
-                            cv2.putText(image, f"Placa: {score:.2f}", (x1, y1 - 10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                            cv2.putText(image, f"PLACA OK: {score:.2f}", (x1, y1 - 10),
+                                     cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
             
             # Actualizar estadísticas
             if detections:

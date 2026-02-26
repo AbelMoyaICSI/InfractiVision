@@ -1,6 +1,8 @@
 import os
 import time
+import sys
 import cv2
+import numpy as np
 from src.core.processing.resolution_process import enhance_plate_image
 from src.core.detection.plate_detector import PlateDetector
 from src.core.processing.superresolution import enhance_plate
@@ -8,13 +10,73 @@ from src.core.ocr.recognizer import recognize_plate
 from src.core.processing.plate_ocr_enhancer import enhance_plate_recognition, get_plate_enhancer
 from src.path_helper import resource_path
 
+# ── Homografía v6.3 (correccion de perspectiva) ──────────────────────
+try:
+    _RECTIFIER_DIR = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "..",
+        "tests", "perspective_experiment"
+    )
+    sys.path.insert(0, os.path.normpath(_RECTIFIER_DIR))
+    from auto_rectifier import encontrar_esquinas, aplicar_homografia
+    _HOMOGRAFIA_OK = True
+except Exception as _e:
+    _HOMOGRAFIA_OK = False
+    print(f"⚠️ Homografía v6.3 no disponible: {_e}")
+# ──────────────────────────────────────────────────────────────
+
+
+def rectificar_perspectiva(plate_raw):
+    """
+    Pipeline de rectificacion homografica v6.3.
+    Orden correcto:
+      1. Padding previo al bbox YOLO (12% x, 18% y)  ← da aire a las esquinas
+      2. encontrar_esquinas → aplicar_homografia → 300x110 plano
+      3. strip header PERU (top 25%)                  ← solo caracteres al OCR
+    Retorna imagen lista para LPRNet, o None si falla.
+    """
+    if not _HOMOGRAFIA_OK or plate_raw is None or plate_raw.size == 0:
+        return None
+    try:
+        h, w = plate_raw.shape[:2]
+
+        # PASO 1: Padding antes de la homografia
+        pad_x = int(w * 0.12)
+        pad_y = int(h * 0.18)
+        padded = cv2.copyMakeBorder(
+            plate_raw, pad_y, pad_y, pad_x, pad_x,
+            cv2.BORDER_REPLICATE
+        )
+
+        # PASO 2: Homografia v6.3
+        pts, method, score = encontrar_esquinas(padded)
+        if pts is None:
+            return None
+        rectified = aplicar_homografia(padded, pts)   # 300x110
+        if rectified is None:
+            return None
+
+        # PASO 3: Quitar franja PERU (header superior ~25% del alto)
+        rh = rectified.shape[0]
+        cut_y = int(rh * 0.25)
+        chars_only = rectified[cut_y:, :]
+        if chars_only.shape[0] < 15:
+            return rectified   # Si es muy pequenna, usar completa
+
+        return chars_only
+
+    except Exception as ex:
+        print(f"⚠️ rectificar_perspectiva error: {ex}")
+        return None
+
 _detector = None
 
 def get_plate_detector():
     
     global _detector
     if _detector is None:
-        _detector = PlateDetector(resource_path("models/yolov8n.pt"))  # Usa el modelo general de YOLOv8 por ahora
+        # CORRECCIÓN: Usar el modelo especializado en placas, no el genérico
+        _detector = PlateDetector(resource_path("models/license_plate_detector.pt"))
     return _detector
 
 # Añade esta función para mejorar la detección de la región de la placa
@@ -98,59 +160,70 @@ def enhance_night_image(img):
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
     cl = clahe.apply(l)
     
+    # Aumentar brillo y contraste adaptativamente
+    cl_norm = cv2.normalize(cl, None, 0, 255, cv2.NORM_MINMAX)
+    
+    # NUEVO: Reducción de Luces Altas (HLC-like)
+    # Oscurecer áreas extremadamente brillantes (faros)
+    _, bright_mask = cv2.threshold(cl_norm, 240, 255, cv2.THRESH_BINARY)
+    cl_hlc = cv2.subtract(cl_norm, cv2.divide(bright_mask, 2)) # Atenuar un poco
+    
     # Fusionar canales de nuevo
-    enhanced_lab = cv2.merge((cl, a, b))
+    enhanced_lab = cv2.merge((cl_hlc, a, b))
     enhanced = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
     
-    # Aumentar brillo y contraste
-    return cv2.convertScaleAbs(enhanced, alpha=1.4, beta=30)
+    return cv2.convertScaleAbs(enhanced, alpha=1.3, beta=20)
 
 def enhance_plate_night(plate_bgr):
-    """Versión específica para optimizar placas en condiciones nocturnas"""
+    """
+    Versión profesional para optimizar placas nocturnas.
+    Aplica técnicas de compensación de luces y realce de contraste de bordes.
+    """
     try:
-        # Verificar tamaño mínimo
         h, w = plate_bgr.shape[:2]
-        if h < 10 or w < 20:
-            return plate_bgr
+        if h < 5 or w < 5: return plate_bgr
             
-        # Crear una copia para no modificar el original
-        enhanced = plate_bgr.copy()
+        # 1. Escalamiento de alta calidad
+        scale = 3.5 # Un poco más de escalado para más detalle
+        resized = cv2.resize(plate_bgr, (int(w * scale), int(h * scale)), 
+                           interpolation=cv2.INTER_LANCZOS4)
         
-        # 1. Mayor zoom para ver mejor los detalles
-        scale = 4.0
-        enhanced = cv2.resize(enhanced, (int(w * scale), int(h * scale)), 
-                            interpolation=cv2.INTER_CUBIC)
+        # 2. DIGITAL GAIN (MSR) - Tu Brillo de Vegas (0.116)
+        img_float = resized.astype(np.float32) + 1.0
+        scales = [15, 80, 250]
+        msr = np.zeros_like(img_float)
+        for sigma in scales:
+            blur = cv2.GaussianBlur(img_float, (0, 0), sigma)
+            msr += np.log(img_float) - np.log(blur)
+        msr = msr / 3.0
+        msr_norm = cv2.normalize(msr, None, 0, 255, cv2.NORM_MINMAX)
+        wdr_img = cv2.convertScaleAbs(msr_norm, alpha=1.1, beta=15) # Simula tu brillo de Vegas
         
-        # 2. Convertir a escala de grises
-        gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
+        # 3. FILTRO "VEGAS COLOR" (Niditud máxima)
+        lab = cv2.cvtColor(wdr_img, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
         
-        # 3. Ecualización de histograma adaptativa con parámetros ajustados para noche
-        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4,4))
-        cl = clahe.apply(gray)
+        # A. Reducción de ruido sutil en luminosidad
+        denoised_l = cv2.bilateralFilter(l, 7, 50, 50)
         
-        # 4. Filtrado bilateral para reducir ruido preservando bordes
-        filtered = cv2.bilateralFilter(cl, 11, 17, 17)
+        # B. Unsharp Masking AGRESIVO (Look Vegas)
+        gauss_l = cv2.GaussianBlur(denoised_l, (0, 0), 1.5)
+        l_sharpened = cv2.addWeighted(denoised_l, 3.5, gauss_l, -2.5, 0)
         
-        # 5. Umbralización adaptativa para mejor segmentación en condiciones de baja luz
-        thresh = cv2.adaptiveThreshold(
-            filtered, 
-            255, 
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-            cv2.THRESH_BINARY_INV, 
-            15, 
-            4
-        )
+        # C. CLAHE de color quirúrgico
+        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(6,6))
+        final_l = clahe.apply(l_sharpened)
         
-        # 6. Operaciones morfológicas para limpiar ruido
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+        # 4. Profundidad visual
+        invGamma = 1.0 / 1.2
+        table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+        final_l = cv2.LUT(final_l, table)
         
-        # 7. Convertir de vuelta a BGR para OCR (muchos OCR funcionan mejor con la umbralización invertida)
-        result = cv2.cvtColor(cleaned, cv2.COLOR_GRAY2BGR)
-        
-        return result
+        # 5. Recombinación de color
+        enhanced_lab = cv2.merge([final_l, a, b])
+        return cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
     except Exception as e:
-        print(f"Error en enhance_plate_night: {e}")
+        print(f"Error en profesional enhance_plate_night: {e}")
         return plate_bgr
 
 import cv2
@@ -159,256 +232,86 @@ import os
 
 def process_plate(vehicle_roi, is_night=False):
     """
-    Detect a license plate in the vehicle ROI and process it for better OCR.
-    Returns (bbox, plate_img, plate_text) where bbox is relative to the vehicle_roi
-    """
-    from src.core.detection.plate_detector import PlateDetector
-    from src.core.ocr.recognizer import recognize_plate
+    FLUJO CORRECTO DE DOS ETAPAS:
+    1. PlateDetector (license_plate_detector.pt) → Encuentra la PLACA dentro del carro
+    2. LPRNet → Lee el texto de esa placa recortada
     
+    Retorna: ((x1, y1, x2, y2), plate_img, plate_text, confidence)
+    """
+    if vehicle_roi is None or vehicle_roi.size == 0:
+        return ((0,0,0,0), None, "", 0.0)
+
     try:
-        # Initialize plate detector if not already done
-        if not hasattr(process_plate, "plate_detector"):
-            process_plate.plate_detector = PlateDetector()
+        from src.core.ocr.recognizer import get_lprnet_predictor, recognize_plate, calculate_siiv_confidence
+        from src.core.detection.plate_detector import PlateDetector
+        from src.path_helper import resource_path
+        import os
+
+        # ============ ETAPA 1: DETECTAR LA PLACA CON YOLO ESPECIALIZADO ============
+        # Cargar el detector de placas (license_plate_detector.pt)
+        if not hasattr(process_plate, '_plate_detector') or process_plate._plate_detector is None:
+            model_path = resource_path("models/license_plate_detector.pt")
+            if os.path.exists(model_path):
+                process_plate._plate_detector = PlateDetector(model_path)
+                print(f"✅ PlateDetector cargado: {model_path}")
+            else:
+                process_plate._plate_detector = PlateDetector()  # Usa el path por defecto
         
-        # Detect plate in the vehicle_roi using the correct method
-        # Lower confidence threshold at night
-        plate_confidence = 0.3 if is_night else 0.5
+        detector = process_plate._plate_detector
         
-        # Check if detect_plates exists, otherwise use detect method
-        if hasattr(process_plate.plate_detector, "detect_plates"):
-            plates = process_plate.plate_detector.detect_plates(
-                vehicle_roi, 
-                confidence=plate_confidence
-            )
+        # Detectar placas dentro del ROI del vehículo
+        plate_detections = detector.detect_plates(vehicle_roi, confidence=0.3)
+        
+        plate_crop = None
+        bbox = (0, 0, 0, 0)
+        
+        if plate_detections:
+            # Tomar la primera detección (la de mayor confianza)
+            x1, y1, x2, y2 = [int(v) for v in plate_detections[0]]
+            
+            # Validar coordenadas
+            h, w = vehicle_roi.shape[:2]
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            
+            if x2 > x1 and y2 > y1:
+                # Extraer el recorte EXACTO de la placa
+                plate_crop = vehicle_roi[y1:y2, x1:x2].copy()
+                bbox = (x1, y1, x2, y2)
+                print(f"🎯 PlateDetector encontró placa: {x2-x1}x{y2-y1}px")
+        
+        # Si no se detectó placa, usar el autocrop como fallback
+        if plate_crop is None or plate_crop.size == 0:
+            predictor = get_lprnet_predictor()
+            plate_crop = predictor.autocrop_plate(vehicle_roi)
+            h, w = plate_crop.shape[:2]
+            bbox = (0, 0, w, h)
+            print(f"⚠️ Usando fallback autocrop: {w}x{h}px")
+        
+        # ============ ETAPA 2: RECTIFICACIÓN + OCR ============
+        # ── PASO A: Homografía v6.3 (padding → perspectiva → strip header) ──
+        plate_rectified = rectificar_perspectiva(plate_crop)
+
+        if plate_rectified is not None:
+            # Placa rectificada disponible: OCR directo sin autocrop
+            ocr_input = plate_rectified
+            plate_text, raw_conf = recognize_plate(ocr_input, autocrop=False)
+            print(f"📍 Homografía v6.3 OK → '{plate_text}' (conf {raw_conf:.2f})")
         else:
-            # Use the regular detect method and extract just the coordinates
-            detections = process_plate.plate_detector.detect(
-                vehicle_roi, 
-                conf=plate_confidence,
-                classes=[0],  # Assuming 0 is license plate class
-                draw=False
-            )
-            
-            # Convert detections to the format needed
-            plates = []
-            for det in detections:
-                if len(det) >= 4:
-                    x1, y1, x2, y2 = map(float, det[:4])  # Extract only coordinates
-                    plates.append((x1, y1, x2, y2))
-        
-        # If no plate found, try enhancing the image
-        if not plates:
-            # Apply CLAHE to improve contrast, especially useful at night
-            if is_night:
-                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-                if len(vehicle_roi.shape) > 2:
-                    lab = cv2.cvtColor(vehicle_roi, cv2.COLOR_BGR2LAB)
-                    l, a, b = cv2.split(lab)
-                    cl = clahe.apply(l)
-                    enhanced_lab = cv2.merge((cl, a, b))
-                    enhanced_roi = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
-                else:
-                    enhanced_roi = clahe.apply(vehicle_roi)
-                
-                # Try detection again with enhanced image
-                if hasattr(process_plate.plate_detector, "detect_plates"):
-                    plates = process_plate.plate_detector.detect_plates(
-                        enhanced_roi, 
-                        confidence=0.25  # Even lower threshold for difficult cases
-                    )
-                else:
-                    detections = process_plate.plate_detector.detect(
-                        enhanced_roi, 
-                        conf=0.25,
-                        classes=[0], 
-                        draw=False
-                    )
-                    
-                    plates = []
-                    for det in detections:
-                        if len(det) >= 4:
-                            x1, y1, x2, y2 = map(float, det[:4])
-                            plates.append((x1, y1, x2, y2))
-            
-            # If still no plates, try alternative approach with edge detection
-            if not plates:
-                h, w = vehicle_roi.shape[:2]
-                # Assume plate is in the lower half of the vehicle
-                search_area = vehicle_roi[h//3:, :]
-                
-                # Convert to grayscale
-                if len(search_area.shape) > 2:
-                    gray = cv2.cvtColor(search_area, cv2.COLOR_BGR2GRAY)
-                else:
-                    gray = search_area
-                
-                # Apply bilateral filter to reduce noise while preserving edges
-                blurred = cv2.bilateralFilter(gray, 11, 17, 17)
-                
-                # Find edges
-                edges = cv2.Canny(blurred, 30, 200)
-                
-                # Find contours
-                contours, _ = cv2.findContours(edges.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-                
-                # Sort contours by area, largest first
-                contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
-                
-                plate_contour = None
-                for contour in contours:
-                    # Approximate contour
-                    perimeter = cv2.arcLength(contour, True)
-                    approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
-                    
-                    # If our approximated contour has four points, it's likely a license plate
-                    if len(approx) == 4:
-                        plate_contour = approx
-                        break
-                
-                # If we found a plate contour
-                if plate_contour is not None:
-                    x, y, w, h = cv2.boundingRect(plate_contour)
-                    y += h//3  # Adjust for the cropping we did earlier
-                    plates = [(x, y, x+w, y+h)]
-        
-        if not plates:
-            # Return placeholder values if no plate was found (incluye confianza 0.0)
-            return ((0, 0, 0, 0), vehicle_roi, "", 0.0)
-        
-        # Take the largest plate or the one with the highest confidence
-        # In this case we're taking the first one
-        x1, y1, x2, y2 = plates[0]
-        
-        # Ensure valid coordinates
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(vehicle_roi.shape[1], x2), min(vehicle_roi.shape[0], y2)
-        
-        # Make a slightly larger crop to ensure we get the whole plate
-        padding = 5
-        crop_y1 = max(0, int(y1) - padding)
-        crop_y2 = min(vehicle_roi.shape[0], int(y2) + padding)
-        crop_x1 = max(0, int(x1) - padding)
-        crop_x2 = min(vehicle_roi.shape[1], int(x2) + padding)
-        
-        # Extract the plate region
-        plate_img = vehicle_roi[crop_y1:crop_y2, crop_x1:crop_x2].copy()
-        
-        if plate_img.size == 0:
-            return ((x1, y1, x2, y2), vehicle_roi, "", 0.0)
-        
-        # Apply super-resolution to enhance the plate image
-        try:
-            from src.core.processing.superresolution import enhance_plate_image
-            enhanced_plate = enhance_plate_image(plate_img, is_night)
-            
-            # SISTEMA DE OCR MEJORADO CON VALIDACIÓN SIIV
-            # Primer intento: OCR tradicional (ya incluye todas las correcciones SIIV)
-            plate_text = recognize_plate(enhanced_plate, is_night)
-            
-            # Si recognize_plate devolvió una placa válida, usarla directamente
-            if plate_text and len(plate_text) >= 5:
-                # Calcular confianza base
-                confidence = 0.8  # Confianza alta para placas corregidas por recognize_plate
-                print(f"✅ Usando placa corregida por recognize_plate: '{plate_text}'")
-            else:
-                # Solo usar enhance_plate_recognition como backup si recognize_plate falló
-                print(f"⚠️ recognize_plate falló, usando enhance_plate_recognition como backup")
-                ocr_result = enhance_plate_recognition(enhanced_plate, "", is_night)
-                plate_text = ocr_result['enhanced_text']
-                confidence = ocr_result['confidence']
-            
-            # Validar con sistema SIIV para obtener información completa
-            from src.core.ocr.recognizer import calculate_siiv_confidence
-            siiv_conf, siiv_details = calculate_siiv_confidence(plate_text, confidence)
-            
-            print(f"\n🔍 OCR Mejorado SIIV:")
-            print(f"   Placa final: '{plate_text}'")
-            print(f"   Confianza base: {confidence:.2f} | Confianza SIIV: {siiv_conf:.2f}")
-            
-            if siiv_details.get('valid_regional'):
-                region = siiv_details.get('region', 'Desconocida')
-                priority = siiv_details.get('priority', 'none')
-                if priority == 'very_high':
-                    print(f"   ⭐ TRUJILLO - PRIORIDAD MÁXIMA")
-                else:
-                    print(f"   🌍 Región: {region} (Prioridad: {priority})")
-                
-                vehicle_type = siiv_details.get('vehicle_type')
-                if vehicle_type:
-                    print(f"   🚗 Tipo: {vehicle_type}")
-            
-            # Si la confianza SIIV es baja, intentar con imagen procesada adicional
-            if siiv_conf < 0.4:
-                print(f"   ⚠️ Confianza SIIV baja ({siiv_conf:.2f}), intentando backup...")
-                # Solo usar backup si realmente es necesario
-                backup_text = recognize_plate(enhanced_plate, is_night)
-                if backup_text and backup_text != plate_text:
-                    backup_siiv_conf, backup_siiv_details = calculate_siiv_confidence(backup_text, 0.7)
-                    
-                    # Usar backup solo si tiene MUCHO mejor confianza SIIV
-                    if backup_siiv_conf > siiv_conf + 0.2:  # Diferencia significativa
-                        plate_text = backup_text
-                        confidence = 0.7
-                        siiv_conf = backup_siiv_conf
-                        print(f"   ✅ OCR Backup significativamente mejor: '{backup_text}' (SIIV conf: {siiv_conf:.2f})")
-                    else:
-                        print(f"   ⚠️ Backup no es significativamente mejor, manteniendo: '{plate_text}'")
-                    
-        except ImportError:
-            # Si super-resolution no está disponible, usar imagen original con mejoras
-            plate_text = recognize_plate(plate_img, is_night)
-            
-            # Si recognize_plate devolvió una placa válida, usarla directamente
-            if plate_text and len(plate_text) >= 5:
-                confidence = 0.8
-                print(f"✅ Usando placa corregida por recognize_plate (sin super-resolution): '{plate_text}'")
-            else:
-                # Solo usar enhance_plate_recognition como backup
-                ocr_result = enhance_plate_recognition(plate_img, "", is_night)
-                plate_text = ocr_result['enhanced_text']
-                confidence = ocr_result['confidence']
-            
-            enhanced_plate = plate_img
-            
-            # Validar con SIIV
-            from src.core.ocr.recognizer import calculate_siiv_confidence
-            siiv_conf, siiv_details = calculate_siiv_confidence(plate_text, confidence)
-            print(f"OCR sin super-resolution: '{plate_text}' (SIIV: {siiv_conf:.2f})")
-            
-            # CRÍTICO: Devolver la confianza SIIV calculada
-            return ((x1, y1, x2, y2), enhanced_plate, plate_text, siiv_conf)
-        
-        # Si todo falla, intentar OCR básico como último recurso
-        if not plate_text or len(plate_text) < 4:
-            plate_text = recognize_plate(plate_img, is_night)
-            if plate_text:
-                # Aplicar solo correcciones básicas y validar SIIV
-                enhancer = get_plate_enhancer()
-                plate_text = enhancer.correct_confusing_characters(plate_text)
-                
-                # Verificar si cumple SIIV
-                from src.core.ocr.recognizer import calculate_siiv_confidence
-                # CRÍTICO: Usar la confianza real del OCR, no un valor fijo
-                siiv_conf, siiv_details = calculate_siiv_confidence(plate_text, 0.8)  # Usar confianza real
-                if siiv_conf < 0.2:
-                    print(f"⚠️ Advertencia: Placa '{plate_text}' no cumple formato SIIV (conf: {siiv_conf:.2f})")
-                else:
-                    print(f"✅ Placa SIIV válida: '{plate_text}' (conf: {siiv_conf:.2f})")
-                
-                # CRÍTICO: Devolver también la confianza SIIV calculada
-                return ((x1, y1, x2, y2), enhanced_plate, plate_text, siiv_conf)
-            
-            # Si no se detectó placa, devolver 0.0
-            return ((x1, y1, x2, y2), enhanced_plate, "", 0.0)
-        
-        # CRÍTICO: Si llegamos aquí, es porque plate_text tiene valor Y ya se calculó siiv_conf
-        # Devolver con la confianza SIIV calculada previamente
-        print(f"✅ Retornando placa procesada: '{plate_text}' (SIIV conf: {siiv_conf:.2f})")
-        return ((x1, y1, x2, y2), enhanced_plate, plate_text, siiv_conf)
-        
+            # Fallback: pipeline original con autocrop quirurgico
+            plate_text, raw_conf = recognize_plate(plate_crop, autocrop=True)
+            print(f"⚠️ Fallback autocrop → '{plate_text}' (conf {raw_conf:.2f})")
+
+        # Validar con SIIV
+        siiv_conf = 0.0
+        if plate_text:
+            siiv_conf, _ = calculate_siiv_confidence(plate_text, raw_conf)
+
+        print(f"✅ process_plate: '{plate_text}' (SIIV: {siiv_conf:.2f})")
+        return (bbox, plate_crop, plate_text, siiv_conf)
+
     except Exception as e:
-        print(f"Error processing plate: {e}")
+        print(f"❌ Error en process_plate: {e}")
         import traceback
         traceback.print_exc()
-        # Return default values
-        return ((0, 0, 0, 0), vehicle_roi, "", 0.0)
+        return ((0,0,0,0), vehicle_roi, "", 0.0)
