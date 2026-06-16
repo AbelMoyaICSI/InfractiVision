@@ -199,13 +199,6 @@ class PlateOCREnhancer:
         
         return ''.join(corrected)
     
-    def correct_confusing_characters(self, text, context_position=None):
-        """
-        VERSIÓN ACTUALIZADA: Usa correcciones conscientes del formato SIIV.
-        Mantiene la firma original para compatibilidad.
-        """
-        return self.correct_confusing_characters_siiv_aware(text, context_position)
-    
     def validate_plate_format(self, text):
         """
         Valida si el texto coincide con formatos SIIV peruanos.
@@ -251,44 +244,6 @@ class PlateOCREnhancer:
                 return True, confidence
         
         return False, 0.0
-    
-    def suggest_corrections(self, text):
-        """Sugiere correcciones para mejorar coincidencia con formatos"""
-        if not text:
-            return []
-        
-        suggestions = []
-        clean_text = re.sub(r'[^A-Z0-9]', '', text.upper())
-        
-        # Generar variaciones corrigiendo caracteres confusos
-        def generate_variations(text, pos=0):
-            if pos >= len(text):
-                return [text]
-            
-            variations = []
-            char = text[pos]
-            
-            if char in self.character_corrections:
-                for replacement in self.character_corrections[char]:
-                    new_text = text[:pos] + replacement + text[pos+1:]
-                    variations.extend(generate_variations(new_text, pos + 1))
-            else:
-                variations.extend(generate_variations(text, pos + 1))
-            
-            return variations
-        
-        # Limitar variaciones para evitar explosión combinatoria
-        if len(clean_text) <= 6:
-            variations = generate_variations(clean_text)
-            
-            for variation in variations[:20]:  # Limitar a 20 variaciones
-                is_valid, confidence = self.validate_plate_format(variation)
-                if is_valid:
-                    suggestions.append((variation, confidence))
-        
-        # Ordenar por confianza
-        suggestions.sort(key=lambda x: x[1], reverse=True)
-        return suggestions[:5]  # Top 5 sugerencias
     
     def enhance_ocr_result(self, raw_text, plate_img=None, is_night=False):
         """

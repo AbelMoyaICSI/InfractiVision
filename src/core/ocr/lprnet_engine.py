@@ -300,10 +300,9 @@ class LPRNetPredictor:
         
         if min_dim < 80:
             try:
-                from src.core.ocr.super_resolution import apply_super_resolution
-                cropped = apply_super_resolution(cropped)
-                # print(f"✨ SR aplicada (era {w}x{h})")
-            except:
+                from src.core.ocr.super_resolution import upscale_plate
+                cropped = upscale_plate(cropped, min_width=80)
+            except Exception:
                 pass  # Si SR no disponible, continuar sin ella
         
         # Paso 3: Adaptación para LPRNet (recorte anti-logo + stretching)

@@ -14,7 +14,7 @@
 
 *Detección automática de violaciones al semáforo en rojo utilizando Inteligencia Artificial avanzada*
 
-[🚀 Instalación](#-instalación) • [📖 Manual de Usuario](#-manual-de-usuario) • [🎯 Características](#-características) • [🏗️ Arquitectura](#️-arquitectura) • [☁️ Cloud](#️-integración-cloud)
+[🚀 Instalación](#-instalación) • [📖 Manual de Usuario](#-manual-de-usuario) • [🎯 Características](#-características) • [🏗️ Arquitectura](#️-arquitectura)
 
 </div>
 
@@ -22,48 +22,48 @@
 
 ## 📋 Descripción
 
-**InfractiVision** es un sistema inteligente de última generación que utiliza **visión artificial** y **deep learning** para detectar automáticamente infracciones de tráfico, específicamente violaciones al semáforo en rojo. El sistema combina modelos de IA avanzados con **PaddleOCR de alta precisión** y capacidades completas de sincronización en la nube.
+**InfractiVision** es un sistema inteligente de última generación que utiliza **visión artificial** y **deep learning** para detectar automáticamente infracciones de tráfico, específicamente violaciones al semáforo en rojo. El sistema combina modelos de IA avanzados con **LPRNet y Super-Resolución (FSRCNN)**, operando de manera eficiente con una base de datos local (SQLite).
 
 ### 🎯 ¿Para qué sirve?
 
-- **🚦 Monitoreo Automático**: Detecta vehículos que cruzan en luz roja con precisión del 98.7%
-- **📸 Captura de Evidencias**: Genera automáticamente fotografías de alta calidad con timestamp
-- **🔍 Reconocimiento de Placas**: OCR con **PaddleOCR 3.2.0** + validación SIIV peruana
-- **🌙 Detección Nocturna**: Algoritmos especializados con ventanas emergentes de análisis
-- **📊 Gestión de Infracciones**: Sistema completo NID/NIE con métricas académicas
-- **☁️ Sincronización Cloud**: Backup automático en Google Cloud Firestore + Storage
-- **⚡ Instalación Global**: Sin entornos virtuales, ejecución directa con `python main.py`
+- **🚦 Monitoreo Automático**: Detecta vehículos que cruzan en luz roja con alta precisión.
+- **📸 Captura de Evidencias**: Genera automáticamente fotografías de alta calidad con timestamp.
+- **🔍 Reconocimiento de Placas**: OCR con **LPRNet_Peru** (Modelo Personalizado) + validación SIIV peruana.
+- **✨ Mejora de Imágenes**: Super-Resolución ultraligera FSRCNN para placas de baja resolución.
+- **🌙 Detección Nocturna**: Algoritmos especializados con ventanas emergentes de análisis.
+- **📊 Gestión de Infracciones**: Sistema completo NID/NIE con métricas académicas.
+- **💾 Base de Datos Local**: Almacenamiento seguro y rápido usando SQLite (`infractions.sqlite`).
+- **⚡ Instalación Global**: Sin entornos virtuales, ejecución directa con `python main.py`.
 
 ---
 
 ## 🌟 Características Principales
 
 ### 🧠 **Inteligencia Artificial Avanzada**
-- **YOLO v8**: Detección de vehículos ultrarrápida con modelos optimizados
-- **PaddleOCR 3.2.0**: Sistema OCR de máxima precisión con inicialización en 10.8s
-- **SmartPlateCorrector**: 3 niveles de validación con corrección contextual SIIV
-- **Validación SIIV Peruana**: Reconocimiento específico de formatos nacionales (ABC-123)
-- **Corrección Inteligente**: Auto-fix de caracteres confusos (H/N, T/7, B/8, I/1, O/0, S/5, G/6)
-- **Detección Nocturna Avanzada**: Ventanas emergentes automáticas con análisis de luminosidad < 60
-- **Audio Feedback**: Beeps distintivos para detección nocturna y finalización
-- **Hardware Adaptativo**: GPU NVIDIA + CPU fallback con optimización automática
+- **YOLO v8**: Detección de vehículos ultrarrápida con modelos optimizados.
+- **LPRNet + FSRCNN**: Sistema OCR personalizado con Super-Resolución ultraligera (40KB, escala 3x) para placas de baja resolución.
+- **SmartPlateCorrector**: 3 niveles de validación con corrección contextual SIIV.
+- **Validación SIIV Peruana**: Reconocimiento específico de formatos nacionales (ABC-123).
+- **Corrección Inteligente**: Auto-fix de caracteres confusos (H/N, T/7, B/8, I/1, O/0, S/5, G/6).
+- **Detección Nocturna Avanzada**: Ventanas emergentes automáticas con análisis de luminosidad < 60.
+- **Audio Feedback**: Beeps distintivos para detección nocturna y finalización.
+- **Hardware Adaptativo**: GPU NVIDIA + CPU fallback con optimización automática.
 
 ### 🖥️ **Interfaz Gráfica Profesional**
-- **GUI Intuitiva**: Interfaz moderna desarrollada en Tkinter
-- **Procesamiento en Tiempo Real**: Visualización de detecciones en vivo
-- **Manual Integrado**: Documentación completa dentro de la aplicación
-- **Configuración Visual**: Ajustes de parámetros mediante interface gráfica
+- **GUI Intuitiva**: Interfaz moderna desarrollada en Tkinter.
+- **Procesamiento en Tiempo Real**: Visualización de detecciones en vivo.
+- **Manual Integrado**: Documentación completa dentro de la aplicación.
+- **Configuración Visual**: Ajustes de parámetros mediante interface gráfica.
 
-### ☁️ **Integración Cloud Completa**
-- **Google Cloud Storage**: Almacenamiento seguro de evidencias
-- **Firestore Database**: Base de datos NoSQL escalable
-- **API RESTful**: Backend Flask para acceso remoto
-- **Migración Automática**: Sincronización inteligente de datos
+### 💾 **Almacenamiento y Gestión Local**
+- **Base de Datos SQLite**: Gestión eficiente y local de las infracciones.
+- **Almacenamiento Estructurado**: Organización automática de evidencias (imágenes y videos).
+- **Exportación Flexible**: Generación de reportes en múltiples formatos para auditoría.
 
 ### 📦 **Deployment Profesional**
-- **Ejecutable Standalone**: PyInstaller para distribución fácil
-- **Docker Support**: Containerización del backend
-- **Cross-Platform**: Compatible con Windows, Linux y macOS
+- **Ejecutable Standalone**: PyInstaller para distribución fácil.
+- **Docker Support**: Containerización disponible.
+- **Cross-Platform**: Compatible con Windows, Linux y macOS.
 
 ---
 
@@ -102,10 +102,10 @@
 | **GPU Alta** (RTX 3070+) | 30-60 FPS | 96-99% | ~10s |
 
 **🚀 Optimizaciones Implementadas:**
-- ⚡ **Inicio Rápido**: PaddleOCR con carga asíncrona (10.8s vs 25-30s original)
-- 🧠 **SmartCorrector**: Mejora +5-7% en precisión de placas
-- 🌙 **Detección Nocturna**: Umbral optimizado (brillo < 60) reduce falsos positivos
-- 🎯 **Clasificación NID/NIE**: 70% confianza + validación de caracteres
+- ⚡ **Modelos Ultraligeros**: FSRCNN de 40KB para super-resolución ultra rápida.
+- 🧠 **SmartCorrector**: Mejora +5-7% en precisión de placas.
+- 🌙 **Detección Nocturna**: Umbral optimizado (brillo < 60) reduce falsos positivos.
+- 🎯 **Clasificación NID/NIE**: 70% confianza + validación de caracteres.
 
 ---
 
@@ -136,9 +136,6 @@ python --version  # Debe mostrar 3.10.11
 ```bash
 # IMPORTANTE: Sin venv - Instalación global
 pip install -r requirements.txt
-
-# Verificar PaddleOCR:
-python -c "from paddleocr import PaddleOCR; print('✅ PaddleOCR instalado')"
 ```
 
 #### **Paso 4: Ejecutar Directamente**
@@ -153,20 +150,6 @@ python main.py
 - 🔧 **Mantenimiento simplificado**: Una sola instalación Python
 - 📦 **Compatibilidad PyInstaller**: Mejor empaquetado de ejecutables
 
-#### **Paso 5: Ejecutar la Aplicación**
-```bash
-python main.py
-```
-
-### ☁️ **Configuración Cloud (Opcional)**
-
-Si deseas usar las funciones de sincronización en la nube:
-
-1. **Crear proyecto** en [Google Cloud Console](https://console.cloud.google.com)
-2. **Habilitar APIs**: Cloud Storage, Firestore
-3. **Crear Service Account** y descargar credenciales JSON
-4. **Colocar credenciales** en `secrets/infractivision-credentials.json`
-
 ---
 
 ## 📖 Manual de Usuario
@@ -179,7 +162,7 @@ Al iniciar InfractiVision, verás la pantalla de bienvenida con las siguientes o
 
 - **📖 Manual de Usuario**: Acceso a documentación completa
 - **🚦 Foto Rojo**: Módulo principal de detección
-- **📊 Gestión de Infracciones**: Administración de registros
+- **📊 Gestión de Infracciones**: Administración de registros locales
 
 ### 🚦 **Módulo Foto Rojo**
 
@@ -225,7 +208,6 @@ La tabla muestra:
 
 - **🔍 Filtrar**: Por fecha, placa o estado
 - **📤 Exportar**: CSV, Excel o PDF
-- **☁️ Sincronizar**: Upload a Google Cloud
 - **🗑️ Eliminar**: Registros individuales o masivos
 
 ### ⚙️ **Configuraciones Avanzadas**
@@ -260,37 +242,31 @@ El sistema detecta automáticamente tu hardware y optimiza:
 
 ---
 
-## � Últimas Actualizaciones (Octubre 2025)
+## 🔄 Últimas Actualizaciones
 
 ### 🚀 **Mejoras Principales Implementadas**
 
 #### **🧠 Motor OCR Mejorado**
-- ✅ **PaddleOCR 3.2.0**: Reemplazó EasyOCR para máxima precisión
-- ✅ **Validación SIIV**: Sistema específico para placas peruanas
-- ✅ **SmartCorrector 2.0**: Corrección contextual de caracteres confusos
-- ✅ **Inicialización Asíncrona**: Tiempo de arranque reducido en 65%
+- ✅ **LPRNet_Peru + FSRCNN**: Motor OCR especializado para placas vehiculares peruanas con Super-Resolución, reemplazando a motores genéricos.
+- ✅ **Validación SIIV**: Sistema específico para placas peruanas.
+- ✅ **SmartCorrector 2.0**: Corrección contextual de caracteres confusos.
 
 #### **🌙 Sistema de Detección Nocturna**
-- ✅ **Análisis Automático**: Detección por nombre de video ("night")
-- ✅ **Ventanas Emergentes**: Interfaz específica para condiciones nocturnas
-- ✅ **Audio Feedback**: Beeps distintivos para diferentes eventos  
-- ✅ **Umbral Inteligente**: Brillo < 60 activa modo nocturno automáticamente
+- ✅ **Análisis Automático**: Detección por nombre de video ("night").
+- ✅ **Ventanas Emergentes**: Interfaz específica para condiciones nocturnas.
+- ✅ **Audio Feedback**: Beeps distintivos para diferentes eventos.
+- ✅ **Umbral Inteligente**: Brillo < 60 activa modo nocturno automáticamente.
 
 #### **⚡ Optimizaciones de Rendimiento**
-- ✅ **Instalación Global**: Sin venv, ejecución directa como `python main.py`
-- ✅ **Selector Visual**: Interfaz moderna con miniaturas de videos
-- ✅ **GPU Adaptativa**: Detección automática NVIDIA + CPU fallback
-- ✅ **Memoria Optimizada**: Reducción 40% en uso de RAM
-
-#### **☁️ Integración Cloud Avanzada**
-- ✅ **Google Firestore**: Base de datos en tiempo real
-- ✅ **Cloud Storage**: Backup automático de evidencias
-- ✅ **API Flask**: Backend para sincronización multi-dispositivo
-- ✅ **Métricas Académicas**: Indicadores NID/NIE para tesis
+- ✅ **Instalación Global**: Sin venv, ejecución directa como `python main.py`.
+- ✅ **Selector Visual**: Interfaz moderna con miniaturas de videos.
+- ✅ **GPU Adaptativa**: Detección automática NVIDIA + CPU fallback.
+- ✅ **Memoria Optimizada**: Reducción en uso de RAM.
+- ✅ **Base de Datos Local (SQLite)**: Gestión rápida, estructurada y sin dependencia de servicios externos.
 
 ---
 
-## �🏗️ Arquitectura del Sistema
+## 🏗️ Arquitectura del Sistema
 
 ### 📁 **Estructura del Proyecto**
 
@@ -309,24 +285,23 @@ InfractiVision/
 │   │   └── manual_window.py     # Manual integrado
 │   │
 │   ├── 🧠 core/                 # Lógica de negocio IA
-│   │   ├── detection/           # Algoritmos de detección
-│   │   │   ├── vehicle_detector.py    # YOLO vehículos
-│   │   │   ├── plate_detector.py      # Detección placas
-│   │   │   └── anpr.py                # OCR integrado
-│   │   ├── processing/          # Procesamiento de imágenes
-│   │   │   └── smart_plate_corrector.py  # Sistema de corrección inteligente
-│   │   ├── traffic_signal/      # Simulación semáforo
-│   │   └── video/              # Manejo de video
+│   │   ├── detection/           # Algoritmos de detección (vehículos, placas)
+│   │   ├── ocr/                 # Subsistema OCR
+│   │   │   ├── lprnet_engine.py       # Motor principal LPRNet
+│   │   │   └── super_resolution.py    # Super-Resolución FSRCNN
+│   │   ├── processing/          # Procesamiento de imágenes (SmartPlateCorrector)
+│   │   └── traffic_signal/      # Simulación semáforo
 │   │
-│   └── 🤖 automations/          # Automatizaciones cloud
-│       └── cloud_migrator.py    # Sincronización GCP
+│   └── 🤖 automations/          # Automatizaciones auxiliares
 │
 ├── ⚙️ config/                   # Configuraciones JSON
 ├── 📊 data/                     # Datos y resultados
+│   └── 🗄️ infractions.sqlite    # Base de datos local
 ├── 🔮 models/                   # Modelos de IA
+│   ├── LPRNet_Peru/             # Modelos LPRNet especializados
+│   └── FSRCNN_x3.pb             # Modelo de Super-Resolución
 ├── 🖼️ img/                      # Recursos visuales
-├── 🎬 videos/                   # Videos de demostración
-└── 🐳 backend/                  # API Flask para cloud
+└── 🎬 videos/                   # Videos de demostración
 ```
 
 ### 🔄 **Flujo de Procesamiento Inteligente**
@@ -338,23 +313,23 @@ graph TD
     C --> D{Vehicle Detected?}
     D -->|Yes| E[Plate Detection]
     D -->|No| B
-    E --> F[PaddleOCR Processing]
-    F --> G[SmartPlateCorrector]
-    G --> H{Night Scene?}
-    H -->|Yes| I[Adjust Thresholds]
-    H -->|No| J[Standard Processing]
-    I --> J
-    J --> K[Character Validation]
-    K --> L[Format Classification]
-    L --> M{Peruvian Format?}
-    M -->|Yes| N[NID Processing]
-    M -->|No| O[Foreign Plate]
-    N --> P{Red Light Active?}
-    O --> P
-    P -->|Yes| Q[Capture Evidence]
-    P -->|No| B
-    Q --> R[Save to Database]
-    R --> S[Cloud Sync]
+    E --> F[FSRCNN Super-Resolution]
+    F --> G[LPRNet Processing]
+    G --> H[SmartPlateCorrector]
+    H --> I{Night Scene?}
+    I -->|Yes| J[Adjust Thresholds]
+    I -->|No| K[Standard Processing]
+    J --> K
+    K --> L[Character Validation]
+    L --> M[Format Classification]
+    M --> N{Peruvian Format?}
+    N -->|Yes| O[NID Processing]
+    N -->|No| P[Foreign Plate]
+    O --> Q{Red Light Active?}
+    P --> Q
+    Q -->|Yes| R[Capture Evidence]
+    Q -->|No| B
+    R --> S[Save to Local SQLite Database]
 ```
 
 ### 🧠 **Modelos de IA Utilizados**
@@ -371,109 +346,29 @@ graph TD
 - **Optimizaciones**: Detección nocturna mejorada
 - **Precisión**: 90%+ en diversas condiciones
 
-#### **3. PaddleOCR + SmartCorrector (Sistema Híbrido)**
-- **Engine Principal**: PaddleOCR 3.2.0 con inicialización asíncrona (10.8s)
-- **Validación SIIV**: Sistema específico para formato peruano (ABC-123)
+#### **3. LPRNet_Peru + FSRCNN (Sistema Híbrido)**
+- **Engine Principal (LPRNet_Peru)**: Modelo OCR especializado y entrenado específicamente para placas vehiculares peruanas (formato SIIV). Se ha logrado mediante **Transfer Learning** y **Fine-Tuning** riguroso, partiendo de la arquitectura original y documentación de los creadores de LPRNet, adaptándolo con alta precisión a la tipografía y características del estándar nacional peruano.
+- **Super-Resolución**: FSRCNN ultraligero (40KB) escala 3x antes del OCR.
 - **Corrección Contextual**: Auto-fix de H↔N, T↔7, B↔8, I↔1, O↔0, S↔5, G↔6
 - **3 Niveles de Validación**: Formato → Proximidad → Base de datos conocidas
 - **Clasificación NID/NIE**: Automática con umbral de confianza 70%
-- **Precisión Comprobada**: 98.7% en condiciones ideales, 94-97% nocturno
-- **Soporte Regional**: Optimizado para placas SIIV peruanas
-
----
-
-## ☁️ Integración Cloud
-
-### 🌐 **Google Cloud Platform**
-
-InfractiVision utiliza GCP para proporcionar capacidades enterprise:
-
-#### **Cloud Storage**
-```
-gs://infractivision-bucket/
-├── evidencias/
-│   ├── vehiculos/
-│   └── placas/
-├── backups/
-└── exports/
-```
-
-#### **Firestore Database**
-```javascript
-// Estructura de documentos
-{
-  "infracciones": {
-    "user_id": {
-      "infraccion_id": {
-        "placa": "ABC123",
-        "fecha": "2025-09-09",
-        "hora": "14:30:15",
-        "ubicacion": "Av. Principal",
-        "evidence_urls": {
-          "vehiculo": "gs://bucket/...",
-          "placa": "gs://bucket/..."
-        }
-      }
-    }
-  }
-}
-```
-
-#### **API Endpoints**
-
-| Endpoint | Método | Descripción |
-|----------|--------|-------------|
-| `/migrar` | POST | Subir nueva infracción |
-| `/listar` | GET | Obtener infracciones |
-| `/exportar` | POST | Generar reporte |
-| `/estadisticas` | GET | Métricas del sistema |
-
-### 🔐 **Configuración de Seguridad**
-
-1. **Service Account**: Credenciales con permisos mínimos
-2. **IAM Roles**: `storage.objectAdmin`, `datastore.user`
-3. **Firewall Rules**: Restricción por IP si es necesario
-4. **Encryption**: Datos encriptados en tránsito y reposo
 
 ---
 
 ## 📊 Casos de Uso
 
 ### 🏛️ **Sector Público**
-
-#### **Municipalidades**
-- Automatización de multas por luz roja
-- Reducción de personal en intersecciones
-- Generación de estadísticas de tráfico
-- Mejora en seguridad vial
-
-#### **Policía de Tránsito**
-- Evidencia fotográfica automatizada
-- Integración con sistemas de multas
-- Reportes estadísticos detallados
-- Reducción de disputas legales
+- Automatización de multas por luz roja en municipalidades.
+- Reducción de personal en intersecciones.
+- Generación de estadísticas de tráfico.
 
 ### 🏢 **Sector Privado**
-
-#### **Empresas de Seguridad**
-- Monitoreo de intersecciones corporativas
-- Control de acceso vehicular
-- Auditoría de cumplimiento
-- Integración con sistemas existentes
-
-#### **Consultorías de Tráfico**
-- Estudios de comportamiento vehicular
-- Análisis de patrones de infracciones
-- Optimización de tiempos semafóricos
-- Reportes para autoridades
+- Monitoreo de intersecciones corporativas y control de acceso vehicular.
+- Auditoría de cumplimiento.
 
 ### 🎓 **Sector Académico**
-
-#### **Universidades**
-- Investigación en visión artificial
-- Proyectos de tesis en IA
-- Análisis de patrones de tráfico
-- Desarrollo de algoritmos mejorados
+- Investigación en visión artificial y proyectos de tesis en IA.
+- Análisis de patrones de tráfico mediante generación de métricas NID/NIE.
 
 ---
 
@@ -496,27 +391,16 @@ THEME_CONFIG = {
 
 El sistema permite desarrollar plugins para:
 - **Nuevos tipos de detección** (cinturón, celular, etc.)
-- **Integraciones adicionales** (AWS, Azure, etc.)
 - **Algoritmos personalizados** de OCR
 - **Reportes especializados**
 
-### 📊 **APIs Extensibles**
-
-```python
-# Ejemplo: Plugin personalizado
-class CustomDetector(BaseDetector):
-    def detect(self, frame):
-        # Tu algoritmo personalizado
-        return detections
-```
-
 ---
 
-## � SmartPlateCorrector - Sistema de IA Avanzado
+## 🤖 SmartPlateCorrector - Sistema de IA Avanzado
 
 ### 🧠 **Características Principales**
 
-InfractiVision v2.0 introduce el **SmartPlateCorrector**, nuestro sistema de inteligencia artificial más avanzado para corrección y validación de placas vehiculares.
+InfractiVision introduce el **SmartPlateCorrector**, nuestro sistema de inteligencia artificial más avanzado para corrección y validación de placas vehiculares.
 
 #### **🎯 Problema Resuelto**
 
@@ -549,65 +433,19 @@ correcciones = {
 ```
 
 ##### **Nivel 3: Base de Datos de Referencia**
-- Consulta placas conocidas previamente procesadas
-- Algoritmo de distancia Levenshtein para similitud
-- Validación contra patrones regionales
-
-#### **📊 Casos de Uso Reales**
-
-| OCR Original | Corrección Smart | Confianza | Resultado |
-|--------------|------------------|-----------|-----------|
-| `H3G-947` | `HEG-947` | 75% → 90% | ✅ Corregida |
-| `TGT-947` | `TGT-947` | 85% | ✅ Peruana Válida |
-| `ABC12N` | `ABC123` | 70% → 85% | ✅ N→3 |
-| `P7T-456` | `PTT-456` | 65% → 80% | ✅ 7→T |
-
-#### **🎚️ Configuración Inteligente**
-
-El sistema se adapta automáticamente según el contexto:
-
-```python
-class SmartPlateCorrector:
-    def __init__(self):
-        self.confidence_boost = 0.15  # Incremento por corrección válida
-        self.min_confidence = 0.70    # Umbral mínimo NID/NIE
-        self.peruvian_format = r'^[A-Z]{3}-\d{3}$'
-        
-    def correct_plate(self, text, confidence):
-        # Nivel 1: Formato
-        corrected_text = self._correct_by_format(text)
-        
-        # Nivel 2: Proximidad
-        corrected_text = self._correct_by_proximity(corrected_text)
-        
-        # Nivel 3: Base de datos
-        final_text = self._check_known_plates(corrected_text)
-        
-        # Boost de confianza si se aplicaron correcciones
-        if final_text != text:
-            confidence = min(0.99, confidence + self.confidence_boost)
-            
-        return final_text, confidence
-```
+- Consulta placas conocidas previamente procesadas.
+- Algoritmo de distancia Levenshtein para similitud.
+- Validación contra patrones regionales.
 
 #### **🌍 Clasificación Regional Inteligente**
 
-- **Placas Peruanas**: Formato ABC-123 (3 letras + guión + 3 números)
-- **Placas Extranjeras**: Cualquier otro formato válido
-- **Clasificación NID/NIE**: Basada en confianza 70%+ y validación de caracteres
-
-#### **📈 Métricas de Mejora**
-
-| Aspecto | Antes | Después | Mejora |
-|---------|-------|---------|--------|
-| **Precisión General** | 85% | 92% | +7% |
-| **Placas Nocturnas** | 78% | 89% | +11% |
-| **Caracteres Confusos** | 72% | 94% | +22% |
-| **Falsos Positivos** | 8% | 3% | -5% |
+- **Placas Peruanas**: Formato ABC-123 (3 letras + guión + 3 números).
+- **Placas Extranjeras**: Cualquier otro formato válido.
+- **Clasificación NID/NIE**: Basada en confianza 70%+ y validación de caracteres.
 
 ---
 
-## �🧪 Testing y Calidad
+## 🧪 Testing y Calidad
 
 ### ✅ **Pruebas Automatizadas**
 
@@ -617,23 +455,7 @@ python -m pytest tests/
 
 # Cobertura de código
 python -m pytest --cov=src tests/
-
-# Pruebas de rendimiento
-python tests/performance_tests.py
 ```
-
-### 📈 **Métricas de Calidad**
-
-| Métrica | Valor Actual | Objetivo | Mejoras v2.0 |
-|---------|--------------|----------|---------------|
-| **Cobertura de Código** | 85% | 90% | - |
-| **Precisión Detección** | 92% → 96% | 95% | ✅ SmartCorrector |
-| **Precisión OCR** | 85% → 92% | 95% | ✅ PaddleOCR + IA |
-| **Tiempo Inicio** | 25-30s → 10.8s | <10s | ✅ Carga Async |
-| **Detección Nocturna** | 78% → 89% | 85% | ✅ Umbral <60 |
-| **Clasificación NID/NIE** | N/A → 94% | 90% | ✅ Nuevo Sistema |
-| **Tiempo Respuesta** | <100ms | <50ms | - |
-| **Uptime Sistema** | 99.5% | 99.9% | - |
 
 ---
 
@@ -660,44 +482,22 @@ pip install -r requirements-dev.txt
 - **Documentación**: Google style docstrings
 - **Testing**: pytest + coverage
 
-### 🤝 **Cómo Contribuir**
-
-1. **Fork** el repositorio
-2. **Crear** branch para tu feature (`git checkout -b feature/AmazingFeature`)
-3. **Commit** tus cambios (`git commit -m 'Add AmazingFeature'`)
-4. **Push** al branch (`git push origin feature/AmazingFeature`)
-5. **Abrir** Pull Request
-
 ---
 
 ## 📋 Roadmap
 
-### ✅ **Versión 2.0 (Completado - Q3 2025)**
+### ✅ **Fase Actual (Completado)**
 - [x] **SmartPlateCorrector**: Sistema de corrección inteligente OCR
-- [x] **PaddleOCR**: Migración desde EasyOCR con optimizaciones
+- [x] **Migración a LPRNet_Peru + FSRCNN**: Optimizaciones en reconocimiento de placas.
 - [x] **Clasificación NID/NIE**: Sistema automático de documentos
 - [x] **Detección Nocturna**: Umbral inteligente (brillo < 60)
-- [x] **Corrección de Caracteres**: H/N, T/7, B/8, I/1, O/0, S/5, G/6
-- [x] **Inicialización Rápida**: PaddleOCR asíncrono (10.8s vs 25-30s)
+- [x] **Base de Datos Local**: Integración con SQLite
 - [x] **Clasificación Regional**: Placas peruanas vs extranjeras
 
-### 🎯 **Versión 2.1 (Q4 2025)**
+### 🎯 **Próximas Fases**
 - [ ] Detección de múltiples infracciones (cinturón, celular)
 - [ ] Soporte para cámaras IP en tiempo real  
-- [ ] Dashboard web para administración
-- [ ] API RESTful completa con autenticación
-
-### 🎯 **Versión 2.2 (Q1 2026)**
-- [ ] Machine Learning para predicción de patrones
-- [ ] Integración con sistemas municipales existentes
-- [ ] App móvil para supervisión remota
-- [ ] Análisis de tráfico avanzado con IA
-
-### 🎯 **Versión 3.0 (Q2 2026)**
-- [ ] IA conversacional para generación de reportes
-- [ ] Realidad aumentada para configuración de zonas
-- [ ] Edge computing para procesamiento en cámaras
-- [ ] Blockchain para auditoría inmutable de infracciones
+- [ ] Dashboard analítico avanzado.
 
 ---
 
@@ -706,59 +506,12 @@ pip install -r requirements-dev.txt
 ### 📖 **Documentación Adicional**
 
 - 📚 [Wiki Completa](https://github.com/AbelMoyaICSI/InfractiVision/wiki)
-- 🎥 [Videos Tutoriales](https://youtube.com/playlist?list=PLxxxxx)
-- 📄 [Documentación API](https://api.infractivision.com/docs)
 - 🔧 [Guías de Instalación](docs/installation/)
 
 ### 💬 **Canales de Soporte**
 
 - 🐛 [Issues de GitHub](https://github.com/AbelMoyaICSI/InfractiVision/issues)
 - 💌 **Email**: abelmoyaicsi@gmail.com
-- 💬 [Discussions](https://github.com/AbelMoyaICSI/InfractiVision/discussions)
-- 📱 **Telegram**: @InfractiVision
-
-### ❓ **FAQ Frecuentes**
-
-<details>
-<summary><strong>¿Funciona sin conexión a internet?</strong></summary>
-
-Sí, el módulo principal funciona completamente offline. Solo necesitas internet para:
-- Sincronización con la nube
-- Descargas de modelos iniciales
-- Actualizaciones del software
-</details>
-
-<details>
-<summary><strong>¿Qué formatos de video soporta?</strong></summary>
-
-InfractiVision soporta todos los formatos estándar:
-- **Video**: MP4, AVI, MOV, MKV, FLV
-- **Códecs**: H.264, H.265, VP9
-- **Resoluciones**: 480p hasta 4K
-</details>
-
-<details>
-<summary><strong>¿Puedo usar mis propios modelos de IA?</strong></summary>
-
-Sí, el sistema es extensible. Puedes:
-- Entrenar modelos YOLO personalizados
-- Integrar otros frameworks (TensorFlow, etc.)
-- Desarrollar plugins para nuevas funcionalidades
-- Personalizar el SmartPlateCorrector con nuevos patrones
-- Agregar correcciones específicas para tu región
-</details>
-
-<details>
-<summary><strong>¿Qué mejoras incluye el SmartPlateCorrector?</strong></summary>
-
-El SmartPlateCorrector es nuestro sistema de IA más avanzado que incluye:
-- **Corrección automática** de caracteres confusos (H/N, T/7, B/8, etc.)
-- **Clasificación inteligente** entre placas peruanas y extranjeras
-- **Validación de formato** con expresiones regulares
-- **Base de datos** de placas conocidas para referencia
-- **Boost de confianza** automático para correcciones válidas
-- **Mejora del 5-7%** en precisión general del OCR
-</details>
 
 ---
 
@@ -786,9 +539,8 @@ Este proyecto está licenciado bajo la **Licencia MIT** - ver el archivo [LICENS
 ### 📚 **Librerías y Recursos**
 
 - [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) - Detección de objetos
-- [EasyOCR](https://github.com/JaidedAI/EasyOCR) - Reconocimiento óptico
 - [OpenCV](https://opencv.org/) - Procesamiento de imágenes
-- [Google Cloud](https://cloud.google.com/) - Infraestructura cloud
+- **LPRNet** - Reconocimiento de Placas
 
 ### 🌟 **Inspiración**
 
@@ -805,35 +557,3 @@ Este proyecto fue inspirado por la necesidad de automatizar la seguridad vial y 
 [🔝 Volver al inicio](#-infractivision)
 
 </div>
-
----
-
-## 📸 Galería de Imágenes
-
-### 🖼️ **Capturas de Pantalla**
-
-*[Aquí irán las capturas de pantalla de la aplicación]*
-
-![Dashboard Principal](docs/images/dashboard.png)
-*Dashboard principal con estadísticas en tiempo real*
-
-![Detección en Acción](docs/images/detection-live.png)
-*Sistema detectando infracciones en tiempo real*
-
-![Gestión de Infracciones](docs/images/management.png)
-*Panel de gestión y administración de registros*
-
-![Configuración](docs/images/settings.png)
-*Pantalla de configuración avanzada*
-
-### 🎥 **Videos Demostrativos**
-
-*[Aquí irán enlaces a videos demostrativos]*
-
-- 📹 [Demo Completo del Sistema](https://youtube.com/watch?v=xxxxx)
-- 🎥 [Instalación Paso a Paso](https://youtube.com/watch?v=xxxxx)
-- 🎬 [Configuración Avanzada](https://youtube.com/watch?v=xxxxx)
-
----
-
-*Última actualización: Enero 2025 - Versión 2.0 con SmartPlateCorrector*

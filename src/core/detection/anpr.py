@@ -72,24 +72,6 @@ class ANPR:
             "A90PO8": "A90P08", "A3K961": "A3K961", "M638AA": "M638AA"
         }
 
-    def initialize_reader(self):
-        """On-demand LPRNet predictor initialization"""
-        if self.predictor is None:
-            self.predictor = get_lprnet_predictor()
-            print("ANPR: LPRNet Internal Engine initialized.")
-
-    def recognize_plate_text(self, plate_img, plate_idx=0):
-        """Recognize plate using LPRNet"""
-        if plate_img is None or plate_img.size == 0:
-            return ""
-        try:
-            text = recognize_plate(plate_img)
-            text = self.apply_ultra_aggressive_corrections(text)
-            return text
-        except Exception as e:
-            print(f"ANPR Error in LPRNet fallback: {e}")
-            return ""
-
     def apply_ultra_aggressive_corrections(self, text):
         """Aplicar correcciones del protocolo maestro"""
         if not text: return text
@@ -99,17 +81,6 @@ class ANPR:
         if clean_text in self.plate_specific_patterns:
             return self.plate_specific_patterns[clean_text]
         return text
-
-    def detect_plates_with_yolo(self, image, conf=0.25):
-        """Optimized YOLO detection for plates"""
-        if self.model is None: return []
-        results = self.model(image, conf=conf, verbose=False)
-        detections = []
-        for r in results:
-            for box in r.boxes:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                detections.append((x1, y1, x2, y2))
-        return detections
 
     def detect_and_recognize_plate(self, image):
         """Unified pipeline for ANPR compatibility wrapper"""
@@ -128,9 +99,3 @@ class ANPR:
             })
         return processed_frame, detections
 
-    def _is_valid_plate_format(self, text):
-        """Standard regex validation"""
-        if not text: return False
-        for pattern in self.plate_patterns:
-            if pattern.match(text): return True
-        return False

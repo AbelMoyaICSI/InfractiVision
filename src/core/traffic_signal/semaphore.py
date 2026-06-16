@@ -365,14 +365,6 @@ class Semaforo:
     # --------------------
     # Ciclo de semáforo
     # --------------------
-    def show_state(self):
-        colors = {"green": self.green_light,
-                  "yellow": self.yellow_light,
-                  "red": self.red_light}
-        for state, light in colors.items():
-            fill = state if state == self.current_state else "grey"
-            self.canvas.itemconfig(light, fill=fill)
-
     def update_lights(self):
         nxt = {"green":"yellow", "yellow":"red", "red":"green"}
         self.current_state = nxt[self.current_state]

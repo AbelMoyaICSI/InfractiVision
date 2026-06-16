@@ -40,5 +40,11 @@
     "yellow": 3,
     "red": 20,
     "time_slot": "07:00 - 08:00"
+  },
+  "Night Time Traffic Camera video (DEMO 4).mp4": {
+    "green": 30,
+    "yellow": 5,
+    "red": 30,
+    "time_slot": "07:00 - 19:00"
   }
 }

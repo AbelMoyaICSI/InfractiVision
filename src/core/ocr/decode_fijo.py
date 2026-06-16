@@ -55,24 +55,3 @@ def decode_fixed_length(logits, chars, length=6):
     
     return "".join(res_chars), float(avg_conf)
 
-def calculate_character_accuracy(pred, target):
-    """
-    Calcula la precisión basada en la Distancia de Levenshtein (Edit Distance).
-    Fórmula: (1 - dist/max_len) * 100
-    """
-    if not target: return 0.0
-    s1, s2 = pred.upper(), target.upper()
-    if len(s1) > len(s2): s1, s2 = s2, s1
-    
-    distances = range(len(s1) + 1)
-    for i2, c2 in enumerate(s2):
-        distances_ = [i2+1]
-        for i1, c1 in enumerate(s1):
-            if c1 == c2: distances_.append(distances[i1])
-            else: distances_.append(1 + min((distances[i1], distances[i1 + 1], distances_[-1])))
-        distances = distances_
-    
-    dist = distances[-1]
-    max_len = max(len(s1), len(s2), 1)
-    acc = max(0, (1 - dist/max_len) * 100)
-    return acc

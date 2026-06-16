@@ -269,17 +269,3 @@ class VehicleDetector:
         names = {2: "Carro", 5: "Bus", 7: "Camion"}
         return names.get(cls_id, f"Vehiculo_{cls_id}")
     
-    def get_performance_stats(self):
-        """Retorna estadísticas de rendimiento del detector"""
-        return {
-            'total_detections': self.detection_stats['total_detections'],
-            'average_fps': round(self.detection_stats['average_fps'], 2),
-            'hardware_score': self.detection_stats['hardware_score'],
-            'hardware_description': self.hardware_info['description'],
-            'current_config': {
-                'imgsz': self.imgsz,
-                'conf_threshold': self.conf_threshold,
-                'max_det': self.max_det,
-                'batch_size': getattr(self, 'batch_size', 1)
-            }
-        }

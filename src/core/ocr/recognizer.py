@@ -227,10 +227,6 @@ def fix_plate_length_and_chars(text):
 def correct_plate_format(text, is_night=False):
     return format_siiv_plate(text)
 
-def get_reader():
-    """Ya no se usa PaddleOCR, retornamos None"""
-    return None
-
 def enhance_plate_night(img):
     """Mantenemos el filtro Vegas Pro por si se desea mejora visual extra"""
     try:

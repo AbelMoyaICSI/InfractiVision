@@ -50,24 +50,6 @@ def enhance_plate(plate_bgr):
         return plate_bgr
 
 
-def enhance_plate_image(plate_bgr, is_night=False):
-    """
-    Función wrapper para compatibilidad - PRESERVA COLOR.
-    """
-    try:
-        # Aplicar mejora base (preserva color)
-        enhanced = enhance_plate(plate_bgr)
-        
-        # Si es de noche, aplicar realce adicional EN COLOR
-        if is_night:
-            # Aumentar brillo y contraste en color
-            enhanced = cv2.convertScaleAbs(enhanced, alpha=1.3, beta=25)
-            
-            # Reducir ruido adicional para noche
-            enhanced = cv2.bilateralFilter(enhanced, 5, 50, 50)
-        
-        return enhanced
-            
-    except Exception as e:
-        print(f"Error en enhance_plate_image: {e}")
-        return plate_bgr
+# `enhance_plate_image` eliminado: era duplicado dead-code.
+# El proyecto usa `src.core.processing.resolution_process.enhance_plate_image`
+# como única implementación oficial.

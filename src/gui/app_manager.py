@@ -5,64 +5,54 @@ from src.gui.welcome_window import WelcomeFrame
 from src.gui.red_light_violation_window import create_violation_window
 from src.gui.infractions_management_window import create_infractions_window
 
-import cv2
-import numpy as np
-from PIL import Image, ImageTk
-
 class AppManager:
     """Centraliza la navegación entre pantallas GUI en una única ventana,
-       preservando el estado (maximizado/minimizado) del root."""
+       sin intentar maximizar automáticamente ni restaurar estados problemáticos."""
 
-    def __init__(self, root: tk.Tk, user_id: str = None, device_id: str = None):
-        # Guardamos los IDs para uso posterior si lo necesitas
+    def __init__(self, root: tk.Tk, user_id: str = None, device_id: str = None,
+                 process_frame_uc=None, traffic_light_state=None):
         self.user_id = user_id
         self.device_id = device_id
+        self.process_frame_uc = process_frame_uc
+        self.traffic_light_state = traffic_light_state
 
         self.root = root
         self.root.title("InfractiVision")
-        self.root.state("zoomed")
-        
-        # Configurar protocolo de cierre para que solo cierre cuando sea desde la ventana principal
+        # No se intenta maximizar automáticamente (evita segfault en Linux)
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
-        
         self.show_welcome()
 
     def _clear_root(self):
-        """Destruye todos los widgets en root."""
+        """Destruye todos los widgets en root y fuerza actualización."""
         for w in self.root.winfo_children():
             w.destroy()
-    
+        self.root.update_idletasks()
+
     def _on_closing(self):
-        """Maneja el cierre de la aplicación principal"""
-        # Cerrar la aplicación solo cuando se cierra desde la ventana principal
+        """Maneja el cierre de la aplicación principal."""
         self.root.quit()
         self.root.destroy()
 
     def show_welcome(self):
-        """Pantalla de bienvenida. No forza cambio de minimize/maximize."""
-        prev_state = self.root.state()
+        """Pantalla de bienvenida."""
         self._clear_root()
         self.root.title("InfractiVision – Principal")
         frm = WelcomeFrame(self.root, self)
         frm.pack(fill="both", expand=True)
-        self.root.state(prev_state)
 
     def open_violation_window(self):
         """Pantalla de Foto Rojo."""
-        prev_state = self.root.state()
         self._clear_root()
         self.root.title("InfractiVision – Foto Rojo")
-        # Si más adelante create_violation_window acepta IDs,
-        # aquí podrías pasárselos: create_violation_window(self.root, self.show_welcome, self.user_id, self.device_id)
-        create_violation_window(self.root, self.show_welcome)
-        self.root.state(prev_state)
+        create_violation_window(
+            self.root,
+            self.show_welcome,
+            process_frame_uc=self.process_frame_uc,
+            traffic_light_state=self.traffic_light_state,
+        )
 
     def open_infractions_window(self):
         """Pantalla de Gestión de Infracciones."""
-        prev_state = self.root.state()
         self._clear_root()
         self.root.title("InfractiVision – Gestión de Infracciones")
-        # De igual modo, si quisieras pasar user_id a la ventana de infracciones:
-        # create_infractions_window(self.root, self.show_welcome, self.user_id)
         create_infractions_window(self.root, self.show_welcome)
-        self.root.state(prev_state)
