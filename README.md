@@ -6,7 +6,7 @@
 
 **Sistema Inteligente de Detección de Infracciones de Tráfico**
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://python.org)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.9.0-green.svg)](https://opencv.org)
 [![YOLO](https://img.shields.io/badge/YOLO-v8-red.svg)](https://ultralytics.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -17,6 +17,20 @@
 [🚀 Instalación](#-instalación) • [📖 Manual de Usuario](#-manual-de-usuario) • [🎯 Características](#-características) • [🏗️ Arquitectura](#️-arquitectura)
 
 </div>
+
+---
+
+## 🚀 Hoja de Ruta (Tesis y Siguientes Pasos)
+
+El proyecto actual se encuentra en la etapa final de desarrollo para su aplicación en la tesis. Los siguientes pasos prioritarios son:
+
+1.  **Completar el Desarrollo:** Finalizar las partes pendientes del software relacionadas con la integración y ajuste fino de los modelos.
+2.  **Fase Experimental:** Iniciar las pruebas empíricas con el grupo experimental, comparando los resultados del sistema (grupo experimental) contra el método tradicional (grupo de control).
+3.  **Cálculo de Indicadores (TI y TR):**
+    *   **TI (Tasa de Infracciones):** Representa el porcentaje de infracciones correctamente detectadas y validadas (NID - Número de Infracciones Correctamente Detectadas) donde la placa se lee con éxito sin factores externos adversos. Se busca demostrar un aumento de esta tasa en comparación con el registro manual.
+    *   **TR (Tiempo de Registro):** Tiempo promedio en minutos por vehículo procesado y registrado. El objetivo es reducir significativamente este tiempo frente al método tradicional.
+4.  **Actualización de la Metodología:** Reajustar los anexos y la documentación metodológica de la tesis basándose en los resultados obtenidos durante la fase experimental.
+5.  **Ajuste de Precisión Final:** Establecer y asegurar la decisión de cómo asignar correctamente los valores de cada indicador para garantizar la precisión del sistema en la gestión de infracciones.
 
 ---
 
@@ -34,6 +48,26 @@
 - **📊 Gestión de Infracciones**: Sistema completo NID/NIE con métricas académicas.
 - **💾 Base de Datos Local**: Almacenamiento seguro y rápido usando SQLite (`infractions.sqlite`).
 - **⚡ Instalación Global**: Sin entornos virtuales, ejecución directa con `python main.py`.
+
+---
+
+## ☁️ Historial de Infraestructura: Migración de Google Cloud a Local
+
+En versiones anteriores de **InfractiVision**, el sistema dependía de la infraestructura de **Google Cloud Platform (GCP)** para el almacenamiento y sincronización de datos.
+
+### ¿Cómo funcionaba antes?
+*   **Firestore:** Se utilizaba como base de datos NoSQL en la nube para guardar los registros de las infracciones.
+*   **Cloud Storage:** Se empleaba para almacenar las evidencias multimedia (imágenes y videos) generadas por el sistema.
+*   **Autenticación:** El sistema requería un archivo de credenciales (`serviceAccountKey.json`) para autenticarse y conectarse a los servicios de GCP.
+
+### ¿Por qué se migró a un entorno 100% Local (SQLite)?
+La arquitectura fue refactorizada para operar de manera completamente local y autónoma por las siguientes razones estratégicas:
+1.  **Independencia de la Red:** El sistema ahora puede operar en entornos remotos o sin acceso a internet, garantizando un registro continuo.
+2.  **Reducción de Latencia:** Al eliminar la sincronización en la nube, el tiempo de procesamiento y guardado (TR) se reduce significativamente.
+3.  **Seguridad y Privacidad:** Las evidencias y datos sensibles permanecen en el hardware local, cumpliendo con estrictas normativas de privacidad.
+4.  **Simplicidad de Despliegue:** Ya no es necesario gestionar cuentas de servicio, facturación en la nube, ni configurar claves de API complejas, facilitando su replicación e instalación.
+
+Actualmente, toda la persistencia de datos se maneja a través de una base de datos **SQLite** (`data/infractions.sqlite`), manteniendo la robustez del sistema pero en un entorno cerrado y altamente eficiente.
 
 ---
 
@@ -106,6 +140,7 @@
 - 🧠 **SmartCorrector**: Mejora +5-7% en precisión de placas.
 - 🌙 **Detección Nocturna**: Umbral optimizado (brillo < 60) reduce falsos positivos.
 - 🎯 **Clasificación NID/NIE**: 70% confianza + validación de caracteres.
+- ⏱️ **Algoritmo de optimización de tiempo de procesamiento (En desarrollo)**: Estrategia diseñada para eliminar tiempo de carga computacional innecesaria. Internamente y visualmente (mediante el `preprocessing_dialog` o previsualizador), el algoritmo acelera el video ignorando los tiempos muertos (durante la fase verde del semáforo virtual y la primera mitad del amarillo). El sistema enfoca todos sus recursos de análisis detallado a partir de la alerta previa (mitad de la fase amarilla) y durante toda la fase roja hasta el siguiente cambio de ciclo.
 
 ---
 
@@ -117,7 +152,9 @@
 2. **Extraer** el archivo ZIP en la ubicación deseada
 3. **Ejecutar** `InfractiVision.exe` (Windows) o `./InfractiVision` (Linux/Mac)
 
-### 🛠️ **Opción 2: Instalación Global (Desarrollo)**
+*Nota: Actualmente un instalador automático completo (Setup) y nuevas versiones portables están en constante desarrollo para futuras actualizaciones, pero puedes utilizar los pre-compilados actuales disponibles.*
+
+### 🛠️ **Opción 2: Instalación Global (Simplificada)**
 
 #### **Paso 1: Clonar el Repositorio**
 ```bash
@@ -149,6 +186,81 @@ python main.py
 - ⚡ **Inicio más rápido**: Sin activación de entorno
 - 🔧 **Mantenimiento simplificado**: Una sola instalación Python
 - 📦 **Compatibilidad PyInstaller**: Mejor empaquetado de ejecutables
+
+### 📦 **Opción 3: Instalación con Entorno Virtual (Recomendada para Desarrollo)**
+
+Si prefieres aislar las dependencias de InfractiVision y no afectar tu instalación global de Python, puedes usar un entorno virtual (`venv`). Esta opción es ideal para Windows, Linux y macOS.
+
+**Paso 1: Clonar el Repositorio**
+```bash
+git clone https://github.com/AbelMoyaICSI/InfractiVision.git
+cd InfractiVision
+```
+
+**Paso 2: Crear el Entorno Virtual**
+- **Windows:**
+  ```cmd
+  python -m venv venv
+  ```
+- **Linux / macOS:**
+  ```bash
+  python3 -m venv venv
+  ```
+
+**Paso 3: Activar el Entorno Virtual**
+- **Windows (Command Prompt):**
+  ```cmd
+  venv\Scripts\activate.bat
+  ```
+- **Windows (PowerShell):**
+  ```powershell
+  venv\Scripts\Activate.ps1
+  ```
+- **Linux / macOS:**
+  ```bash
+  source venv/bin/activate
+  ```
+
+**Paso 4: Instalar Dependencias**
+```bash
+pip install -r requirements.txt
+```
+
+**Paso 5: Ejecutar el Sistema**
+```bash
+python main.py
+```
+*(Nota: Para salir del entorno virtual cuando termines, simplemente ejecuta el comando `deactivate` en la terminal).*
+
+### 🔨 **Opción 4: Compilación del Ejecutable Local (Avanzado)**
+
+Si deseas compilar y generar tu propio ejecutable (Standalone) para tu sistema operativo, sigue estos pasos utilizando un entorno virtual limpio para evitar que el ejecutable resultante sea demasiado pesado.
+
+**Paso 1: Preparar un Entorno Virtual Limpio**
+Si ya tienes un entorno virtual (`venv`) ocupado con otras dependencias, elimínalo primero:
+- **Windows (CMD):** `rmdir /s /q venv`
+- **Linux / macOS:** `rm -rf venv`
+
+Luego, crea y activa uno nuevo:
+- **Windows:** `python -m venv venv` y luego `venv\Scripts\activate`
+- **Linux / macOS:** `python3 -m venv venv` y luego `source venv/bin/activate`
+
+**Paso 2: Instalar Dependencias de Compilación**
+```bash
+pip install -r requirements.txt
+pip install pyinstaller  # Requerido para compilar
+```
+
+**Paso 3: Compilar con PyInstaller**
+El proyecto ya incluye un archivo `InfractiVision.spec` con la configuración necesaria para empaquetar la aplicación.
+```bash
+pyinstaller InfractiVision.spec
+```
+
+**Paso 4: Ubicar el Ejecutable**
+Una vez que el proceso termine, el sistema generará los ejecutables dentro de la carpeta `dist/`:
+- **Windows:** Generará `dist/InfractiVision.exe`
+- **Linux / macOS:** Generará `dist/InfractiVision` (archivo binario ejecutable)
 
 ---
 
@@ -482,6 +594,29 @@ pip install -r requirements-dev.txt
 - **Documentación**: Google style docstrings
 - **Testing**: pytest + coverage
 
+### 📤 **Guía para Hacer Commit y Push de Cambios al Repositorio**
+
+Si realizas modificaciones en el código y deseas subirlas al repositorio en GitHub, sigue estos pasos desde la terminal dentro de la carpeta del proyecto:
+
+1. **Verificar los archivos modificados:**
+   ```bash
+   git status
+   ```
+2. **Añadir los cambios al área de preparación (Staging):**
+   ```bash
+   git add .
+   ```
+   *(Nota: Puedes reemplazar `.` por el nombre de un archivo específico si no deseas subir todo, por ejemplo: `git add README.md`)*
+3. **Crear el Commit con un mensaje descriptivo:**
+   ```bash
+   git commit -m "Descripción clara de los cambios realizados"
+   ```
+4. **Subir los cambios al repositorio remoto (Push):**
+   ```bash
+   git push origin main
+   ```
+   *(Si estás trabajando en otra rama, reemplaza `main` por el nombre de tu rama).*
+
 ---
 
 ## 📋 Roadmap
@@ -495,6 +630,7 @@ pip install -r requirements-dev.txt
 - [x] **Clasificación Regional**: Placas peruanas vs extranjeras
 
 ### 🎯 **Próximas Fases**
+- [ ] **Completar Algoritmo de optimización de tiempo de procesamiento**: Integración total en el previsualizador (`preprocessing_dialog`) para acelerar visual e internamente los videos, descartando tiempos en verde/amarillo y enfocando el análisis exhaustivo a partir de la alerta y durante la fase roja.
 - [ ] Detección de múltiples infracciones (cinturón, celular)
 - [ ] Soporte para cámaras IP en tiempo real  
 - [ ] Dashboard analítico avanzado.
