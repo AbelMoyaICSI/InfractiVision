@@ -556,30 +556,3 @@ class PlateDetector:
             'night_failures': self.detection_stats['night_failures']
         }
     
-    def reset_stats(self):
-        """Reiniciar estadísticas"""
-        self.detection_stats = {
-            'total_detections': 0,
-            'successful_detections': 0,
-            'average_confidence': 0.0,
-            'night_detections': 0,
-            'night_failures': 0
-        }
-        print("PlateDetector: Estadísticas reiniciadas")
-    
-    def print_performance_report(self):
-        """Imprimir reporte de rendimiento"""
-        stats = self.get_detection_stats()
-        print("\n" + "="*40)
-        print("📊 REPORTE PlateDetector")
-        print("="*40)
-        print(f"🔍 Detecciones totales: {stats['total_detections']}")
-        print(f"✅ Detecciones exitosas: {stats['successful_detections']}")
-        print(f"📈 Tasa de éxito: {stats['success_rate']:.1f}%")
-        print(f"⭐ Confianza promedio: {stats['average_confidence']:.3f}")
-        print(f"🌙 Detecciones nocturnas: {stats['night_detections']}")
-        print(f"🌙 Fallos nocturnos: {stats['night_failures']}")
-        if stats['night_detections'] > 0:
-            night_success_rate = (stats['night_detections'] - stats['night_failures']) / stats['night_detections'] * 100
-            print(f"🌙 Tasa éxito nocturno: {night_success_rate:.1f}%")
-        print("="*40)

@@ -12,6 +12,7 @@ import threading
 from PIL import Image, ImageTk
 
 from src.path_helper import resource_path
+from src.core.utils.icon import set_window_icon
 
 class VideoSelectorWindow:
     """
@@ -46,10 +47,7 @@ class VideoSelectorWindow:
         self.window = tk.Toplevel(self.parent)
         self.window.title("Selector Visual de Videos")
         
-        # Configurar icono
-        icon_path = resource_path("img/icon.ico")
-        if os.path.exists(icon_path):
-            self.window.iconbitmap(icon_path)
+        set_window_icon(self.window)
         self.window.geometry("1200x800")
         self.window.configure(bg='#f0f0f0')
         self.window.resizable(True, True)
@@ -184,15 +182,26 @@ class VideoSelectorWindow:
         def load_thread():
             try:
                 videos = self.get_video_files()
-                # Actualizar UI en hilo principal
-                self.window.after(0, lambda: self.display_videos(videos))
+                self.window.after(0, lambda: self._safe_display_videos(videos))
             except Exception as e:
-                self.window.after(0, lambda: self.status_label.config(
-                    text=f"❌ Error cargando videos: {str(e)}"
-                ))
+                self.window.after(0, lambda: self._safe_status_error_global(str(e)))
         
         threading.Thread(target=load_thread, daemon=True).start()
     
+    def _safe_display_videos(self, videos):
+        try:
+            if self.window.winfo_exists():
+                self.display_videos(videos)
+        except tk.TclError:
+            pass
+    
+    def _safe_status_error_global(self, msg):
+        try:
+            if self.window.winfo_exists():
+                self.status_label.config(text=f"❌ Error cargando videos: {msg}")
+        except:
+            pass
+        
     def get_video_files(self):
         """Obtener lista de archivos de video del directorio"""
         video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv')
@@ -383,7 +392,7 @@ class VideoSelectorWindow:
         delete_btn.pack(side="right", fill="x", expand=True, padx=(2, 0))
     
     def load_thumbnail_async(self, video, label):
-        """Cargar miniatura del video en hilo separado"""
+        """Cargar miniatura del video en hilo separado con verificación de existencia."""
         def load_thumb():
             try:
                 if video['filename'] in self.thumbnail_cache:
@@ -392,22 +401,27 @@ class VideoSelectorWindow:
                     thumb = self.generate_thumbnail(video['path'])
                     self.thumbnail_cache[video['filename']] = thumb
                 
-                # Actualizar UI en hilo principal
-                self.window.after(0, lambda: label.config(
-                    image=thumb,
-                    text="",
-                    compound="center"
-                ))
-                # Mantener referencia para evitar garbage collection
-                label.image = thumb
-                
+                # Actualizar UI de forma segura
+                self.window.after(0, lambda: self._safe_update_thumbnail(label, thumb))
             except Exception as e:
-                self.window.after(0, lambda: label.config(
-                    text=f"❌\nError\ncargando",
-                    fg="#e74c3c"
-                ))
+                self.window.after(0, lambda: self._safe_update_thumbnail_error(label))
         
         threading.Thread(target=load_thumb, daemon=True).start()
+    
+    def _safe_update_thumbnail(self, label, thumb):
+        try:
+            if label and label.winfo_exists():
+                label.config(image=thumb, text="", compound="center")
+                label.image = thumb
+        except tk.TclError:
+            pass
+    
+    def _safe_update_thumbnail_error(self, label):
+        try:
+            if label and label.winfo_exists():
+                label.config(text="❌\nError\ncargando", fg="#e74c3c")
+        except tk.TclError:
+            pass
     
     def generate_thumbnail(self, video_path):
         """Generar miniatura del video"""
@@ -454,7 +468,7 @@ class VideoSelectorWindow:
         return ImageTk.PhotoImage(img)
     
     def load_video_info_async(self, video, info_frame):
-        """Cargar información del video en hilo separado"""
+        """Cargar información del video en hilo separado con verificación de existencia."""
         def load_info():
             try:
                 if video['filename'] in self.metadata_cache:
@@ -463,19 +477,29 @@ class VideoSelectorWindow:
                     metadata = self.get_video_metadata(video['path'])
                     self.metadata_cache[video['filename']] = metadata
                 
-                # Actualizar UI en hilo principal
-                self.window.after(0, lambda: self.display_video_info(info_frame, metadata, video))
-                
+                self.window.after(0, lambda: self._safe_display_video_info(info_frame, metadata, video))
             except Exception as e:
-                self.window.after(0, lambda: tk.Label(
-                    info_frame,
-                    text="❌ Error cargando info",
-                    font=("Arial", 8),
-                    bg='white',
-                    fg="#e74c3c"
-                ).pack())
+                self.window.after(0, lambda: self._safe_info_error(info_frame))
         
         threading.Thread(target=load_info, daemon=True).start()
+    
+    def _safe_display_video_info(self, info_frame, metadata, video):
+        try:
+            if info_frame and info_frame.winfo_exists():
+                # Limpiar frame antes de agregar nuevos widgets
+                for widget in info_frame.winfo_children():
+                    widget.destroy()
+                self.display_video_info(info_frame, metadata, video)
+        except tk.TclError:
+            pass
+    
+    def _safe_info_error(self, info_frame):
+        try:
+            if info_frame and info_frame.winfo_exists():
+                tk.Label(info_frame, text="❌ Error cargando info",
+                         font=("Arial", 8), bg='white', fg="#e74c3c").pack()
+        except tk.TclError:
+            pass
     
     def get_video_metadata(self, video_path):
         """Obtener metadatos del video"""
@@ -552,22 +576,33 @@ class VideoSelectorWindow:
         size_label.pack(anchor="w")
     
     def load_config_status_async(self, video, status_frame):
-        """Cargar estado de configuración en hilo separado"""
+        """Cargar estado de configuración en hilo separado con verificación de existencia."""
         def load_status():
             try:
                 status = self.get_configuration_status(video['filename'])
-                # Actualizar UI en hilo principal
-                self.window.after(0, lambda: self.display_config_status(status_frame, status))
+                self.window.after(0, lambda: self._safe_display_status(status_frame, status))
             except Exception as e:
-                self.window.after(0, lambda: tk.Label(
-                    status_frame,
-                    text="❌ Error estado",
-                    font=("Arial", 8),
-                    bg='white',
-                    fg="#e74c3c"
-                ).pack())
+                self.window.after(0, lambda: self._safe_status_error(status_frame))
         
         threading.Thread(target=load_status, daemon=True).start()
+    
+    def _safe_display_status(self, status_frame, status):
+        try:
+            if status_frame and status_frame.winfo_exists():
+                # Limpiar frame actual
+                for widget in status_frame.winfo_children():
+                    widget.destroy()
+                self.display_config_status(status_frame, status)
+        except tk.TclError:
+            pass
+    
+    def _safe_status_error(self, status_frame):
+        try:
+            if status_frame and status_frame.winfo_exists():
+                tk.Label(status_frame, text="❌ Error estado",
+                         font=("Arial", 8), bg='white', fg="#e74c3c").pack()
+        except tk.TclError:
+            pass
     
     def get_configuration_status(self, filename):
         """Obtener estado de configuración del video"""

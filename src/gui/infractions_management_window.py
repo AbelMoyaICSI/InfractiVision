@@ -741,13 +741,16 @@ def generate_performance_indicators_json(software_infractions, software_processi
 
 def create_infractions_window(window: tk.Toplevel, back_callback):
     window.configure(bg="#ffffff")
-    window.state("zoomed")
+    
+    # MODIFICACIÓN DE PORTABILIDAD (desactivada para evitar segfault)
+    # La ventana se abre con el tamaño heredado de la ventana principal.
+    # El usuario puede maximizar manualmente si lo desea.
+    pass
 
     # 1) Cargar todas las infracciones al inicio
-    # Cargar datos
     all_data = load_infractions_data()
 
-
+    # (El resto del código de la interfaz se mantiene exactamente igual...)
     # 3) Cabecera
     header = tk.Frame(window, bg="#ffffff")
     header.pack(fill="x", padx=30, pady=20)

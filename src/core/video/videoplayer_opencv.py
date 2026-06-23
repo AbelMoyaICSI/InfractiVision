@@ -10,7 +10,8 @@ import os
 import numpy as np
 import torch
 import psutil
-import winsound  # Para beep en Windows
+from src.core.utils.audio import play_beep  # multiplataforma
+from src.core.utils.icon import set_window_icon  # multiplataforma
 import re  # Para patrones de placas
 from collections import deque, defaultdict
 
@@ -34,12 +35,48 @@ class VideoPlayerOpenCV:
     def get_video_key(self, video_path):
         """Extrae solo el nombre del archivo para usar como clave en configs"""
         return os.path.basename(video_path)
+
+    def _start_semaforo_state_bridge(self):
+        """Bridge GUI → Clean Architecture.
+
+        Cada 250 ms refleja `self.semaforo.current_state` en
+        `self.traffic_light_state["value"]`. Esto permite que el
+        `VirtualTrafficLightDetector` inyectado en el `ProcessFrameUseCase`
+        lea el estado real del semáforo sin acoplar el use case a Tk.
+
+        Si la pantalla cambia (root deja de existir), el `after()` falla
+        silenciosamente y termina el loop.
+        """
+        try:
+            state = getattr(self.semaforo, "current_state", None)
+            if state in ("green", "yellow", "red"):
+                self.traffic_light_state["value"] = state
+        except Exception:
+            return
+        try:
+            # Volver a programar usando el widget parent como host del timer.
+            self.parent.after(250, self._start_semaforo_state_bridge)
+        except Exception:
+            pass
+
     
-    def __init__(self, parent, timestamp_updater, timestamp_label, semaforo):
+    def __init__(self, parent, timestamp_updater, timestamp_label, semaforo,
+                 process_frame_uc=None, traffic_light_state=None):
         self.parent            = parent
         self.timestamp_updater = timestamp_updater
         self.timestamp_label   = timestamp_label
         self.semaforo          = semaforo
+
+        # ─── Inyección Clean Architecture (opcional, retro-compat) ──────────
+        # `process_frame_uc`  → src.application.use_cases.ProcessFrameUseCase
+        # `traffic_light_state` → dict mutable con clave "value". El bridge
+        #   `_sync_semaforo_state` lee `semaforo.current_state` cada 250 ms y
+        #   actualiza el dict, de modo que el VirtualTrafficLightDetector
+        #   inyectado en el use case ve la realidad del Semáforo de la GUI.
+        self.process_frame_uc = process_frame_uc
+        self.traffic_light_state = traffic_light_state
+        if self.traffic_light_state is not None and self.semaforo is not None:
+            self._start_semaforo_state_bridge()
 
         self.yolo = YOLO(resource_path('models/yolov8n.pt'))      # peso pequeño, pre-entrenado en COCO
         
@@ -250,7 +287,7 @@ class VideoPlayerOpenCV:
         self.parent.bind("<Configure>", self._on_window_resize)
         
         # ✨ INICIALIZAR SISTEMA RESPONSIVE AUTOMÁTICAMENTE
-        self.parent.after(100, self._initialize_responsive_layout)
+#        #self.parent.after(100, self._initialize_responsive_layout)
         
         # Inicializar variables para las placas detectadas
         self.detected_plates_widgets = []
@@ -342,27 +379,6 @@ class VideoPlayerOpenCV:
                 
         except Exception as e:
             print(f"Error en scroll configuración: {e}")
-    
-    def _on_plates_canvas_configure(self, event):
-        """Actualizar ancho del frame interno cuando cambie el canvas - RESPONSIVE"""
-        try:
-            canvas_width = event.width
-            if canvas_width <= 1:
-                return
-                
-            # Calcular ancho disponible considerando scrollbar y padding
-            scrollbar_width = 20
-            padding = 10
-            available_width = max(150, canvas_width - scrollbar_width - padding)
-            
-            # Actualizar ancho del frame interno
-            self.plates_canvas.itemconfig(self.plates_canvas_window, width=available_width)
-            
-            # Debug opcional para monitor de ancho
-            # print(f"Canvas adaptado: {available_width}px disponibles de {canvas_width}px totales")
-            
-        except Exception as e:
-            print(f"Error configurando canvas responsive: {e}")
     
     def _smart_auto_scroll(self):
         """Auto-scroll inteligente: va al final solo si el usuario no está scrolleando manualmente"""
@@ -497,10 +513,7 @@ class VideoPlayerOpenCV:
             min_height=350
         )
         
-        # Configurar icono
-        icon_path = resource_path("img/icon.ico")
-        if os.path.exists(icon_path):
-            setup.iconbitmap(icon_path)
+        set_window_icon(setup)
 
         tk.Label(setup, text="Nombre de la Avenida:")\
           .grid(row=0, column=0, sticky="w", padx=5, pady=5)
@@ -565,40 +578,6 @@ class VideoPlayerOpenCV:
         y_rel = (event.y - off_y)/scale
         self.polygon_points.append((int(x_rel),int(y_rel)))
 
-    def draw_polygon_on_np(self, img):
-        if not self.polygon_points: return
-        wlbl = self.video_label.winfo_width()
-        hlbl = self.video_label.winfo_height()
-        if wlbl<2 or hlbl<2: return
-        scale = min(wlbl/self.orig_w, hlbl/self.orig_h, 1.0)
-        off_x=(wlbl-int(self.orig_w*scale))//2
-        off_y=(hlbl-int(self.orig_h*scale))//2
-        pts_scaled=[(int(px*scale)+off_x,int(py*scale)+off_y)
-                    for px,py in self.polygon_points]
-        for i in range(len(pts_scaled)):
-            x1,y1=pts_scaled[i]
-            x2,y2=pts_scaled[(i+1)%len(pts_scaled)]
-            cv2.line(img,(x1,y1),(x2,y2),(0,0,255),2)
-
-    def save_polygon(self):
-        if not self.cap or not self.current_video_path:
-            messagebox.showerror("Error","No hay vídeo cargado.")
-            return
-        if len(self.polygon_points)<3:
-            messagebox.showwarning("Advertencia","Al menos 3 vértices.")
-            return
-        self.have_polygon=True
-        presets={}
-        if os.path.exists(POLYGON_CONFIG_FILE):
-            try:
-                with open(POLYGON_CONFIG_FILE,"r",encoding="utf-8") as f:
-                    presets=json.load(f)
-            except: pass
-        presets[self.get_video_key(self.current_video_path)]=self.polygon_points
-        with open(POLYGON_CONFIG_FILE,"w",encoding="utf-8") as f:
-            json.dump(presets,f,indent=2)
-        messagebox.showinfo("Éxito","Área guardada.")
-
     def load_polygon_for_video(self):
         self.have_polygon=False
         self.polygon_points=[]
@@ -613,55 +592,6 @@ class VideoPlayerOpenCV:
                 self.polygon_points=presets[video_key]
                 self.have_polygon=True
         except: pass
-
-    def delete_polygon(self):
-        if not self.current_video_path or not self.polygon_points:
-            messagebox.showwarning("Advertencia","No hay área.")
-            return
-        if not messagebox.askyesno("Confirmar","¿Borrar área?"):
-            return
-        try:
-            with open(POLYGON_CONFIG_FILE,"r",encoding="utf-8") as f:
-                presets=json.load(f)
-            presets.pop(self.get_video_key(self.current_video_path),None)
-            with open(POLYGON_CONFIG_FILE,"w",encoding="utf-8") as f:
-                json.dump(presets,f,indent=2)
-            self.have_polygon=False
-            self.polygon_points=[]
-            messagebox.showinfo("Éxito","Área eliminada.")
-        except Exception as e:
-            messagebox.showerror("Error",str(e))
-
-    def gestionar_poligonos(self):
-        w = tk.Toplevel(self.parent)
-        w.title("Áreas Guardadas")
-
-        lb = tk.Listbox(w, width=80)
-        lb.pack(side="left", fill="both", expand=True)
-        sb = tk.Scrollbar(w, command=lb.yview)
-        sb.pack(side="right", fill="y")
-        lb.config(yscrollcommand=sb.set)
-
-        # Cargar presets de áreas
-        presets = {}
-        if os.path.exists(POLYGON_CONFIG_FILE):
-            try:
-                with open(POLYGON_CONFIG_FILE, "r", encoding="utf-8") as f:
-                    presets = json.load(f)
-            except Exception:
-                presets = {}
-
-        # Poblar listbox
-        for video_path, points in presets.items():
-            lb.insert(tk.END, f"{video_path} → {points}")
-
-        # Botón de cierre
-        tk.Button(w, text="Cerrar", command=w.destroy).pack(pady=5)
-
-        w.transient(self.parent)
-        w.grab_set()
-        self.parent.wait_window(w)
-
 
     def select_video_visual(self):
         """
@@ -834,10 +764,7 @@ class VideoPlayerOpenCV:
         setup = tk.Toplevel(self.parent)
         setup.title("Configuración Inicial del Video")
         
-        # Configurar icono
-        icon_path = resource_path("img/icon.ico")
-        if os.path.exists(icon_path):
-            setup.iconbitmap(icon_path)
+        set_window_icon(setup)
         setup.geometry("1150x700")  # MÁS ANCHA: 940→1150, MÁS ALTA: 650→700
         setup.resizable(True, True)
         
@@ -1960,39 +1887,6 @@ class VideoPlayerOpenCV:
         
         self._after_id = self.parent.after(10, self.update_frames)
 
-    def format_tr(self, timestamp):
-        """Convierte timestamp (segundos) a formato TR en minutos decimales"""
-        if timestamp is None or timestamp <= 0:
-            return "TR: 0.00min (0s)"
-        
-        total_seconds = int(timestamp)
-        mins_decimal = timestamp / 60.0  # Conversión correcta a minutos
-        return f"TR: {mins_decimal:.2f}min ({total_seconds}s)"
-    
-    def validate_conf(self, confidence):
-        """Valida y normaliza valor de confianza [0,1]"""
-        try:
-            conf_float = float(confidence)
-            if conf_float < 0:
-                print(f"⚠️ Confianza fuera de rango: {conf_float} -> 0.00")
-                return 0.0
-            elif conf_float > 1:
-                print(f"⚠️ Confianza fuera de rango: {conf_float} -> 1.00")
-                return 1.0
-            return conf_float
-        except (ValueError, TypeError):
-            print(f"⚠️ Confianza inválida: {confidence} -> 0.00")
-            return 0.0
-    
-    def get_conf_color(self, confidence):
-        """Retorna color según umbral de confianza"""
-        if confidence >= 0.85:
-            return "#27ae60"  # Verde
-        elif confidence >= 0.70:
-            return "#f39c12"  # Ámbar
-        else:
-            return "#e74c3c"  # Rojo
-
     class PlateCard:
         """Clase reutilizable para cards de placas compactos y responsive"""
         
@@ -2589,10 +2483,10 @@ class VideoPlayerOpenCV:
         # 🔊 BEEP único por placa nueva detectada
         if self.should_play_beep(plate_text):
             try:
-                winsound.Beep(500, 100)  # Beep solo para placas nuevas
+                play_beep(500, 100)  # multiplataforma
                 print(f"🔊 Beep para nueva placa: {plate_text}")
-            except:
-                pass  # Silenciar errores
+            except Exception:
+                pass
         
         # Crear las carpetas necesarias
         plates_dir = resource_path("data/output/placas")
@@ -2997,7 +2891,7 @@ class VideoPlayerOpenCV:
         
         # Vincular al evento de redimensionado del panel principal
         self.plates_frame.bind("<Configure>", update_metrics_layout)
-        self.plates_frame.after(200, update_metrics_layout)
+#        #self.plates_frame.after(200, update_metrics_layout)
     
     def _recreate_metrics_layout(self, layout_type):
         """Recrea el layout de métricas para el tamaño especificado"""
@@ -3225,72 +3119,28 @@ class VideoPlayerOpenCV:
                 parent=self.parent
             )
 
-    def gestionar_camaras(self):
-        """
-        Abre un diálogo para elegir un vídeo existente, y al 'Cargar'
-        reinicia completamente el estado de Foto Rojo y carga el nuevo vídeo.
-        """
-        w = tk.Toplevel(self.parent)
-        w.title("Gestionar Cámaras (videos)")
-
-        lb = tk.Listbox(w, width=60)
-        lb.pack(side="left", fill="both", expand=True)
-        sb = tk.Scrollbar(w, command=lb.yview)
-        sb.pack(side="right", fill="y")
-        lb.config(yscrollcommand=sb.set)
-
-        for f in sorted(os.listdir(self.video_dir)):
-            if f.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
-                lb.insert(tk.END, f)
-
-        btn_frame = tk.Frame(w)
-        btn_frame.pack(fill="x", pady=5)
-
-        def on_cargar():
-            sel = lb.curselection()
-            if not sel:
-                messagebox.showwarning("Advertencia", "Seleccione un vídeo.")
-                return
-            fn   = lb.get(sel[0])
-            path = os.path.join(self.video_dir, fn)
-            w.destroy()
-
-            # 1) Detener y limpiar todo el estado actual
-            self.stop_video()
-            self.clear_detected_plates()
-            self.semaforo.current_state = "green"
-            self.semaforo.show_state()
-
-            # 2) Maximizar la ventana principal nuevamente
-            main_win = self.parent.winfo_toplevel()
-            main_win.deiconify()
-            # main_win.state("zoomed")
-
-            # 3) Cargar el nuevo vídeo con preprocesamiento
-            self.load_video(path)
-
-        tk.Button(btn_frame, text="Cargar",  width=10, command=on_cargar).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Borrar",  width=10, command=lambda: self._cam_del(lb)).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Cerrar",  width=10, command=w.destroy).pack(side="left", padx=5)
-
-        w.transient(self.parent)
-        w.grab_set()
-        self.parent.wait_window(w)
-
-
     def _on_plates_canvas_configure(self, event):
-        """Actualiza el ancho del frame interno cuando cambia el tamaño del canvas"""
-        width = event.width
+        """Actualiza el ancho del frame interno cuando cambia el tamaño del canvas, limitando frecuencia."""
+        # Evita ejecutar si ya hay una actualización programada
+        if hasattr(self, '_canvas_resize_pending') and self._canvas_resize_pending:
+            return
+        self._canvas_resize_pending = True
+        # Espera 50ms para estabilizar
+        self.parent.after(50, self._do_update_canvas_width)
+    
+    def _do_update_canvas_width(self):
+        """Actualiza el ancho del canvas de forma segura."""
         try:
-            # Actualizar el ancho de la ventana del canvas
-            self.plates_canvas.itemconfig(self.plates_canvas_window, width=width)
-            
-            # Forzar actualización
-            self.plates_canvas.update()
-            
-            print(f"Canvas redimensionado: {width}px de ancho")
+            width = self.plates_canvas.winfo_width()
+            if width > 1:
+                self.plates_canvas.itemconfig(self.plates_canvas_window, width=width)
+                self.plates_canvas.update_idletasks()
+                # Puedes mantener o comentar el print para debug
+                # print(f"Canvas redimensionado: {width}px de ancho")
         except Exception as e:
-            print(f"Error en _on_plates_canvas_configure: {e}")
+            print(f"Error en actualización de ancho del canvas: {e}")
+        finally:
+            self._canvas_resize_pending = False
 
     def _ensure_card_visibility(self, new_card_frame=None):
         """Asegura que las cards nuevas sean visibles con scroll inteligente"""
@@ -3305,31 +3155,6 @@ class VideoPlayerOpenCV:
                 
         except Exception as e:
             print(f"Error asegurando visibilidad de card: {e}")
-
-    def _cam_load_async(self, path):
-        cap_tmp = cv2.VideoCapture(path)
-        cap_tmp.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        ret, _ = cap_tmp.read()
-        cap_tmp.release()
-        if not ret:
-            self.parent.after(0, lambda: messagebox.showerror("Error", "No se pudo leer el vídeo."))
-            return
-
-        # Ahora volvemos al hilo principal:
-        self.parent.after(0, lambda: (
-            self.stop_video(),
-            self.load_video(path)
-        ))
-
-
-    def _cam_load(self, lb):
-        sel = lb.curselection()
-        if not sel:
-            messagebox.showwarning("Advertencia","Seleccione un vídeo.")
-            return
-        path = os.path.join(self.video_dir, lb.get(sel[0]))
-        self.stop_video()
-        self.load_video(path)
 
     def _cam_del(self, lb):
         sel = lb.curselection()
@@ -3365,11 +3190,6 @@ class VideoPlayerOpenCV:
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
-
-    def remove_video_data(self, video_path):
-        self.remove_avenue_data(video_path)
-        self.remove_time_preset_data(video_path)
-        self.remove_polygon_data(video_path)
 
     def remove_avenue_data(self, video_path):
         if not os.path.exists(AVENUE_CONFIG_FILE):
@@ -3739,29 +3559,6 @@ class VideoPlayerOpenCV:
             
         return min(quality_score, 1.0)
     
-    def _calculate_precision_adjusted_ti(self):
-        """Calcula TI ajustado por calidad de detecciones"""
-        if not hasattr(self, 'plate_detection_history') or not self.plate_detection_history:
-            return 0.0
-            
-        total_quality = 0.0
-        total_detections = len(self.plate_detection_history)
-        
-        # Evaluar calidad de cada detección
-        for plate_id, detection in self.plate_detection_history.items():
-            quality = self._validate_detection_quality(detection)
-            total_quality += quality
-        
-        # Calcular número "efectivo" de detecciones correctas
-        effective_correct_detections = total_quality
-        
-        # Grupo control (estimado)
-        gc_manual_count = getattr(self, 'gc_manual_count', max(1, total_detections * 1.2))
-        
-        # TI ajustado
-        ti_adjusted = (effective_correct_detections / gc_manual_count) * 100
-        
-        return min(ti_adjusted, 100.0)
     def _calculate_infraction_rate(self):
         """TI: Tasa de Infracciones según contexto de detecciones
         MEJORADO: Considera 3 casos específicos:
@@ -3928,42 +3725,6 @@ class VideoPlayerOpenCV:
         
         return 0.0
 
-    def _calculate_daily_infractions(self):
-        """NID: Número de Infracciones Detectadas hoy
-        Conteo específico de infracciones detectadas en el día actual.
-        NUEVO INDICADOR según operacionalización actualizada.
-        """
-        from datetime import datetime
-        
-        today = datetime.now().strftime("%Y-%m-%d")
-        daily_count = 0
-        
-        if hasattr(self, "plate_detection_history"):
-            for plate_data in self.plate_detection_history.values():
-                # Verificar si la detección fue hoy
-                detection_date = plate_data.get("date", "")
-                detection_timestamp = plate_data.get("timestamp", "")
-                
-                # Intentar diferentes formatos de fecha
-                is_today = False
-                if detection_date.startswith(today):
-                    is_today = True
-                elif detection_timestamp and today in detection_timestamp:
-                    is_today = True
-                elif "fecha" in plate_data and plate_data["fecha"] and today in plate_data["fecha"]:
-                    is_today = True
-                
-                if is_today:
-                    daily_count += 1
-        
-        # Si no hay historial con fechas, usar conteo total como aproximación
-        if daily_count == 0 and hasattr(self, "plate_detection_history"):
-            daily_count = len(self.plate_detection_history)
-        
-        return daily_count
-
-    # ===== FUNCIONES DE LIMPIEZA Y GESTIÓN =====
-    
     def limpiar_configuracion_video(self):
         """Limpia solo la configuración del video actual"""
         if not hasattr(self, 'current_video_path') or not self.current_video_path:
@@ -4033,222 +3794,6 @@ class VideoPlayerOpenCV:
                 f"Error al limpiar la configuración:\n{str(e)}"
             )
 
-    def limpiar_todas_configuraciones(self):
-        """Limpia todas las configuraciones de todos los videos"""
-        respuesta = messagebox.askyesno(
-            "Confirmar Limpieza Total",
-            "¿Estás seguro de que quieres limpiar TODAS las configuraciones?\n\n"
-            "Esto eliminará:\n"
-            "• Todas las áreas restrictivas\n"
-            "• Todos los tiempos de semáforo\n"
-            "• Todos los nombres de avenidas\n"
-            "• Todos los indicadores de rendimiento\n"
-            "• Todas las infracciones registradas\n\n"
-            "La aplicación se reseteará completamente."
-        )
-        
-        if not respuesta:
-            return
-        
-        try:
-            # Limpiar todos los archivos de configuración
-            config_files = [
-                POLYGON_CONFIG_FILE,
-                AVENUE_CONFIG_FILE,
-                PRESETS_FILE,
-                resource_path("data/indicadores_rendimiento.json"),
-                resource_path("data/infracciones.json")
-            ]
-            
-            for config_file in config_files:
-                if os.path.exists(config_file):
-                    # Crear archivo vacío
-                    with open(config_file, "w", encoding="utf-8") as f:
-                        json.dump({}, f, indent=2)
-            
-            # Limpiar carpeta de outputs
-            output_dirs = [resource_path("data/output/placas"), resource_path("data/output/autos")]
-            for output_dir in output_dirs:
-                if os.path.exists(output_dir):
-                    for file in os.listdir(output_dir):
-                        if file.endswith(('.jpg', '.png')):
-                            os.remove(os.path.join(output_dir, file))
-            
-            # Resetear estado interno
-            self.have_polygon = False
-            self.polygon_points = []
-            self.current_avenue = None
-            self.avenue_label.config(text="")
-            
-            # Si hay video cargado, detenerlo
-            if hasattr(self, 'current_video_path') and self.current_video_path:
-                self.stop_video()
-                self.current_video_path = None
-            # Actualizar indicador visual
-            self.current_video_label.config(text="Ningún video cargado")
-            
-            messagebox.showinfo(
-                "Limpieza Total Completada",
-                "Todas las configuraciones han sido limpiadas.\n"
-                "La aplicación ha sido reseteada completamente."
-            )
-            
-        except Exception as e:
-            messagebox.showerror(
-                "Error",
-                f"Error al limpiar todas las configuraciones:\n{str(e)}"
-            )
-
-    def eliminar_video_y_config(self):
-        """Elimina el video actual y su configuración"""
-        if not hasattr(self, 'current_video_path') or not self.current_video_path:
-            messagebox.showwarning("Advertencia", "No hay video cargado para eliminar.")
-            return
-        
-        # Confirmar acción
-        video_name = os.path.basename(self.current_video_path)
-        respuesta = messagebox.askyesno(
-            "Confirmar Eliminación",
-            f"¿Estás seguro de que quieres ELIMINAR el video:\n'{video_name}'?\n\n"
-            "Esto eliminará:\n"
-            "• El archivo de video\n"
-            "• Toda su configuración\n"
-            "• Todas las imágenes generadas\n\n"
-            "Esta acción NO se puede deshacer."
-        )
-        
-        if not respuesta:
-            return
-        
-        try:
-            video_key = self.get_video_key(self.current_video_path)
-            
-            # Detener video si está reproduciéndose
-            if hasattr(self, 'is_playing') and self.is_playing:
-                self.stop_video()
-            
-            # Eliminar configuración
-            self.limpiar_configuracion_video()
-            
-            # Eliminar archivo de video
-            if os.path.exists(self.current_video_path):
-                os.remove(self.current_video_path)
-            
-            # Eliminar imágenes generadas para este video
-            video_base = os.path.splitext(video_name)[0]
-            output_dirs = [resource_path("data/output/placas"), resource_path("data/output/autos")]
-            for output_dir in output_dirs:
-                if os.path.exists(output_dir):
-                    for file in os.listdir(output_dir):
-                        if file.startswith(video_base):
-                            os.remove(os.path.join(output_dir, file))
-            
-            # Resetear estado
-            self.current_video_path = None
-            # Actualizar indicador visual
-            self.current_video_label.config(text="Ningún video cargado")
-            self.video_label.config(image="")
-            
-            messagebox.showinfo(
-                "Video Eliminado",
-                f"El video '{video_name}' y toda su configuración han sido eliminados."
-            )
-            
-        except Exception as e:
-            messagebox.showerror(
-                "Error",
-                f"Error al eliminar el video:\n{str(e)}"
-            )
-    
-    def detect_hardware(self):
-        """Detección mejorada de hardware disponible"""
-        import subprocess
-        
-        self.gpu_info = {
-            'cuda_available': False,
-            'gpu_name': None,
-            'gpu_memory': None,
-            'gpu_count': 0
-        }
-        
-        # Verificar CUDA con PyTorch
-        if torch.cuda.is_available():
-            self.gpu_info['cuda_available'] = True
-            self.gpu_info['gpu_count'] = torch.cuda.device_count()
-            
-            for i in range(self.gpu_info['gpu_count']):
-                gpu_name = torch.cuda.get_device_name(i)
-                gpu_memory = torch.cuda.get_device_properties(i).total_memory / (1024**3)  # GB
-                
-                if i == 0:  # GPU principal
-                    self.gpu_info['gpu_name'] = gpu_name
-                    self.gpu_info['gpu_memory'] = gpu_memory
-                
-                print(f"🔍 GPU {i}: {gpu_name} ({gpu_memory:.1f}GB)")
-        
-        # Detección adicional de GPU con wmic (Windows)
-        try:
-            if not self.gpu_info['cuda_available']:
-                result = subprocess.run(['wmic', 'path', 'win32_VideoController', 'get', 'name'], 
-                                      capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    lines = result.stdout.strip().split('\n')
-                    for line in lines[1:]:  # Skip header
-                        line = line.strip()
-                        if line and ('NVIDIA' in line.upper() or 'RADEON' in line.upper() or 'GTX' in line.upper()):
-                            self.gpu_info['gpu_name'] = line
-                            print(f"🔍 GPU detectada (sin CUDA): {line}")
-                            break
-        except:
-            pass
-    
-    def configure_hardware_settings(self):
-        """Configurar ajustes según hardware detectado"""
-        if self.gpu_info['cuda_available']:
-            self.device = torch.device('cuda')
-            self.using_gpu = True
-            
-            # Optimizaciones CUDA
-            torch.backends.cudnn.benchmark = True  
-            torch.backends.cudnn.deterministic = False
-            
-            # Configuración GPU según memoria disponible
-            gpu_memory = self.gpu_info.get('gpu_memory', 0)
-            if gpu_memory >= 6:  # GPU alta gama
-                self.gpu_imgsz = 640
-                self.gpu_conf_threshold = 0.25
-                self.gpu_batch_size = 8
-                performance_level = "ULTRA"
-            elif gpu_memory >= 4:  # GPU media
-                self.gpu_imgsz = 512
-                self.gpu_conf_threshold = 0.3
-                self.gpu_batch_size = 4
-                performance_level = "ALTA"
-            else:  # GPU básica
-                self.gpu_imgsz = 416
-                self.gpu_conf_threshold = 0.35
-                self.gpu_batch_size = 2
-                performance_level = "MEDIA"
-            
-            print(f"🚀 GPU CONFIGURADA: {self.gpu_info['gpu_name']}")
-            print(f"   💫 Nivel: {performance_level} ({gpu_memory:.1f}GB)")
-            print(f"   ⚙️ Resolución: {self.gpu_imgsz}px | Lotes: {self.gpu_batch_size}")
-            
-        else:
-            self.device = torch.device('cpu')
-            self.using_gpu = False
-            
-            # Configuración CPU optimizada
-            self.cpu_imgsz = 320
-            self.cpu_conf_threshold = 0.5
-            self.cpu_batch_size = 1
-            self.cpu_skip_frames = 2
-            
-            gpu_name = self.gpu_info.get('gpu_name', 'No detectada')
-            print(f"💻 MODO CPU OPTIMIZADO")
-            print(f"   🔍 GPU: {gpu_name}")
-            print(f"   ⚙️ Resolución: {self.cpu_imgsz}px | Skip: {self.cpu_skip_frames} frames")
-    
     def check_internet_connection(self):
         """Verificar conexión a Internet"""
         import urllib.request
@@ -4346,35 +3891,34 @@ class VideoPlayerOpenCV:
             print(f"Error en video responsive: {e}")
 
     def _on_window_resize(self, event):
-        """Función responsive para ajustar el layout según el tamaño de ventana dinamicamente"""
+        """Función responsive para ajustar el layout según el tamaño de ventana, limitando frecuencia."""
+        if event.widget != self.parent:
+            return
+        if hasattr(self, '_resize_pending') and self._resize_pending:
+            return
+        self._resize_pending = True
+        self.parent.after(50, self._do_resize_layout)
+    
+    def _do_resize_layout(self):
+        """Ejecuta el ajuste de layout de forma diferida."""
         try:
-            # Solo aplicar si el evento es de la ventana principal
-            if event.widget != self.parent:
-                return
-            
-            window_width = event.width
-            window_height = event.height
-            
-            # Obtener tamaño de pantalla para comparar
+            window_width = self.parent.winfo_width()
+            window_height = self.parent.winfo_height()
             screen_width = self.parent.winfo_screenwidth()
             
-            # 🎬 NUEVO: Ajustar video frame de manera responsive
             self._adjust_video_frame_responsive(window_width, window_height)
             
-            # Umbrales ajustados para mejor responsive design
-            if screen_width < 1366 or window_width < 1000:  # Laptops pequeños
+            if screen_width < 1366 or window_width < 1000:
                 self._apply_small_screen_layout()
-            elif screen_width < 1600 or window_width < 1400:  # Pantallas medianas
+            elif screen_width < 1600 or window_width < 1400:
                 self._apply_medium_screen_layout()
-            else:  # Monitores grandes
+            else:
                 self._apply_large_screen_layout()
-            
-            # Debug opcional
-            # print(f"🔄 Resize: {window_width}x{window_height} en pantalla {screen_width}px")
-                
         except Exception as e:
             print(f"Error en responsive design: {e}")
-
+        finally:
+            self._resize_pending = False
+            
     def _apply_small_screen_layout(self):
         """Layout para pantallas pequeñas (<1366px) - Laptops"""
         try:
@@ -4410,9 +3954,8 @@ class VideoPlayerOpenCV:
             
             # Forzar actualización del panel de métricas
             if hasattr(self, '_setup_metrics_responsive_behavior'):
-                self.plates_frame.after(100, lambda: self._recreate_metrics_layout('small'))
-            
-            print("📱 Layout compacto aplicado para laptop")
+                # self.plates_frame.after(100, lambda: self._recreate_metrics_layout('small'))
+                print("📱 Layout compacto aplicado para laptop")
                 
         except Exception as e:
             print(f"Error en layout pequeño: {e}")
@@ -4452,9 +3995,8 @@ class VideoPlayerOpenCV:
             
             # Forzar actualización del panel de métricas
             if hasattr(self, '_setup_metrics_responsive_behavior'):
-                self.plates_frame.after(100, lambda: self._recreate_metrics_layout('medium'))
-            
-            print("💻 Layout estándar aplicado para pantalla mediana")
+#                #self.plates_frame.after(100, lambda: self._recreate_metrics_layout('medium'))
+                 print("💻 Layout estándar aplicado para pantalla mediana")
                 
         except Exception as e:
             print(f"Error en layout mediano: {e}")
@@ -4494,9 +4036,8 @@ class VideoPlayerOpenCV:
             
             # Forzar actualización del panel de métricas
             if hasattr(self, '_setup_metrics_responsive_behavior'):
-                self.plates_frame.after(100, lambda: self._recreate_metrics_layout('large'))
-            
-            print("🖥️ Layout expandido aplicado para monitor grande")
+#                #self.plates_frame.after(100, lambda: self._recreate_metrics_layout('large'))
+                 print("🖥️ Layout expandido aplicado para monitor grande")
                 
         except Exception as e:
             print(f"Error en layout grande: {e}")
@@ -4544,14 +4085,13 @@ class VideoPlayerOpenCV:
         print(f"🔊 Beep de infracciones: {status}")
 
     def play_infraction_beep(self):
-        """Reproduce beep de infracción SIMPLE y seguro"""
+        """Reproduce beep de infracción SIMPLE y seguro (multiplataforma)."""
         if not self.beep_enabled:
             return
         try:
-            # Beep simple y rápido
-            winsound.Beep(500, 100)
-        except:
-            pass  # Fallar silenciosamente
+            play_beep(500, 100)
+        except Exception:
+            pass
 
     def should_play_beep(self, plate_text):
         """Verifica si debe sonar beep (solo 1 vez por placa única)"""
@@ -4564,51 +4104,6 @@ class VideoPlayerOpenCV:
             return True
         return False
 
-    def _get_potential_plate_regions(self, frame, x1, y1, x2, y2):
-        """Obtiene múltiples regiones potenciales donde puede estar la placa"""
-        regions = []
-        
-        if frame is None or frame.size == 0:
-            return regions
-        
-        h_frame, w_frame = frame.shape[:2]
-        
-        # Asegurar coordenadas válidas
-        x1, y1 = max(0, int(x1)), max(0, int(y1))
-        x2, y2 = min(w_frame, int(x2)), min(h_frame, int(y2))
-        
-        if x2 <= x1 or y2 <= y1:
-            return regions
-        
-        vehicle_h = y2 - y1
-        vehicle_w = x2 - x1
-        
-        # Región FRONTAL del vehículo (más probable para placa delantera)
-        front_y1 = max(y1, y2 - int(vehicle_h * 0.4))  # 40% inferior
-        front_y2 = y2
-        if front_y2 > front_y1:
-            front_crop = frame[front_y1:front_y2, x1:x2]
-            if front_crop.size > 0:
-                regions.append((front_crop, (x1, front_y1, x2, front_y2), "frontal"))
-        
-        # Región TRASERA del vehículo (placa trasera)
-        rear_y1 = y1
-        rear_y2 = min(y2, y1 + int(vehicle_h * 0.4))  # 40% superior
-        if rear_y2 > rear_y1:
-            rear_crop = frame[rear_y1:rear_y2, x1:x2]
-            if rear_crop.size > 0:
-                regions.append((rear_crop, (x1, rear_y1, x2, rear_y2), "trasera"))
-        
-        # Región CENTRAL (fallback)
-        center_y1 = y1 + int(vehicle_h * 0.3)
-        center_y2 = y2 - int(vehicle_h * 0.3)
-        if center_y2 > center_y1:
-            center_crop = frame[center_y1:center_y2, x1:x2]
-            if center_crop.size > 0:
-                regions.append((center_crop, (x1, center_y1, x2, center_y2), "central"))
-        
-        return regions
-    
     def _evaluate_plate_quality(self, plate_crop):
         """Evalúa la calidad de un recorte de placa para seleccionar el mejor"""
         if plate_crop is None or plate_crop.size == 0:
@@ -4869,35 +4364,6 @@ class VideoPlayerOpenCV:
             print(f"Error en fallback: {e}")
             return None, 0.0
 
-    def _detect_plates_in_region(self, region):
-        """Detecta placas específicamente en una región usando el modelo YOLO"""
-        try:
-            if region is None or region.size == 0:
-                return []
-            
-            # Usar el detector YOLO existente para placas
-            if hasattr(self, 'plate_detector') and self.plate_detector:
-                results = self.plate_detector.predict(region, conf=0.25, verbose=False)
-                
-                detections = []
-                for result in results:
-                    if hasattr(result, 'boxes') and result.boxes is not None:
-                        boxes = result.boxes.cpu().numpy()
-                        for box in boxes:
-                            # Extraer coordenadas y confianza
-                            x1, y1, x2, y2 = box.xyxy[0]
-                            conf = box.conf[0]
-                            detections.append([x1, y1, x2, y2, conf])
-                
-                return detections
-            else:
-                # Fallback: usar detección básica por contornos
-                return self._basic_plate_detection(region)
-                
-        except Exception as e:
-            print(f"Error detectando placas en región: {e}")
-            return []
-    
     def _basic_plate_detection(self, region):
         """Detección básica de placas usando contornos como fallback"""
         try:
@@ -4942,50 +4408,6 @@ class VideoPlayerOpenCV:
             print(f"Error en detección básica: {e}")
             return []
     
-    def _apply_super_resolution(self, plate_image, is_night=False):
-        """
-        Aplica super-resolución avanzada y mejoras a la imagen de la placa
-        con redimensionado 3x, denoising, sharpening, y centrado automático
-        """
-        if plate_image is None or plate_image.size == 0:
-            return plate_image
-        
-        try:
-            # 1. REDIMENSIONAR con interpolación cúbica (3x más grande)
-            h, w = plate_image.shape[:2]
-            new_w, new_h = w * 3, h * 3  # 3x más grande para mejor OCR
-            
-            upscaled = cv2.resize(plate_image, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
-            
-            # 2. DENOISING para limpiar la imagen
-            if is_night:
-                # Más agresivo para condiciones nocturnas
-                denoised = cv2.fastNlMeansDenoisingColored(upscaled, None, 10, 10, 7, 21)
-            else:
-                denoised = cv2.fastNlMeansDenoisingColored(upscaled, None, 6, 6, 7, 21)
-            
-            # 3. CLAHE para balance de luz (sin sharpening destructivo)
-            lab = cv2.cvtColor(upscaled, cv2.COLOR_BGR2LAB)
-            l, a, b = cv2.split(lab)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-            l = clahe.apply(l)
-            merged = cv2.merge([l, a, b])
-            final_image = cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
-            
-            # 5. RETORNAR IMAGEN MEJORADA SIN LIENZO GRIS
-            # El motor LPRNet prefiere el recorte limpio sin rellenos artificiales que confundan el stretching
-            print(f"🔍 Super-resolución: {w}x{h} → {new_w}x{new_h}")
-            return final_image
-            
-        except Exception as e:
-            print(f"Error en super-resolución avanzada: {e}")
-            # Fallback simple: solo redimensionar 2x
-            try:
-                h, w = plate_image.shape[:2]
-                return cv2.resize(plate_image, (w*2, h*2), interpolation=cv2.INTER_CUBIC)
-            except:
-                return plate_image
-
     def classify_detection_quality(self, plate_text, detection_confidence=0.5, return_metadata=True):
         """
         Clasifica si una detección es NID (correcta) o NIE (errónea)
