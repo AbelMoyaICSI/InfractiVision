@@ -264,6 +264,70 @@ class VehicleDetector:
         
         return detections
 
+    def detect_batch(
+        self, frames: list, conf: float | None = None
+    ) -> list[list[tuple]]:
+        """
+        Run YOLO inference on a batch of frames for maximum GPU throughput.
+
+        Args:
+            frames: list of BGR images (np.ndarray).
+            conf: confidence threshold (None = adaptive auto).
+
+        Returns:
+            List of detection lists — one list per input frame.
+            Each detection is (x1, y1, x2, y2, cls_id).
+        """
+        import time
+
+        valid_classes = [2, 5, 7]  # car, bus, truck
+
+        if conf is None:
+            # pick a safe default for batch processing
+            conf = 0.30
+
+        t0 = time.time()
+
+        results = self.model.predict(
+            frames,
+            conf=conf,
+            verbose=False,
+            max_det=self.max_det,
+            imgsz=self.imgsz,
+            device=self.device,
+            classes=valid_classes,
+            stream=False,  # batch mode
+        )
+
+        all_detections: list[list[tuple]] = []
+        for r in results:
+            dets: list[tuple] = []
+            for box in r.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cls_id = int(box.cls[0])
+                conf_val = float(box.conf[0])
+                if conf_val >= conf and cls_id in valid_classes:
+                    dets.append((x1, y1, x2, y2, cls_id))
+            all_detections.append(dets)
+
+        # Update stats
+        elapsed = time.time() - t0
+        n_total = sum(len(d) for d in all_detections)
+        self.detection_stats["total_detections"] += n_total
+        self.detection_stats["processing_times"].append(elapsed / max(len(frames), 1))
+        if len(self.detection_stats["processing_times"]) > 100:
+            self.detection_stats["processing_times"] = (
+                self.detection_stats["processing_times"][-100:]
+            )
+
+        if self.detection_stats["processing_times"]:
+            avg_t = sum(self.detection_stats["processing_times"]) / len(
+                self.detection_stats["processing_times"]
+            )
+            self.detection_stats["average_fps"] = 1.0 / avg_t if avg_t > 0 else 0
+
+        return all_detections
+
     def _get_class_name(self, cls_id):
         """Retorna el nombre amigable de la clase"""
         names = {2: "Carro", 5: "Bus", 7: "Camion"}

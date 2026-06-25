@@ -1,0 +1,118 @@
+{
+    "NID": 0,
+    "TR": 0,
+    "TI": 0,
+    "NIE": 0,
+    "videos_verdad": [
+        {
+            "path_name": "VID4EDIT \u2010 Hecho con Clipchamp.mp4",
+            "time": 185,
+            "green": 30,
+            "yellow": 5,
+            "red": 40,
+            "infraccione": 0,
+            "ingfraccion_able_detec": 0,
+            "cars": []
+        },
+        {
+            "path_name": "Traffic IP Camera video (DEMO 1).mp4",
+            "time": 30,
+            "green": 10,
+            "yellow": 3,
+            "red": 15,
+            "infraccione": 0,
+            "ingfraccion_able_detec": 0,
+            "cars": []
+        },
+        {
+            "path_name": "Av-Condorcanqui.mp4",
+            "time": 403,
+            "green": 40,
+            "yellow": 5,
+            "red": 50,
+            "infraccione": 0,
+            "ingfraccion_able_detec": 0,
+            "cars": []
+        },
+        {
+            "path_name": "VID2EDIT \u2010 Hecho con Clipchamp.mp4",
+            "time": 114,
+            "green": 10,
+            "yellow": 3,
+            "red": 15,
+            "infraccione": 0,
+            "ingfraccion_able_detec": 0,
+            "cars": []
+        },
+        {
+            "path_name": "VID7EDIT \u2010 Hecho con Clipchamp.mp4",
+            "time": 530,
+            "green": 5,
+            "yellow": 5,
+            "red": 30,
+            "infraccione": 0,
+            "ingfraccion_able_detec": 0,
+            "cars": []
+        },
+        {
+            "path_name": "VID1EDIT \u2010 Hecho con Clipchamp.mp4",
+            "time": 79,
+            "green": 15,
+            "yellow": 3,
+            "red": 15,
+            "infraccione": 0,
+            "ingfraccion_able_detec": 0,
+            "cars": []
+        },
+        {
+            "path_name": "VID2COLISEO.MOV",
+            "time": 201,
+            "green": 15,
+            "yellow": 3,
+            "red": 20,
+            "infraccione": 0,
+            "ingfraccion_able_detec": 0,
+            "cars": []
+        },
+        {
+            "path_name": "Night Time Traffic Camera video (DEMO 4).mp4",
+            "time": 12,
+            "green": 30,
+            "yellow": 5,
+            "red": 30,
+            "infraccione": 0,
+            "ingfraccion_able_detec": 0,
+            "cars": []
+        },
+        {
+            "path_name": "VID5EDIT \u2010 Hecho con Clipchamp.mp4",
+            "time": 214,
+            "green": 30,
+            "yellow": 5,
+            "red": 60,
+            "infraccione": 0,
+            "ingfraccion_able_detec": 0,
+            "cars": []
+        },
+        {
+            "path_name": "VID6EDIT \u2010 Hecho con Clipchamp.mp4",
+            "time": 139,
+            "green": 30,
+            "yellow": 5,
+            "red": 40,
+            "infraccione": 0,
+            "ingfraccion_able_detec": 0,
+            "cars": []
+        },
+        {
+            "path_name": "VIDEO1COLISEO-003.mp4",
+            "time": 1097,
+            "green": 30,
+            "yellow": 5,
+            "red": 50,
+            "infraccione": 0,
+            "ingfraccion_able_detec": 0,
+            "cars": []
+        }
+    ]
+}
