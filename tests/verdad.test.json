@@ -5,8 +5,26 @@
     "NIE": 0,
     "videos_verdad": [
         {
-            "path_name": "VID4EDIT \u2010 Hecho con Clipchamp.mp4",
+            "path_name": "VID4EDIT ‐ Hecho con Clipchamp.mp4",
             "time": 185,
+            "polygon": [
+                [
+                    697,
+                    605
+                ],
+                [
+                    1600,
+                    599
+                ],
+                [
+                    1920,
+                    673
+                ],
+                [
+                    856,
+                    679
+                ]
+            ],
             "green": 30,
             "yellow": 5,
             "red": 40,
@@ -17,6 +35,24 @@
         {
             "path_name": "Traffic IP Camera video (DEMO 1).mp4",
             "time": 30,
+            "polygon": [
+                [
+                    1125,
+                    221
+                ],
+                [
+                    1027,
+                    354
+                ],
+                [
+                    1893,
+                    333
+                ],
+                [
+                    1887,
+                    230
+                ]
+            ],
             "green": 10,
             "yellow": 3,
             "red": 15,
@@ -27,6 +63,24 @@
         {
             "path_name": "Av-Condorcanqui.mp4",
             "time": 403,
+            "polygon": [
+                [
+                    386,
+                    838
+                ],
+                [
+                    1346,
+                    759
+                ],
+                [
+                    1757,
+                    897
+                ],
+                [
+                    578,
+                    1030
+                ]
+            ],
             "green": 40,
             "yellow": 5,
             "red": 50,
@@ -35,8 +89,26 @@
             "cars": []
         },
         {
-            "path_name": "VID2EDIT \u2010 Hecho con Clipchamp.mp4",
+            "path_name": "VID2EDIT ‐ Hecho con Clipchamp.mp4",
             "time": 114,
+            "polygon": [
+                [
+                    286,
+                    895
+                ],
+                [
+                    1149,
+                    770
+                ],
+                [
+                    1598,
+                    874
+                ],
+                [
+                    496,
+                    1027
+                ]
+            ],
             "green": 10,
             "yellow": 3,
             "red": 15,
@@ -45,8 +117,26 @@
             "cars": []
         },
         {
-            "path_name": "VID7EDIT \u2010 Hecho con Clipchamp.mp4",
+            "path_name": "VID7EDIT ‐ Hecho con Clipchamp.mp4",
             "time": 530,
+            "polygon": [
+                [
+                    357,
+                    599
+                ],
+                [
+                    50,
+                    794
+                ],
+                [
+                    1473,
+                    1072
+                ],
+                [
+                    1660,
+                    768
+                ]
+            ],
             "green": 5,
             "yellow": 5,
             "red": 30,
@@ -55,8 +145,26 @@
             "cars": []
         },
         {
-            "path_name": "VID1EDIT \u2010 Hecho con Clipchamp.mp4",
+            "path_name": "VID1EDIT ‐ Hecho con Clipchamp.mp4",
             "time": 79,
+            "polygon": [
+                [
+                    593,
+                    818
+                ],
+                [
+                    1081,
+                    717
+                ],
+                [
+                    1444,
+                    791
+                ],
+                [
+                    788,
+                    960
+                ]
+            ],
             "green": 15,
             "yellow": 3,
             "red": 15,
@@ -67,6 +175,24 @@
         {
             "path_name": "VID2COLISEO.MOV",
             "time": 201,
+            "polygon": [
+                [
+                    2049,
+                    1665
+                ],
+                [
+                    2321,
+                    1600
+                ],
+                [
+                    3633,
+                    1725
+                ],
+                [
+                    3467,
+                    1843
+                ]
+            ],
             "green": 15,
             "yellow": 3,
             "red": 20,
@@ -77,39 +203,27 @@
         {
             "path_name": "Night Time Traffic Camera video (DEMO 4).mp4",
             "time": 12,
+            "polygon": [
+                [
+                    1160,
+                    147
+                ],
+                [
+                    1060,
+                    256
+                ],
+                [
+                    1831,
+                    239
+                ],
+                [
+                    1884,
+                    129
+                ]
+            ],
             "green": 30,
             "yellow": 5,
             "red": 30,
-            "infraccione": 0,
-            "ingfraccion_able_detec": 0,
-            "cars": []
-        },
-        {
-            "path_name": "VID5EDIT \u2010 Hecho con Clipchamp.mp4",
-            "time": 214,
-            "green": 30,
-            "yellow": 5,
-            "red": 60,
-            "infraccione": 0,
-            "ingfraccion_able_detec": 0,
-            "cars": []
-        },
-        {
-            "path_name": "VID6EDIT \u2010 Hecho con Clipchamp.mp4",
-            "time": 139,
-            "green": 30,
-            "yellow": 5,
-            "red": 40,
-            "infraccione": 0,
-            "ingfraccion_able_detec": 0,
-            "cars": []
-        },
-        {
-            "path_name": "VIDEO1COLISEO-003.mp4",
-            "time": 1097,
-            "green": 30,
-            "yellow": 5,
-            "red": 50,
             "infraccione": 0,
             "ingfraccion_able_detec": 0,
             "cars": []

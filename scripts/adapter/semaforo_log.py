@@ -76,7 +76,7 @@ def compute_transitions(
 def iterate_all_videos(json_path: Path) -> List[dict]:
     """Lee ``videos_verdad`` y retorna entradas válidas (g/y/r no todos cero).
 
-    Cada entrada retornada es ``{path_name, time, green, yellow, red}``.
+    Cada entrada retornada es ``{path_name, time, polygon, green, yellow, red}``.
     Entradas con ``green=yellow=red=0`` se filtran (calibración inválida).
     Lanza ``OSError`` si el archivo no existe, ``json.JSONDecodeError``
     si está mal formado.
@@ -93,6 +93,7 @@ def iterate_all_videos(json_path: Path) -> List[dict]:
             result.append({
                 "path_name": entry.get("path_name", "?"),
                 "time": int(entry.get("time", 0)),
+                "polygon": entry.get("polygon", []),
                 "green": g,
                 "yellow": y,
                 "red": r,

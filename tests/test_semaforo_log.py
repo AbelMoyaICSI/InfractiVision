@@ -113,15 +113,18 @@ class TestComputeTransitions:
 
 class TestIterateAllVideos:
     def test_reads_real_json(self):
-        """Lee el JSON real del repo; todas las entradas tienen g/y/r > 0."""
+        """Lee el JSON real del repo; todas las entradas tienen g/y/r > 0
+        y polygon (4 puntos o []). Después del merge, son 8 videos
+        (los 3 sin polygon fueron eliminados)."""
         videos = iterate_all_videos(VERDAD_JSON)
-        assert len(videos) == 11
+        assert len(videos) == 8
         for v in videos:
             assert "path_name" in v
             assert "time" in v
             assert v["green"] > 0
             assert v["yellow"] > 0
             assert v["red"] > 0
+            assert "polygon" in v
 
     def test_returns_known_video(self):
         videos = iterate_all_videos(VERDAD_JSON)
@@ -131,6 +134,10 @@ class TestIterateAllVideos:
         assert coliseo[0]["yellow"] == 3
         assert coliseo[0]["red"] == 20
         assert coliseo[0]["time"] == 201
+        # Polygon merge: VID2COLISEO.MOV tiene 4 puntos
+        assert len(coliseo[0]["polygon"]) == 4
+        assert coliseo[0]["polygon"][0] == [2049, 1665]
+        assert coliseo[0]["polygon"][-1] == [3467, 1843]
 
     def test_filters_zero_durations(self, tmp_path):
         """Entradas con g=y=r=0 se filtran."""
@@ -138,9 +145,11 @@ class TestIterateAllVideos:
         cfg.write_text(json.dumps({
             "videos_verdad": [
                 {"path_name": "good.mp4", "time": 100,
-                 "green": 10, "yellow": 3, "red": 15},
+                 "green": 10, "yellow": 3, "red": 15,
+                 "polygon": [[1, 2], [3, 4]]},
                 {"path_name": "invalid.mp4", "time": 50,
-                 "green": 0, "yellow": 0, "red": 0},
+                 "green": 0, "yellow": 0, "red": 0,
+                 "polygon": []},
             ]
         }), encoding="utf-8")
         videos = iterate_all_videos(cfg)
@@ -162,6 +171,43 @@ class TestIterateAllVideos:
         cfg = tmp_path / "empty.json"
         cfg.write_text(json.dumps({"other_key": []}), encoding="utf-8")
         assert iterate_all_videos(cfg) == []
+
+    def test_all_videos_have_polygon_after_merge(self):
+        """Después del merge, las 8 entradas tienen polygon (4 puntos)."""
+        videos = iterate_all_videos(VERDAD_JSON)
+        assert len(videos) == 8
+        for v in videos:
+            assert isinstance(v["polygon"], list)
+            assert len(v["polygon"]) == 4, (
+                f"{v['path_name']} no tiene 4 puntos en polygon: {v['polygon']}"
+            )
+            for point in v["polygon"]:
+                assert len(point) == 2
+                assert all(isinstance(c, int) for c in point)
+
+    def test_polygon_matches_polygon_config(self):
+        """El polygon en verdad.test.json coincide con polygon_config.json."""
+        import json
+        from pathlib import Path
+        poly_data = json.loads(
+            (Path(__file__).parent.parent / "config" / "polygon_config.json")
+            .read_text(encoding="utf-8")
+        )
+        videos = iterate_all_videos(VERDAD_JSON)
+        for v in videos:
+            name = v["path_name"]
+            assert name in poly_data, f"{name} no está en polygon_config.json"
+            assert v["polygon"] == poly_data[name], (
+                f"polygon mismatch en {name}"
+            )
+
+    def test_no_videos_without_polygon_in_merged_json(self):
+        """Los 3 videos eliminados (VID5EDIT, VID6EDIT, VIDEO1COLISEO) NO están."""
+        videos = iterate_all_videos(VERDAD_JSON)
+        names = {v["path_name"] for v in videos}
+        assert "VID5EDIT ‐ Hecho con Clipchamp.mp4" not in names
+        assert "VID6EDIT ‐ Hecho con Clipchamp.mp4" not in names
+        assert "VIDEO1COLISEO-003.mp4" not in names
 
 
 # ── build_parser ─────────────────────────────────────────────────────
@@ -223,14 +269,18 @@ class TestRunBatchMode:
 
         # Header de batch completo
         assert "=== START Semaforo Log (batch completo) ===" in content
-        # 11 secciones
-        for i in range(1, 12):
-            assert f"[{i}/11]" in content, f"Falta sección [{i}/11]"
+        # 8 secciones (post-merge, los videos sin polygon fueron eliminados)
+        for i in range(1, 9):
+            assert f"[{i}/8]" in content, f"Falta sección [{i}/8]"
         # Algunos videos conocidos
         assert "VID2COLISEO.MOV" in content
         assert "Av-Condorcanqui.mp4" in content
+        # Videos eliminados (sin polygon) NO deben aparecer
+        assert "VID5EDIT" not in content
+        assert "VID6EDIT" not in content
+        assert "VIDEO1COLISEO-003" not in content
         # Resumen final
-        assert "Total videos: 11" in content
+        assert "Total videos: 8" in content
         assert "=== END Semaforo Log ===" in content
 
     def test_no_cv2_imports_or_calls(self, tmp_path):
@@ -246,7 +296,7 @@ class TestRunBatchMode:
         fh.close()
 
     def test_total_transitions_counted(self, tmp_path):
-        """El contador global suma las transiciones de los 11 videos."""
+        """El contador global suma las transiciones de los 8 videos."""
         log_path = tmp_path / "semaforo.log"
         logger = self._make_logger()
         fh = logging.FileHandler(log_path, mode="w", encoding="utf-8")
@@ -262,9 +312,9 @@ class TestRunBatchMode:
         assert m is not None
         total = int(m.group(1))
         # Cota inferior: cada video tiene al menos 1 transición
-        assert total >= 11
+        assert total >= 8
         # Cota superior: cada video tiene <= 3 * (duration/ciclo) transiciones
-        # 11 videos con duraciones entre 12 y 1097, ciclos entre 28 y 95
+        # 8 videos con duraciones entre 12 y 530, ciclos entre 28 y 95
         # estimación: < 200 transiciones globales
         assert total < 500
 
