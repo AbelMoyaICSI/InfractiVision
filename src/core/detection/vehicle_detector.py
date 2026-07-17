@@ -1,7 +1,17 @@
 import cv2
+import os
 import torch
 import psutil
 import numpy as np
+
+# PyTorch 2.6+ changed torch.load default to weights_only=True
+# ultralytics 8.x still needs weights_only=False for DetectionModel unpickling
+_original_torch_load = torch.load
+def _patched_torch_load(*args, **kwargs):
+    kwargs.setdefault("weights_only", False)
+    return _original_torch_load(*args, **kwargs)
+torch.load = _patched_torch_load
+
 from ultralytics import YOLO
 
 class VehicleDetector:
@@ -36,7 +46,7 @@ class VehicleDetector:
             'hardware_score': self.hardware_info['score']
         }
         
-        print(f"🚀 VehicleDetector: {self.hardware_info['description']}")
+        print(f"[VehicleDetector] {self.hardware_info['description']}")
 
     def _detect_hardware_capabilities(self):
         """Detecta capacidades avanzadas del hardware para configuración óptima"""
@@ -111,11 +121,11 @@ class VehicleDetector:
             self.conf_threshold = 0.25  # Reducido para detectar más vehículos
             self.max_det = 50
             self.batch_size = 1
-            print("�️  Configuración CPU OPTIMIZADA:")
-            print(f"   📏 Tamaño de imagen: {self.imgsz}px (múltiplo de 32 para YOLO)")
-            print(f"   🎯 Umbral confianza: {self.conf_threshold} (reducido para mejor detección)")
-            print(f"   ⚡ Max detecciones: {self.max_det}")
-            print(f"   💡 Procesamiento optimizado para CPU")
+            print("[CPU] Configuracion CPU OPTIMIZADA:")
+            print(f"   Tamano de imagen: {self.imgsz}px (multiple de 32 para YOLO)")
+            print(f"   Umbral confianza: {self.conf_threshold} (reducido para mejor deteccion)")
+            print(f"   Max detecciones: {self.max_det}")
+            print(f"   Procesamiento optimizado para CPU")
             return
         
         # Resto de configuraciones para GPU
@@ -124,25 +134,25 @@ class VehicleDetector:
             self.conf_threshold = 0.25
             self.max_det = 150
             self.batch_size = 4
-            print("� Configuración ULTRA: Hardware de gama alta detectado")
+            print("[GPU] Configuracion ULTRA: Hardware de gama alta detectado")
         elif score >= 60:  # Hardware potente  
             self.imgsz = 640
             self.conf_threshold = 0.3
             self.max_det = 100
             self.batch_size = 2
-            print("🚀 Configuración ALTA: Hardware potente detectado")
+            print("[GPU] Configuracion ALTA: Hardware potente detectado")
         elif score >= 40:  # Hardware medio
             self.imgsz = 480
             self.conf_threshold = 0.35
             self.max_det = 75
             self.batch_size = 1
-            print("⚡ Configuración MEDIA: Hardware estándar detectado")
+            print("[GPU] Configuracion MEDIA: Hardware estandar detectado")
         else:  # Hardware básico con GPU
             self.imgsz = 416
             self.conf_threshold = 0.4
             self.max_det = 50
             self.batch_size = 1
-            print("💻 Configuración BÁSICA GPU")
+            print("[GPU] Configuracion BASICA GPU")
         
         # Configuración adicional para GPU
         if self.using_gpu and self.hardware_info['gpu']['memory'] > 0:

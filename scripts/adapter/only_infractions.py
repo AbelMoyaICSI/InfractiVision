@@ -173,11 +173,18 @@ class OnlyInfractionsPipeline:
         log: logging.Logger,
         crops_dir: str,
         use_new: bool = False,
+        speed: int | None = None,
     ) -> None:
         self.config = config
         self.log = log
         self.crops_dir = crops_dir
         self.use_new = use_new
+        # Fixed processing speed: when set, overrides AdaptiveSkipController.
+        # --new defaults to 60x; --speed N overrides it.
+        if use_new:
+            self.speed = speed if speed is not None else 60
+        else:
+            self.speed = speed  # legacy ignores speed (None = use legacy skip)
         os.makedirs(self.crops_dir, exist_ok=True)
 
         # Single-thread executor for the JPG crop writes. JPEG
@@ -530,20 +537,16 @@ class OnlyInfractionsPipeline:
                 )
 
             # Skip decision
-            if self.use_new:
-                # AdaptiveSkipController (time-budget aware). See
-                # adaptive_skip.py for the policy. The old
-                # "current_state != red" exception is dropped
-                # because the controller's red+active branch
-                # already returns 1 when the system keeps up with
-                # budget.
+            # speed set → fixed rate (overrides adaptive/legacy skip)
+            # --new without speed → AdaptiveSkipController (time-budget aware)
+            # legacy (no --new) → hardcoded rates
+            if self.speed:
+                skip_rate = self.speed
+            elif self.use_new:
                 skip_rate = self.skip_controller.suggest_skip(
                     current_state, tracker.active_count
                 )
             else:
-                # Legacy hardcoded skip rates (reconstructed from
-                # docs/REFACTOR_CPU_PIPELINE.md section 4 — no
-                # pre-refactor version exists in git history).
                 skip_rate = _legacy_skip_rate(
                     current_state, tracker.active_count
                 )
@@ -564,7 +567,7 @@ class OnlyInfractionsPipeline:
                     infractions_raw,
                     display,
                 )
-                if self.use_new:
+                if self.use_new and not self.speed:
                     elapsed_ms = (time.perf_counter() - t0) * 1000.0
                     self.skip_controller.record(
                         elapsed_ms, len(frames_batch)
@@ -584,7 +587,7 @@ class OnlyInfractionsPipeline:
                 infractions_raw,
                 display,
             )
-            if self.use_new:
+            if self.use_new and not self.speed:
                 elapsed_ms = (time.perf_counter() - t0) * 1000.0
                 self.skip_controller.record(elapsed_ms, len(frames_batch))
             processed += len(frames_batch)
@@ -720,6 +723,13 @@ def build_parser() -> argparse.ArgumentParser:
              "con skip fijo, decode síncrono, sin profiler, batch_size=4.",
     )
     parser.add_argument(
+        "--speed",
+        type=int,
+        default=None,
+        help="Velocidad de procesamiento (skip fijo). Con --new: default 60. "
+             "Sin --new: se ignora (legacy skip). Ej: --new --speed 120.",
+    )
+    parser.add_argument(
         "--config",
         default=None,
         help="JSON de configuración (polígono + semáforo + avenida). "
@@ -787,8 +797,9 @@ def main() -> None:
     # Only with --new; in legacy mode the defaults (8+8) are kept.
     if args.new:
         budget = configure_thread_budget()
+        speed = args.speed if args.speed is not None else 60
         print("⚙️  Thread budget:", budget)
-        print("✨ Modo --new: refactor CPU/iGPU activo")
+        print(f"✨ Modo --new: procesamiento a {speed}x")
     else:
         print("ℹ️  Modo clásico (sin --new): skip fijo, decode síncrono, "
               "sin profiler, batch_size=4")
@@ -814,7 +825,7 @@ def main() -> None:
 
     # ── Run pipeline ─────────────────────────────────────────────
     pipeline = OnlyInfractionsPipeline(
-        config, log, crops_dir, use_new=bool(args.new)
+        config, log, crops_dir, use_new=bool(args.new), speed=args.speed
     )
 
     t_wall_start = time.time()

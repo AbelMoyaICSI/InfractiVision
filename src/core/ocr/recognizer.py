@@ -45,37 +45,36 @@ SIIV_REGIONS = {
 _lprnet_predictor = None
 _lprnet_lock = threading.Lock()
 
-def get_lprnet_predictor():
+def get_lprnet_predictor(model_path=None):
     global _lprnet_predictor
     with _lprnet_lock:
         if _lprnet_predictor is None:
-            _lprnet_predictor = LPRNetPredictor()
+            _lprnet_predictor = LPRNetPredictor(model_path=model_path)
     return _lprnet_predictor
 
 # ============================================================================
 # FUNCIÓN PRINCIPAL DE RECONOCIMIENTO (MODO DIRECTO)
 # ============================================================================
 
-def recognize_plate(plate_bgr, is_night=False, return_processed=False, autocrop=True, regional_context="Trujillo"):
+def recognize_plate(plate_bgr, is_night=False, return_processed=False, autocrop=True, regional_context="Trujillo", preprocessed=False, model_path=None):
     """
     RECONOCIMIENTO DIRECTO TRUJILLO SIIV
     Usa el modelo LPRNet MASTER_FINAL entrenado por Abel.
     Retorna (texto_formateado, confianza) o (texto, conf, cropped_img)
     """
     try:
-        predictor = get_lprnet_predictor()
-        # Inferencia directa con Autocrop y Stretching interno
+        predictor = get_lprnet_predictor(model_path=model_path)
         if return_processed:
-            decoded, confidence, cropped = predictor.predict(plate_bgr, return_processed=True, autocrop=autocrop)
+            decoded, confidence, cropped = predictor.predict(plate_bgr, return_processed=True, autocrop=autocrop, preprocessed=preprocessed)
             formatted = format_siiv_plate(decoded, regional_context)
             return formatted, confidence, cropped
         else:
-            decoded, confidence = predictor.predict(plate_bgr, autocrop=autocrop)
+            decoded, confidence = predictor.predict(plate_bgr, autocrop=autocrop, preprocessed=preprocessed)
             formatted = format_siiv_plate(decoded, regional_context)
             return formatted, confidence
             
     except Exception as e:
-        print(f"❌ Error en Reconocimiento LPRNet: {e}")
+        print(f"[Error LPRNet] {e}")
         if return_processed:
             return "", 0.0, plate_bgr
         return "", 0.0

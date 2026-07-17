@@ -59,7 +59,7 @@ class PlateDetector:
             self.model.to(self.device)
             if self.half:
                 self.model.half()
-            print(f"🚀 PlateDetector: MODO TURBO ACTIVADO ({self.device})")
+            print(f"[PlateDetector] MODO TURBO ACTIVADO ({self.device})")
         
         # Estadísticas de rendimiento
         self.detection_stats = {
@@ -102,7 +102,7 @@ class PlateDetector:
             
             if is_night:
                 self.detection_stats['night_detections'] += 1
-                print("🌙 PlateDetector: Enhanced night mode activated with multi-capture")
+                print("[PlateDetector] Enhanced night mode activated with multi-capture")
             
             # Optimizar imagen para mejor detección con multi-capture para noche
             if is_night:
@@ -381,7 +381,7 @@ class PlateDetector:
     def _select_best_night_enhancement(self, image):
         """Selecciona la mejor mejora nocturna probando múltiples técnicas"""
         try:
-            print("🔍 PlateDetector: Generating multiple night enhancement variants...")
+            print("[PlateDetector] Generating multiple night enhancement variants...")
             
             # Generar múltiples variantes
             variants = []
@@ -417,17 +417,17 @@ class PlateDetector:
             
             for name, variant in variants:
                 score = self._evaluate_night_variant(variant)
-                print(f"🔍 Variant '{name}': score {score:.3f}")
+                print(f"[Variant] '{name}': score {score:.3f}")
                 
                 if score > best_score:
                     best_score = score
                     best_variant = variant
             
             if best_variant is not None:
-                print(f"🎯 Selected best night variant with score {best_score:.3f}")
+                print(f"[PlateDetector] Selected best night variant with score {best_score:.3f}")
                 return best_variant
             else:
-                print("⚠️ No good variant found, using standard enhancement")
+                print("[PlateDetector] No good variant found, using standard enhancement")
                 return self._apply_night_enhancement(image)
                 
         except Exception as e:

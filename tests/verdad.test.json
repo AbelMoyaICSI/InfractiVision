@@ -1,8 +1,8 @@
 {
-    "NID": 0,
-    "TR": 0,
-    "TI": 0,
-    "NIE": 0,
+    "NID": 6,
+    "TR": 360,
+    "TI": 60,
+    "NIE": 4,
     "videos_verdad": [
         {
             "path_name": "VID4EDIT ‐ Hecho con Clipchamp.mp4",
@@ -28,9 +28,20 @@
             "green": 30,
             "yellow": 5,
             "red": 40,
-            "infraccione": 0,
-            "ingfraccion_able_detec": 0,
-            "cars": []
+            "infraccione": 10,
+            "ingfraccion_able_detec": 10,
+            "cars": [
+                "CEK390",
+                "T3G464",
+                "T4Z499",
+                "M5M516",
+                "T5U677",
+                "M3P299",
+                "V7T222",
+                "T70644",
+                "T6C470",
+                "T1T646"
+            ]
         },
         {
             "path_name": "Traffic IP Camera video (DEMO 1).mp4",
@@ -56,9 +67,14 @@
             "green": 10,
             "yellow": 3,
             "red": 15,
-            "infraccione": 0,
-            "ingfraccion_able_detec": 0,
-            "cars": []
+            "infraccione": 4,
+            "ingfraccion_able_detec": 4,
+            "cars": [
+                "APH188",
+                "A3K961",
+                "A968B6",
+                "AV6190"
+            ]
         },
         {
             "path_name": "Av-Condorcanqui.mp4",
@@ -84,9 +100,18 @@
             "green": 40,
             "yellow": 5,
             "red": 50,
-            "infraccione": 0,
-            "ingfraccion_able_detec": 0,
-            "cars": []
+            "infraccione": 8,
+            "ingfraccion_able_detec": 8,
+            "cars": [
+                "BMO536",
+                "BO7451",
+                "BMJ851",
+                "C50941",
+                "VAA850",
+                "T3F170",
+                "T4N392",
+                "M3V662"
+            ]
         },
         {
             "path_name": "VID2EDIT ‐ Hecho con Clipchamp.mp4",
@@ -112,9 +137,24 @@
             "green": 10,
             "yellow": 3,
             "red": 15,
-            "infraccione": 0,
-            "ingfraccion_able_detec": 0,
-            "cars": []
+            "infraccione": 14,
+            "ingfraccion_able_detec": 14,
+            "cars": [
+                "T5M212",
+                "TEQ850",
+                "T2Q914",
+                "ABJ746",
+                "T4C222",
+                "P3S454",
+                "BVJ513",
+                "T7C065",
+                "T9S885",
+                "T4E110",
+                "T5T045",
+                "T7Q367",
+                "T5X243",
+                "T6C533"
+            ]
         },
         {
             "path_name": "VID7EDIT ‐ Hecho con Clipchamp.mp4",
@@ -140,9 +180,22 @@
             "green": 5,
             "yellow": 5,
             "red": 30,
-            "infraccione": 0,
-            "ingfraccion_able_detec": 0,
-            "cars": []
+            "infraccione": 12,
+            "ingfraccion_able_detec": 12,
+            "cars": [
+                "F5P035",
+                "T1D547",
+                "T6D461",
+                "T2V265",
+                "T6P400",
+                "T6E290",
+                "T7U596",
+                "T7U009",
+                "T3H169",
+                "T6Y544",
+                "T7R868",
+                "EUH662"
+            ]
         },
         {
             "path_name": "VID1EDIT ‐ Hecho con Clipchamp.mp4",
@@ -168,9 +221,17 @@
             "green": 15,
             "yellow": 3,
             "red": 15,
-            "infraccione": 0,
-            "ingfraccion_able_detec": 0,
-            "cars": []
+            "infraccione": 7,
+            "ingfraccion_able_detec": 7,
+            "cars": [
+                "CDY070",
+                "T5K479",
+                "T4X198",
+                "BUR396",
+                "BUJ851",
+                "ADC145",
+                "BPX306"
+            ]
         },
         {
             "path_name": "VID2COLISEO.MOV",
@@ -196,9 +257,14 @@
             "green": 15,
             "yellow": 3,
             "red": 20,
-            "infraccione": 0,
-            "ingfraccion_able_detec": 0,
-            "cars": []
+            "infraccione": 4,
+            "ingfraccion_able_detec": 4,
+            "cars": [
+                "BKZ068",
+                "AWV351",
+                "TEN929",
+                "T6T025"
+            ]
         },
         {
             "path_name": "Night Time Traffic Camera video (DEMO 4).mp4",
@@ -221,9 +287,9 @@
                     129
                 ]
             ],
-            "green": 30,
-            "yellow": 5,
-            "red": 30,
+            "green": 5,
+            "yellow": 2,
+            "red": 5,
             "infraccione": 0,
             "ingfraccion_able_detec": 0,
             "cars": []

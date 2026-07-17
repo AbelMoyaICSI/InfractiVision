@@ -111,6 +111,28 @@ class TestArgparseNewFlag:
         assert args.batch_size == 4
         assert args.display is True
 
+    def test_process_video_speed_default_none(self):
+        parser = build_process_parser()
+        args = parser.parse_args(["--video", "x.mp4"])
+        assert args.speed is None
+
+    def test_process_video_speed_with_new(self):
+        parser = build_process_parser()
+        args = parser.parse_args(["--video", "x.mp4", "--new", "--speed", "120"])
+        assert args.new is True
+        assert args.speed == 120
+
+    def test_only_infractions_speed_default_none(self):
+        parser = build_only_inf_parser()
+        args = parser.parse_args(["--video", "x.mp4"])
+        assert args.speed is None
+
+    def test_only_infractions_speed_with_new(self):
+        parser = build_only_inf_parser()
+        args = parser.parse_args(["--video", "x.mp4", "--new", "--speed", "90"])
+        assert args.new is True
+        assert args.speed == 90
+
 
 # ── CLIInfractionPipeline: use_new flag ──────────────────────────────
 
@@ -151,6 +173,7 @@ class TestProcessVideoPipeline:
         pipeline = CLIInfractionPipeline(cfg, use_new=False)
         assert pipeline.batch_size == 4
         assert pipeline.use_new is False
+        assert pipeline.speed is None
         assert pipeline.skip_controller is None
         assert pipeline.profiler is None
 
@@ -175,8 +198,31 @@ class TestProcessVideoPipeline:
         pipeline = CLIInfractionPipeline(cfg, use_new=True)
         assert pipeline.batch_size == 2
         assert pipeline.use_new is True
+        assert pipeline.speed == 60  # default speed for --new
         assert pipeline.skip_controller is not None
         assert pipeline.profiler is not None
+
+    def test_use_new_true_custom_speed(self, monkeypatch):
+        """Con --new --speed 120, speed debe ser 120."""
+        from scripts.adapter.process_video import CLIInfractionPipeline
+
+        class MockDetector:
+            def __init__(self, *a, **kw):
+                pass
+            def detect_batch(self, *a, **kw):
+                return [[] for _ in range(len(a[0]) if a else 0)]
+
+        monkeypatch.setattr(
+            "scripts.adapter.process_video.VehicleDetector", MockDetector
+        )
+        monkeypatch.setattr(
+            "scripts.adapter.process_video.PlateDetector", MockDetector
+        )
+
+        cfg = self._build_config()
+        pipeline = CLIInfractionPipeline(cfg, use_new=True, speed=120)
+        assert pipeline.speed == 120
+        assert pipeline.use_new is True
 
     def test_explicit_batch_size_overrides_default_in_both_modes(self, monkeypatch):
         """--batch-size explícito gana sobre el default en ambos modos."""
@@ -242,6 +288,7 @@ class TestOnlyInfractionsPipeline:
             cfg, logger, crops_dir, use_new=False
         )
         assert pipeline.use_new is False
+        assert pipeline.speed is None
         assert pipeline.crop_writer is None
         assert pipeline.batch_size == 4  # legacy default
 
@@ -270,9 +317,38 @@ class TestOnlyInfractionsPipeline:
             cfg, logger, crops_dir, use_new=True
         )
         assert pipeline.use_new is True
+        assert pipeline.speed == 60  # default speed for --new
         assert isinstance(pipeline.crop_writer, ThreadPoolExecutor)
         assert pipeline.batch_size == 2  # new default
         # Clean up
+        pipeline.crop_writer.shutdown(wait=True)
+
+    def test_use_new_true_custom_speed(self, tmp_path, monkeypatch):
+        """Con --new --speed 90, speed debe ser 90."""
+        from scripts.adapter.only_infractions import OnlyInfractionsPipeline
+        from concurrent.futures import ThreadPoolExecutor
+
+        class MockDetector:
+            def __init__(self, *a, **kw):
+                pass
+            def detect_batch(self, *a, **kw):
+                return [[]]
+
+        monkeypatch.setattr(
+            "scripts.adapter.only_infractions.VehicleDetector", MockDetector
+        )
+
+        import logging
+        logger = logging.getLogger("test_oi")
+        logger.setLevel(logging.WARNING)
+        crops_dir = str(tmp_path / "crops")
+
+        cfg = self._build_config()
+        pipeline = OnlyInfractionsPipeline(
+            cfg, logger, crops_dir, use_new=True, speed=90
+        )
+        assert pipeline.speed == 90
+        assert pipeline.use_new is True
         pipeline.crop_writer.shutdown(wait=True)
 
     def test_use_new_true_has_profiler_and_skip_controller(
