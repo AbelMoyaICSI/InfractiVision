@@ -7,6 +7,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from collections import deque
 import re
+from pathlib import Path
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -30,6 +31,9 @@ from src.domain.services.plate_classification import PlateClassificationSystem
 
 # --- Popups extraídos a su Mixin (Fase 3) ---
 from src.presentation.gui.popups.preprocessing_popups import PreprocessingPopupsMixin
+from src.application.use_cases.process_violation_video import OfficialVideoProcessor
+from src.domain.entities.plate_evidence import PlateEvidence
+from src.presentation.gui.plate_review_window import PlateReviewWindow
 
 
 
@@ -117,6 +121,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         self.progress_value = 0
         self.current_frame = None
         self.detected_infractions = []
+        self._official_infraction_ids = set()
+        self._official_infraction_count = 0
         self.processed_frames = 0
         self.total_frames = 0
         self.result_queue = queue.Queue()
@@ -519,6 +525,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 
                 # Actualizar contadores de Tesis (NID/NIE/Vehículos)
                 total_inf = len(self.detected_infractions)
+                if self._official_infraction_count:
+                    total_inf = max(total_inf, self._official_infraction_count)
                 nid_count = 0
                 for inf in self.detected_infractions:
                     if inf.get('clasificacion') == 'NIE':
@@ -569,6 +577,50 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 # Verificar el tipo de resultado
                 if isinstance(result, tuple) and len(result) == 2:
                     result_type, data = result
+
+                    if result_type == "official_frame":
+                        self.current_frame = data["frame"]
+                        self._update_video_frame(data["frame"])
+                        total = max(1, data.get("total_frames", 1))
+                        self.progress_value = min(99.9, data.get("frame_index", 0) / total * 100)
+                        mode = "análisis completo" if data.get("processed") else "verde: skip x60"
+                        self.details_label.config(text=f"{data.get('state', '').upper()} | {mode} | frame {data.get('frame_index', 0)}/{total}")
+                        continue
+
+                    if result_type == "official_infraction":
+                        track_id = data["track_id"]
+                        if track_id not in self._official_infraction_ids:
+                            self._official_infraction_ids.add(track_id)
+                            self._official_infraction_count = len(self._official_infraction_ids)
+                            self.detected_infractions.append({
+                                "vehicle_id": track_id,
+                                "frame": data["frame_index"],
+                                "timestamp_seconds": data["timestamp_seconds"],
+                                "vehicle_class": data.get("vehicle_class", "VEH"),
+                                "clasificacion": "NID",
+                                "official_detection": True,
+                            })
+                            self.infractions_counter_label.config(
+                                text=f"Infracciones: {self._official_infraction_count}",
+                                foreground="#e74c3c",
+                            )
+                            self.v_count_label.config(text=f"🚗 Vehículos: {self._official_infraction_count}")
+                        continue
+
+                    if result_type == "official_complete":
+                        payload = data
+                        self.progress_value = 100
+                        self.total_frames = int(payload.get("frames", 0))
+                        self.detected_infractions = payload.get("evidence", [])
+                        self._official_infraction_count = int(payload.get("infractor_count", self._official_infraction_count))
+                        self.phase_label.config(text="Análisis completado: revisar placas")
+                        self.details_label.config(text=f"{self._official_infraction_count} infractores detectados | {len(self.detected_infractions)} mejores frames listos para OCR")
+                        self._open_official_review(payload)
+                        continue
+
+                    if result_type == "official_error":
+                        self._show_error(data)
+                        continue
                     
                     if result_type == "frame_update":
                         # data: (display, segment_id, processed, total_frames, abs_f)
@@ -950,6 +1002,71 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
     
     def _process_video(self):
         """Procesa el video utilizando multithreading para detección de infracciones"""
+        try:
+            # The official pipeline owns the complete video-processing flow.
+            # The legacy implementation remains below for compatibility with
+            # older callers, but normal GUI execution uses this path.
+            self._process_video_official()
+            return
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            if hasattr(self, 'dialog') and self.dialog.winfo_exists():
+                self._safe_after(0, lambda msg=str(e): self._show_error(msg))
+
+    def _process_video_official(self):
+        """Run the shared core use case and feed Tk through the result queue."""
+        if not self.polygon_points or not self.cycle_durations:
+            raise ValueError("Este video no está configurado con polígono y semáforo")
+
+        from pathlib import Path
+        from src.infrastructure.configuration import VideoConfigRepository
+
+        project_root = Path(__file__).resolve().parents[2]
+        config = VideoConfigRepository(project_root).require(Path(self.video_path).name)
+        output_dir = Path(resource_path("data/output/official"))
+        self.phase_label.config(text="Procesando con el pipeline oficial...")
+
+        processor = OfficialVideoProcessor(
+            project_root,
+            vehicle_detector=getattr(self.player, "vehicle_detector", None),
+            plate_detector=getattr(self.player, "plate_detector", None),
+        )
+
+        def callback(event):
+            if event["type"] == "frame":
+                self.result_queue.put(("official_frame", event))
+            elif event["type"] == "infraction_detected":
+                self.result_queue.put(("official_infraction", event))
+            elif event["type"] == "complete":
+                self.result_queue.put(("official_complete", event["payload"]))
+
+        try:
+            processor.process(self.video_path, config, output_dir, callback=callback)
+        except Exception as error:
+            self.result_queue.put(("official_error", str(error)))
+
+    def _open_official_review(self, payload):
+        evidences = [PlateEvidence(
+            video_name=item.get("video", Path(self.video_path).name),
+            track_id=int(item.get("vehicle_id", 0)),
+            frame_index=int(item.get("frame", 0)),
+            timestamp_seconds=float(item.get("timestamp_seconds", 0)),
+            vehicle_class=item.get("vehicle_class", "VEH"),
+            quality_score=float(item.get("quality_score", 0)),
+            crop_path=item.get("crop_path", ""),
+            plate_text=item.get("plate", ""),
+            ocr_confidence=float(item.get("ocr_confidence", 0)),
+            ocr_method=item.get("ocr_method", ""),
+            validated=bool(item.get("validated", False)),
+        ) for item in payload.get("evidence", [])]
+        if not evidences:
+            self._complete_processing()
+            return
+        PlateReviewWindow(self.dialog, evidences, Path(resource_path("data/output/official")))
+
+    def _process_video_legacy(self):
+        """Legacy implementation retained below during migration."""
         try:
             # Verificaciones iniciales
             if not self.polygon_points or not self.cycle_durations:

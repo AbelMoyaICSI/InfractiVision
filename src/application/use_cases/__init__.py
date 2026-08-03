@@ -10,4 +10,6 @@ __all__ = [
     "RecognizePlateUseCase",
     "GenerateTicketUseCase",
     "ProcessFrameUseCase",
+    "OfficialVideoProcessor",
 ]
+from .process_violation_video import OfficialVideoProcessor

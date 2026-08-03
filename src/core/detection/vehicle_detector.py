@@ -27,8 +27,10 @@ class VehicleDetector:
         
         if self.using_gpu:
             self.model.to(self.device)
-            if self.half:
-                self.model.half() # Convertir a FP16 para velocidad máxima
+            # NO llamar a model.half() aquí: ultralytics ejecuta model.fuse()
+            # (conv+BN) en predict(), y un modelo ya en FP16 provoca
+            # "expected scalar type Half but found Float". Se pasa half=... a
+            # cada predict() y ultralytics hace half() después del fuse.
         
         # MEJORA: Detección avanzada de hardware y configuración ultra-adaptativa
         self.hardware_info = self._detect_hardware_capabilities()
@@ -229,6 +231,7 @@ class VehicleDetector:
             max_det=self.max_det,
             imgsz=self.imgsz,
             device=self.device,
+            half=self.half,
             classes=valid_classes  # 🚀 FILTRO AGRESIVO: Solo carros, buses y camiones
         )
         
@@ -305,6 +308,7 @@ class VehicleDetector:
             max_det=self.max_det,
             imgsz=self.imgsz,
             device=self.device,
+            half=self.half,
             classes=valid_classes,
             stream=False,  # batch mode
         )

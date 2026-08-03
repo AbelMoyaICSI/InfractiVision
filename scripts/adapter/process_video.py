@@ -179,9 +179,18 @@ def _legacy_skip_rate(current_state: str, active_count: int) -> int:
 class CLIInfractionPipeline:
     """Headless infraction detection pipeline."""
 
-    def __init__(self, config: dict, use_new: bool = False, speed: int | None = None) -> None:
+    def __init__(
+        self,
+        config: dict,
+        use_new: bool = False,
+        speed: int | None = None,
+        save_crops_original: bool = False,
+        best_only: bool = False,
+    ) -> None:
         self.config = config
         self.use_new = use_new
+        self.save_crops_original = save_crops_original
+        self.best_only = best_only
         # Fixed processing speed: when set, overrides AdaptiveSkipController.
         # --new defaults to 60x; --speed N overrides it.
         if use_new:
@@ -432,6 +441,8 @@ class CLIInfractionPipeline:
         print("\n🔬 Fase 2: OCR y clasificación...")
         infractions_final: list[dict] = []
         tr_times_minutes: list[float] = []
+        crops_saved = 0
+        best_crops: dict[int, dict] = {}  # track_id → {pqi, plate, vehicle, frame}
 
         for i, raw in enumerate(infractions_raw):
             snap = raw["snapshot"]
@@ -455,6 +466,26 @@ class CLIInfractionPipeline:
 
             plate_text = ocr_result["plate"]
             confidence = ocr_result["confidence"]
+
+            # ── Save crops (original size, no 24x94) ─────────────
+            if self.save_crops_original:
+                frame_idx = snap.get("f", 0)
+                ppi = raw["proximity_factor"]
+                crop_entry = {
+                    "pqi": ppi,
+                    "plate": plate_stripped,
+                    "vehicle": vehicle_ctx,
+                    "frame": frame_idx,
+                    "track_id": track_id,
+                }
+                if self.best_only:
+                    # Accumulate: keep the one with highest PQI per track
+                    if track_id not in best_crops or ppi > best_crops[track_id]["pqi"]:
+                        best_crops[track_id] = crop_entry
+                else:
+                    # Save immediately
+                    self._save_crop_pair(crop_entry, plates_dir, vehicles_dir)
+                    crops_saved += 1
 
             t_ocr_end = time.time()
             tr_minutes = (t_ocr_end - t_ocr_start) / 60.0
@@ -499,6 +530,15 @@ class CLIInfractionPipeline:
                 f"Track #{track_id}: {plate_text or '(vacío)'} "
                 f"({classification} | {confidence:.2f})"
             )
+
+        # ── Save best crops (if --best-only) ──────────────────────
+        if self.save_crops_original and self.best_only:
+            for entry in best_crops.values():
+                self._save_crop_pair(entry, plates_dir, vehicles_dir)
+                crops_saved += 1
+
+        if self.save_crops_original:
+            print(f"   📸 Crops guardados (tamaño original): {crops_saved}")
 
         # ── METRICS ─────────────────────────────────────────────────
         nid_count = sum(1 for i in infractions_final if i["clasificacion"] == "NID")
@@ -667,6 +707,43 @@ class CLIInfractionPipeline:
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     display = False  # stop display on 'q'
 
+    # ── internal: save crops in original size ─────────────────────
+
+    def _save_crop_pair(
+        self,
+        entry: dict,
+        plates_dir: str,
+        vehicles_dir: str,
+    ) -> None:
+        """Write plate and vehicle crops to disk in original resolution.
+
+        No resize to 24x94 — the crops are saved exactly as extracted
+        by the tracker (rectified plate, vehicle context with margin).
+        """
+        track_id = entry["track_id"]
+        frame_idx = entry["frame"]
+        plate_img = entry["plate"]
+        vehicle_img = entry["vehicle"]
+
+        plate_path = os.path.join(
+            plates_dir, f"plate_t{track_id}_f{frame_idx}.jpg"
+        )
+        vehicle_path = os.path.join(
+            vehicles_dir, f"vehicle_t{track_id}_f{frame_idx}.jpg"
+        )
+
+        if plate_img is not None and plate_img.size > 0:
+            try:
+                cv2.imwrite(plate_path, plate_img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            except Exception:
+                pass
+
+        if vehicle_img is not None and vehicle_img.size > 0:
+            try:
+                cv2.imwrite(vehicle_path, vehicle_img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+            except Exception:
+                pass
+
 
 # ── Main ──────────────────────────────────────────────────────────────
 
@@ -755,6 +832,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Desactivar la homografía v6.3 (usa solo autocrop)",
     )
     parser.add_argument(
+        "--save-crops-original",
+        action="store_true",
+        help="Guardar crops de placa y vehículo en tamaño original "
+             "(sin resize 24x94). Plate rectificada + vehicle context.",
+    )
+    parser.add_argument(
+        "--best-only",
+        action="store_true",
+        help="Al guardar crops, solo guardar el de mayor PQI por track_id. "
+             "Por defecto True si se usa --save-crops-original.",
+    )
+    parser.add_argument(
         "--display",
         action="store_true",
         help="Mostrar visualización en vivo (cv2.imshow)",
@@ -824,7 +913,13 @@ def main() -> None:
         config["semaphore"] = {"green": 30, "yellow": 5, "red": 40}
 
     # ── Run pipeline ────────────────────────────────────────────────
-    pipeline = CLIInfractionPipeline(config, use_new=bool(args.new), speed=args.speed)
+    pipeline = CLIInfractionPipeline(
+        config,
+        use_new=bool(args.new),
+        speed=args.speed,
+        save_crops_original=args.save_crops_original,
+        best_only=args.best_only or args.save_crops_original,
+    )
 
     result = pipeline.process(
         video_path=args.video,

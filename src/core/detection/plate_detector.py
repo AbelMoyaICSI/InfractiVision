@@ -57,8 +57,10 @@ class PlateDetector:
         
         if self.model and torch.cuda.is_available():
             self.model.to(self.device)
-            if self.half:
-                self.model.half()
+            # NO llamar a model.half() aquí: ultralytics fusiona conv+BN en la
+            # primera inferencia y un modelo ya en FP16 lanza
+            # "expected scalar type Half but found Float". Se pasa half=... a la
+            # llamada de inferencia y ultralytics hace half() tras el fuse.
             print(f"[PlateDetector] MODO TURBO ACTIVADO ({self.device})")
         
         # Estadísticas de rendimiento
@@ -128,6 +130,8 @@ class PlateDetector:
                 classes=classes,
                 iou=0.45,  # IoU threshold optimizado
                 agnostic_nms=True,  # NMS mejorado
+                device=self.device,
+                half=self.half,
                 verbose=False
             )
             

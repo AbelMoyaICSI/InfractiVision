@@ -93,6 +93,10 @@ class VideoPlayerOpenCV:
             print(f"⚠️ Error cargando modelo de placas: {e}")
             self.plate_model = None
         
+        # Estado de hardware (GPU/CPU) para la barra de información.
+        # Se sincroniza con el VehicleDetector una vez creado.
+        self._sync_hardware_state()
+        
         self.CAR_CLASS_ID = 2               # en COCO, 'car' = 2
         self.CONF_THRESH   = 0.4
 
@@ -1489,6 +1493,7 @@ class VideoPlayerOpenCV:
             # 1. Inicializar detector de vehículos si no existe
             if not hasattr(self, 'vehicle_detector'):
                 self.vehicle_detector = VehicleDetector(model_path=resource_path("models/yolov8n.pt"))
+                self._sync_hardware_state()
             
             # 2. Ajustar umbral de confianza según condiciones de luz
             confidence_threshold = 0.25 if is_night else 0.4  # Más permisivo en la noche
@@ -3356,6 +3361,7 @@ class VideoPlayerOpenCV:
             if not hasattr(self, 'vehicle_detector'):
                 from src.core.detection.vehicle_detector import VehicleDetector
                 self.vehicle_detector = VehicleDetector(model_path=resource_path("models/yolov8n.pt"))
+                self._sync_hardware_state()
                 print("🚗 VehicleDetector inicializado para modo reproducción")
             
             # Detectar vehículos y actualizar tracking
@@ -3794,6 +3800,26 @@ class VideoPlayerOpenCV:
                 f"Error al limpiar la configuración:\n{str(e)}"
             )
 
+    def _sync_hardware_state(self):
+        """Sincroniza el estado GPU/CPU para la barra de información.
+
+        Usa el VehicleDetector si ya está creado (fuente canónica: detecta CUDA
+        vía torch); si no, consulta torch directamente.
+        """
+        if hasattr(self, 'vehicle_detector') and self.vehicle_detector is not None:
+            self.using_gpu = self.vehicle_detector.using_gpu
+            gi = getattr(self.vehicle_detector, 'hardware_info', {}).get('gpu', {})
+        else:
+            self.using_gpu = torch.cuda.is_available()
+            gi = {}
+        self.gpu_info = {
+            'name': gi.get('name') or (torch.cuda.get_device_name(0) if self.using_gpu else ''),
+            'available': self.using_gpu,
+            'cuda_available': self.using_gpu,
+            'memory': gi.get('memory', 0.0),
+            'count': gi.get('count', 1 if self.using_gpu else 0),
+        }
+
     def check_internet_connection(self):
         """Verificar conexión a Internet"""
         import urllib.request
@@ -3808,11 +3834,11 @@ class VideoPlayerOpenCV:
         """Actualizar información del sistema en la interfaz"""
         try:
             # Información de GPU/CPU
-            if hasattr(self, 'gpu_info') and self.gpu_info['gpu_name']:
-                if self.gpu_info['cuda_available']:
-                    gpu_text = f"🚀 {self.gpu_info['gpu_name'][:20]}..."
+            if hasattr(self, 'gpu_info') and self.gpu_info.get('name'):
+                if self.gpu_info.get('cuda_available'):
+                    gpu_text = f"🚀 {self.gpu_info['name'][:20]}..."
                 else:
-                    gpu_text = f"🔍 {self.gpu_info['gpu_name'][:20]}... (sin CUDA)"
+                    gpu_text = f"🔍 {self.gpu_info['name'][:20]}... (sin CUDA)"
             else:
                 gpu_text = "💻 Solo CPU"
             
