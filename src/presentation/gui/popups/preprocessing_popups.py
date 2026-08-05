@@ -1152,6 +1152,11 @@ Ajuste la configuración en 'Configurar Tiempos' antes de continuar."""
     def _show_error(self, message):
         """Muestra un mensaje de error y cierra el diálogo"""
         try:
+            if getattr(self, 'inline', False):
+                # Modo inline: solo informar, no destruir la ventana principal.
+                print(f"Error de procesamiento (inline): {message}")
+                return
+
             # Verificar que el diálogo aún existe antes de mostrar el error
             if self.dialog.winfo_exists():
                 messagebox.showerror("Error de procesamiento", message, parent=self.dialog)
@@ -1175,7 +1180,12 @@ Ajuste la configuración en 'Configurar Tiempos' antes de continuar."""
             # El usuario debe iniciar manualmente la reproducción después del análisis
             if hasattr(self.player, 'running'):
                 self.player.running = False  # Mantener paused para que el usuario decida
-            
+
+            if getattr(self, 'inline', False):
+                # Modo inline: ocultar progreso, NO destruir la ventana principal.
+                self._inline_progress_show(False)
+                return
+
             if self.dialog.winfo_exists():
                 self.dialog.grab_release()
                 self.dialog.destroy()

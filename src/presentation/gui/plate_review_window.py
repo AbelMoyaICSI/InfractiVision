@@ -31,6 +31,7 @@ class PlateReviewWindow:
         self.window.title("Validación secuencial de placas")
         self.window.geometry("1050x760")
         self.window.transient(parent)
+        self.window.protocol("WM_DELETE_WINDOW", self._on_close)
         self._build()
         self._render_all()
         self.window.after(150, self._process_next)
@@ -176,11 +177,27 @@ class PlateReviewWindow:
 
     def _export(self):
         self._apply_review_values()
+        self._notify_complete()
         valid = [evidence for evidence in self.evidences if evidence.validated and evidence.plate_text]
         if not valid:
             messagebox.showwarning("Sin resultados", "Valide al menos una placa reconocida.", parent=self.window)
             return
         json_path, csv_path = ReportRepository().export_validated(self.output_dir, valid)
         messagebox.showinfo("Reporte exportado", f"JSON: {json_path}\nCSV: {csv_path}", parent=self.window)
+
+    def _on_close(self):
+        """Al cerrar la ventana sincroniza la validación marcada (sin exportar)."""
+        self._apply_review_values()
+        self._notify_complete()
+        try:
+            self.window.destroy()
+        except Exception:
+            pass
+
+    def _notify_complete(self):
+        """Notifica al llamador con TODOS los evidences ya mutados (NID/NIE)."""
         if self.on_complete:
-            self.on_complete(valid)
+            try:
+                self.on_complete(self.evidences)
+            except Exception as exc:
+                print(f"⚠️ Error en callback de validación: {exc}")

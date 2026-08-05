@@ -94,7 +94,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             print(f"⚠️ Error generando config_id: {e}")
             return "sin-configurar"
     
-    def __init__(self, parent, video_path, player_instance, on_complete=None):
+    def __init__(self, parent, video_path, player_instance, on_complete=None,
+                 inline=False, render_target=None, progress_mount=None):
         """
         Inicializa el diálogo de preprocesamiento.
         
@@ -103,6 +104,11 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             video_path: Ruta del video a procesar
             player_instance: Instancia del VideoPlayerOpenCV para acceder a sus métodos
             on_complete: Función a llamar cuando se complete el procesamiento
+            inline: Si es True, NO abre una ventana nueva: renderiza en el
+                video_label del reproductor principal (render_target) y monta
+                una barra de progreso pequeña en progress_mount.
+            render_target: video_label del reproductor principal (modo inline).
+            progress_mount: contenedor (Frame) donde montar la barra de progreso.
         """
 
         self.parent = parent
@@ -122,6 +128,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         self.current_frame = None
         self.detected_infractions = []
         self._official_infraction_ids = set()
+        self._pending_infractions = []
         self._official_infraction_count = 0
         self.processed_frames = 0
         self.total_frames = 0
@@ -215,35 +222,49 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         # Cargar configuración del video si existe
         self.load_video_config()
         
-        # Crear ventana de diálogo
-        self.dialog = tk.Toplevel(parent)
-        self.dialog.title("Análisis de infracciones")
-        self._after_ids = []   # <-- NUEVA LÍNEA
-                
-        set_window_icon(self.dialog)
-        self.dialog.geometry("1050x800")
-        self.dialog.resizable(False, False)
-        
-        # Centrar ventana
-        self.dialog.update_idletasks()
-        width, height = 1050, 850
-        x = (self.dialog.winfo_screenwidth() - width) // 2
-        y = (self.dialog.winfo_screenheight() - height) // 2
-        self.dialog.geometry(f"{width}x{height}+{x}+{y}")
-        
-        self.dialog.grab_set()  # Modal
-        self.dialog.protocol("WM_DELETE_WINDOW", self.on_cancel)  # Manejar cierre
-        
-        # Configurar el layout
-        self._setup_ui()
-        
+        # Crear ventana de diálogo (o modo inline en el reproductor principal)
+        self.inline = inline
+        self._render_target = render_target
+        self._progress_mount = progress_mount
+        self._inline_widgets = []
+
+        if inline:
+            # MODO INLINE: NO se abre ventana nueva. Se renderiza directamente
+            # en el video_label del reproductor principal y se monta una barra
+            # de progreso pequeña en el contenedor de progreso.
+            self.dialog = parent.winfo_toplevel()
+            self._after_ids = []
+            self.video_label = render_target if render_target is not None else None
+            self._setup_inline_ui(progress_mount)
+        else:
+            self.dialog = tk.Toplevel(parent)
+            self.dialog.title("Análisis de infracciones")
+            self._after_ids = []   # <-- NUEVA LÍNEA
+
+            set_window_icon(self.dialog)
+            self.dialog.geometry("1050x800")
+            self.dialog.resizable(False, False)
+
+            # Centrar ventana
+            self.dialog.update_idletasks()
+            width, height = 1050, 850
+            x = (self.dialog.winfo_screenwidth() - width) // 2
+            y = (self.dialog.winfo_screenheight() - height) // 2
+            self.dialog.geometry(f"{width}x{height}+{x}+{y}")
+
+            self.dialog.grab_set()  # Modal
+            self.dialog.protocol("WM_DELETE_WINDOW", self.on_cancel)  # Manejar cierre
+
+            # Configurar el layout
+            self._setup_ui()
+
         # Precargar modelos en un hilo separado para evitar bloquear la UI
         self.preload_thread = threading.Thread(target=self._preload_models, daemon=True)
         self.preload_thread.start()
-        
+
         # Programar actualizaciones periódicas de la UI
         self._schedule_ui_update()
-        
+
         # 🚀 INICIALIZAR VISUALIZACIÓN FLUIDA (DIFERIDA PARA EVITAR ERRORES)
         self._safe_after(1000, self._start_smooth_display_thread_safe)
 
@@ -514,7 +535,103 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             command=self.on_cancel
         )
         self.cancel_button.pack(side="right")
-    
+
+    def _setup_inline_ui(self, progress_mount):
+        """UI compacta para el modo inline: barra de progreso pequeña en main.
+
+        Usa los MISMOS nombres de atributo que `_setup_ui` para que la lógica
+        existente (`_process_results_queue`, `_schedule_ui_update`, etc.)
+        funcione sin cambios.
+        """
+        mount = progress_mount if progress_mount is not None else self.parent
+        frame = ttk.Frame(mount)
+        frame.pack(fill="x", expand=False)
+        self._inline_widgets.append(frame)
+
+        self.progress_var = tk.DoubleVar(value=0)
+
+        self.progress_bar = ttk.Progressbar(
+            frame, variable=self.progress_var, maximum=100, length=760,
+            mode="determinate"
+        )
+        self.progress_bar.pack(fill="x", pady=(4, 2))
+
+        status_row = ttk.Frame(frame)
+        status_row.pack(fill="x")
+        self.phase_label = ttk.Label(
+            status_row, text="Preparando análisis...",
+            font=("Arial", 10, "bold")
+        )
+        self.phase_label.pack(side="left")
+        self.percentage_label = ttk.Label(
+            status_row, text="0%", font=("Arial", 10, "bold")
+        )
+        self.percentage_label.pack(side="right")
+
+        self.details_label = ttk.Label(
+            frame, text="", font=("Arial", 9)
+        )
+        self.details_label.pack(fill="x", pady=1)
+
+        counter_row = ttk.Frame(frame)
+        counter_row.pack(fill="x")
+        self.infractions_counter_label = ttk.Label(
+            counter_row, text="Infracciones: 0",
+            font=("Arial", 9, "bold"), foreground="#e74c3c"
+        )
+        self.infractions_counter_label.pack(side="left")
+        self.nid_label = ttk.Label(
+            counter_row, text="NID: 0", font=("Arial", 9, "bold"),
+            foreground="#27ae60")
+        self.nid_label.pack(side="left", padx=(10, 0))
+        self.nie_label = ttk.Label(
+            counter_row, text="NIE: 0", font=("Arial", 9, "bold"),
+            foreground="#e67e22")
+        self.nie_label.pack(side="left", padx=(10, 0))
+        self.v_count_label = ttk.Label(
+            counter_row, text="Vehículos: 0", font=("Arial", 9, "bold"),
+            foreground="#2980b9")
+        self.v_count_label.pack(side="left", padx=(10, 0))
+
+        self.cancel_button = ttk.Button(
+            frame, text="Cancelar", command=self.on_cancel
+        )
+        self.cancel_button.pack(anchor="e", pady=(2, 2))
+
+        # Stubs para la API de métricas/Tesis (no se usan en modo inline)
+        self.stats_frame = frame
+        self.stats_panel = frame
+
+    def _sync_semaforo_state(self, state):
+        """Refleja el estado del semáforo en el widget principal (modo inline).
+
+        En lugar de dibujar verde/amarillo/rojo sobre el video, se enciende la
+        luz correspondiente en el Semaforo de la pantalla (y se activa si está
+        inactivo durante el procesamiento).
+        """
+        try:
+            semaforo = getattr(self.player, "semaforo", None)
+            if semaforo is None:
+                return
+            if state in ("green", "yellow", "red"):
+                if not semaforo.active:
+                    semaforo.active = True
+                semaforo.current_state = state
+                semaforo.show_state()
+        except Exception as e:
+            print(f"Error sincronizando semáforo inline: {e}")
+
+    def _inline_progress_show(self, visible):
+        """Muestra/oculta los widgets de progreso inline."""
+        for w in self._inline_widgets:
+            try:
+                if visible:
+                    w.pack(fill="x", expand=False)
+                else:
+                    w.pack_forget()
+            except Exception:
+                pass
+
     def _schedule_ui_update(self):
         """Programa actualizaciones periódicas de la interfaz"""
         if not self.canceled:
@@ -548,11 +665,15 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 
                 # Procesar cualquier resultado pendiente de los hilos de trabajo
                 self._process_results_queue()
-                
+
                 # Forzar actualización de la interfaz
                 self.dialog.update_idletasks()
-                
-                # Programar próxima actualización (más frecuente para que sea fluido)
+
+                # Programar próxima actualización (más frecuente para que sea fluido).
+                # En modo inline, al llegar a 100% el procesamiento terminó y no
+                # hace falta seguir actualizando la UI de la ventana principal.
+                if getattr(self, "inline", False) and self.progress_value >= 100:
+                    return
                 if hasattr(self, 'dialog') and self.dialog.winfo_exists():
                     self._safe_after(50, self._schedule_ui_update)
             except Exception as e:
@@ -581,6 +702,9 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                     if result_type == "official_frame":
                         self.current_frame = data["frame"]
                         self._update_video_frame(data["frame"])
+                        # En modo inline: reflejar el estado en el widget Semaforo
+                        if getattr(self, "inline", False):
+                            self._sync_semaforo_state(data.get("state"))
                         total = max(1, data.get("total_frames", 1))
                         self.progress_value = min(99.9, data.get("frame_index", 0) / total * 100)
                         mode = "análisis completo" if data.get("processed") else "verde: skip x60"
@@ -615,6 +739,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                         self._official_infraction_count = int(payload.get("infractor_count", self._official_infraction_count))
                         self.phase_label.config(text="Análisis completado: revisar placas")
                         self.details_label.config(text=f"{self._official_infraction_count} infractores detectados | {len(self.detected_infractions)} mejores frames listos para OCR")
+                        if getattr(self, "inline", False):
+                            self._inline_progress_show(False)
                         self._open_official_review(payload)
                         continue
 
@@ -808,9 +934,11 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             # Actualizar UI inmediatamente
             self.video_label.configure(image=img_tk)
             self.video_label.image = img_tk
-            
-            # Actualizar semáforo (no pesado)
-            self.update_synchronized_semaphore()
+
+            # Actualizar semáforo (no pesado). En modo inline el semáforo se
+            # sincroniza con el widget principal desde el estado del pipeline.
+            if not getattr(self, "inline", False):
+                self.update_synchronized_semaphore()
             
         except Exception as e:
             print(f"Error mostrando frame fluido: {e}")
@@ -1031,6 +1159,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             project_root,
             vehicle_detector=getattr(self.player, "vehicle_detector", None),
             plate_detector=getattr(self.player, "plate_detector", None),
+            draw_state_banner=not getattr(self, "inline", False),
         )
 
         def callback(event):
@@ -1063,7 +1192,30 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         if not evidences:
             self._complete_processing()
             return
-        PlateReviewWindow(self.dialog, evidences, Path(resource_path("data/output/official")))
+        # Infracciones pendientes sin placa detectada (recuadro amarillo) -> NIE
+        self._pending_infractions = payload.get("pending_infractions", [])
+        if self._pending_infractions:
+            try:
+                self.player.apply_official_validation([], self._pending_infractions)
+            except Exception as e:
+                print(f"⚠️ Error añadiendo cards pendientes (NIE): {e}")
+        PlateReviewWindow(
+            self.dialog,
+            evidences,
+            Path(resource_path("data/output/official")),
+            on_complete=self._on_official_validation_done,
+        )
+
+    def _on_official_validation_done(self, evidences):
+        """Actualiza la barra lateral y las métricas según la validación final.
+
+        NID = evidence.validated (✓) con placa reconocida -> verde.
+        NIE = el resto, incluidos los pendientes sin placa -> rojo.
+        """
+        try:
+            self.player.apply_official_validation(evidences, getattr(self, "_pending_infractions", []))
+        except Exception as e:
+            print(f"⚠️ Error sincronizando validación en panel lateral: {e}")
 
     def _process_video_legacy(self):
         """Legacy implementation retained below during migration."""
@@ -4243,7 +4395,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             # Actualizar botón de play/pause (siempre)
             if hasattr(self.player, 'play_pause_button'):
                 self.player.play_pause_button.config(
-                    text="▶️ REPRODUCIR",
+                    text="👁️ PREVISUALIZAR",
                     bg="#27ae60"
                 )
             
@@ -4515,6 +4667,29 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 mins, secs = divmod(total_seconds, 60)
                 timestamp = f"{mins:02d}:{secs:02d}"
 
+            # Duración total del video
+            total_duration = "N/A"
+            if hasattr(self.player, 'video_metadata') and self.player.video_metadata:
+                total_duration = self.player.video_metadata.get('duration', 'N/A')
+            elif hasattr(self.player, 'cap') and self.player.cap is not None:
+                try:
+                    import cv2
+                    frame_count = int(self.player.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    fps = self.player.cap.get(cv2.CAP_PROP_FPS) or 30
+                    total_seconds_video = int(frame_count / fps)
+                    mins_total, secs_total = divmod(total_seconds_video, 60)
+                    total_duration = f"{mins_total:02d}:{secs_total:02d}"
+                except Exception:
+                    total_duration = "N/A"
+            elif hasattr(self, 'cycle_durations') and self.cycle_durations:
+                video_duration = self.cycle_durations.get('video_duration', self.cycle_durations.get('total_duration'))
+                if video_duration:
+                    if isinstance(video_duration, str) and ':' in video_duration:
+                        total_duration = video_duration
+                    elif isinstance(video_duration, (int, float)):
+                        mins_total, secs_total = divmod(int(video_duration), 60)
+                        total_duration = f"{mins_total:02d}:{secs_total:02d}"
+
             # Clasificación y confianza
             classification, quality_score, _ = self.player.classify_detection_quality(plate)
             
@@ -4549,12 +4724,15 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 "fecha":           now.strftime("%d/%m/%Y"),
                 "hora":            now.strftime("%H:%M:%S"),
                 "video_timestamp": timestamp,
+                "tiempo_video":    total_duration,
                 "ubicacion":       avenue_name,
                 "franja_horaria":  time_slot,
                 "tipo":            "Semáforo en rojo",
                 "estado":          "Rechazada",
                 "clasificacion":   "NIE",
                 "confianza":       round(real_confidence, 3),
+                "plate_path":      os.path.join(resource_path("data/output/placas"), f"plate_{plate}.jpg"),
+                "vehicle_path":    os.path.join(resource_path("data/output/autos"), f"vehicle_{plate}.jpg"),
                 "tiempo_procesamiento": round(inf.get("timestamp", inf.get("time", 0)), 2),
                 "metadata_clasificacion": metadata_clasificacion,
                 # 🆕 NUEVOS CAMPOS PARA ESTRUCTURA FIRESTORE POR VIDEO Y CONFIGURACIÓN
@@ -4679,16 +4857,22 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         """Cierra el diálogo y llama a la función de completado"""
         # Cancelar todos los after pendientes (¡CRÍTICO!)
         self._cancel_all_after()
-        
+
         try:
-            # ... el resto del código igual ...
             if hasattr(self.player, 'running'):
                 self.player.running = False
-            
+
+            if getattr(self, 'inline', False):
+                # Modo inline: ocultar progreso, NO destruir la ventana principal.
+                self._inline_progress_show(False)
+                if self.on_complete and success:
+                    self.on_complete(success, self.detected_infractions)
+                return
+
             if self.dialog.winfo_exists():
                 self.dialog.grab_release()
                 self.dialog.destroy()
-            
+
             if self.on_complete and success:
                 self.on_complete(success, self.detected_infractions)
         except Exception as e:

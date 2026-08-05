@@ -22,11 +22,15 @@ from src.infrastructure.reports import ReportRepository
 
 class OfficialVideoProcessor:
     def __init__(self, project_root: str | Path, vehicle_detector=None, plate_detector=None,
-                 report_repository: ReportRepository | None = None):
+                 report_repository: ReportRepository | None = None,
+                 draw_state_banner: bool = True):
         self.project_root = Path(project_root)
         self.vehicle_detector = vehicle_detector
         self.plate_detector = plate_detector
         self.reports = report_repository or ReportRepository()
+        # Si es False, no se pinta el cartel "SEMAFORO: X" sobre el video
+        # (el estado se muestra en el widget Semaforo de la GUI).
+        self.draw_state_banner = draw_state_banner
 
     def _ensure_models(self):
         if self.vehicle_detector is None:
@@ -68,7 +72,8 @@ class OfficialVideoProcessor:
 
     @staticmethod
     def _draw(frame: np.ndarray, polygon: np.ndarray, tracks: dict, state: str,
-              plate_boxes: dict[int, list[tuple[int, int, int, int]]], frame_index: int) -> np.ndarray:
+              plate_boxes: dict[int, list[tuple[int, int, int, int]]], frame_index: int,
+              draw_state_banner: bool = True) -> np.ndarray:
         display = frame.copy()
         cv2.polylines(display, [polygon], True, (0, 0, 255), 2)
         for track_id, track in tracks.items():
@@ -88,11 +93,12 @@ class OfficialVideoProcessor:
             cv2.putText(display, label, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
             for px1, py1, px2, py2 in plate_boxes.get(track_id, []):
                 cv2.rectangle(display, (px1, py1), (px2, py2), (255, 0, 255), 2)
-        banner_color = {"green": ((0, 255, 0), (0, 0, 0)), "yellow": ((0, 255, 255), (0, 0, 0)), "red": ((0, 0, 255), (255, 255, 255))}[state]
-        text = f" SEMAFORO: {state.upper()} | FRAME: {frame_index} "
-        size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-        cv2.rectangle(display, (5, 5), (size[0] + 14, 34), banner_color[1], -1)
-        cv2.putText(display, text, (9, 27), cv2.FONT_HERSHEY_SIMPLEX, 0.7, banner_color[0], 2)
+        if draw_state_banner:
+            banner_color = {"green": ((0, 255, 0), (0, 0, 0)), "yellow": ((0, 255, 255), (0, 0, 0)), "red": ((0, 0, 255), (255, 255, 255))}[state]
+            text = f" SEMAFORO: {state.upper()} | FRAME: {frame_index} "
+            size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
+            cv2.rectangle(display, (5, 5), (size[0] + 14, 34), banner_color[1], -1)
+            cv2.putText(display, text, (9, 27), cv2.FONT_HERSHEY_SIMPLEX, 0.7, banner_color[0], 2)
         return display
 
     def process(self, video_path: str | Path, config: VideoConfig, output_dir: str | Path,
@@ -114,6 +120,8 @@ class OfficialVideoProcessor:
         tracker = CentroidVehicleTracker()
         best: dict[int, PlateEvidence] = {}
         pending_crossings: dict[int, int] = {}
+        pending_paths: dict[int, str] = {}
+        pending_quality: dict[int, float] = {}
         confirmed_at: dict[int, int] = {}
         last_tracks: dict[int, dict] = {}
         last_plate_boxes: dict[int, list[tuple[int, int, int, int]]] = {}
@@ -161,6 +169,17 @@ class OfficialVideoProcessor:
                     vehicle = frame[max(0, y1):min(height, y2), max(0, x1):min(width, x2)]
                     if vehicle.size == 0:
                         continue
+                    # Guardar el mejor crop de vehículo para las infracciones
+                    # pendientes (cruzó en rojo pero nunca se detectó placa).
+                    # Esos se contabilizan como NIE (ver recuadro amarillo PENDIENTE).
+                    if track_id in pending_crossings and track_id not in confirmed_at:
+                        pend_quality = self._quality(vehicle)
+                        if pend_quality > pending_quality.get(track_id, -1):
+                            pending_quality[track_id] = pend_quality
+                            p_crop = output_dir / "crops" / f"{video_path.stem}_v{track_id}_pending.jpg"
+                            p_crop.parent.mkdir(parents=True, exist_ok=True)
+                            cv2.imwrite(str(p_crop), vehicle)
+                            pending_paths[track_id] = str(p_crop)
                     quadrant, (ox, oy) = self._quadrant(vehicle)
                     try:
                         plates = self.plate_detector.detect(quadrant, conf=0.40, draw=False)
@@ -224,7 +243,7 @@ class OfficialVideoProcessor:
                     if track_id in tracks
                 }
 
-            display = self._draw(frame, polygon, tracks, state, plate_boxes, frame_index)
+            display = self._draw(frame, polygon, tracks, state, plate_boxes, frame_index, self.draw_state_banner)
             if writer is not None and should_display:
                 writer.write(display)
             if callback is not None and should_display:
@@ -235,6 +254,17 @@ class OfficialVideoProcessor:
         if writer is not None:
             writer.release()
         evidence = [item.to_dict() for item in sorted(best.values(), key=lambda value: value.track_id)]
+        pending_infractions = [
+            {
+                "vehicle_id": track_id,
+                "frame_index": pending_crossings[track_id],
+                "timestamp_seconds": round(pending_crossings[track_id] / fps, 3),
+                "vehicle_class": "VEH",
+                "crop_path": pending_paths.get(track_id, ""),
+            }
+            for track_id in sorted(pending_crossings)
+            if track_id not in confirmed_at
+        ]
         payload = {
             "video": config.video_name,
             "video_path": str(video_path),
@@ -243,7 +273,8 @@ class OfficialVideoProcessor:
             "duration_seconds": frame_index / fps if fps else 0,
             "config": {"green": config.green, "yellow": config.yellow, "red": config.red, "pre_red_seconds": config.pre_red_seconds, "green_skip_rate": config.green_skip_rate, "danger_zone_margin_pixels": config.danger_zone_margin_pixels, "avenue": config.avenue},
             "evidence": evidence,
-            "infractor_count": len(confirmed_at),
+            "pending_infractions": pending_infractions,
+            "infractor_count": len(confirmed_at) + len(pending_infractions),
             "confirmed_infractor_ids": sorted(confirmed_at),
             "elapsed_seconds": round(time.time() - started, 3),
         }

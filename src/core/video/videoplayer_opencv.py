@@ -173,7 +173,7 @@ class VideoPlayerOpenCV:
             "font": ("Arial", 12, "bold")
         })
         self.play_pause_button = tk.Button(
-            self.btn_frame, text="▶️ REPRODUCIR",
+            self.btn_frame, text="👁️ PREVISUALIZAR",
             command=self.toggle_play_pause,
             **play_pause_style
         )
@@ -211,6 +211,13 @@ class VideoPlayerOpenCV:
         self.beep_button.pack(side="left", padx=5)
 
         # Los botones de limpieza y gestión ahora están integrados en el selector visual
+
+        # Contenedor para la barra de progreso del procesamiento inline.
+        # Se muestra (mediante el diálogo inline) solo durante el análisis.
+        self.progress_mount = tk.Frame(self.frame, bg="black")
+        self.progress_mount.pack(side="bottom", fill="x", padx=10, pady=(0, 4))
+        self.progress_mount.pack_forget()
+        self._processing_progress_visible = False
 
         # Panel vídeo + lateral
         self.video_panel_container = tk.Frame(self.frame, bg='black')
@@ -1212,10 +1219,10 @@ class VideoPlayerOpenCV:
             }
             # NO activar semáforo automáticamente
             
-        # Configurar botón inicial como REPRODUCIR
+        # Configurar botón inicial como PREVISUALIZAR
         if hasattr(self, 'play_pause_button'):
             self.play_pause_button.config(
-                text="▶️ REPRODUCIR",
+                text="👁️ PREVISUALIZAR",
                 bg="#27ae60",
                 activebackground="#2ecc71"
             )
@@ -1332,9 +1339,9 @@ class VideoPlayerOpenCV:
         self.is_paused = False
         self.running = True
         
-        # Cambiar botón a PAUSAR REPRODUCCIÓN
+        # Cambiar botón a PAUSAR PREVISUALIZACIÓN
         self.play_pause_button.config(
-            text="⏸️ PAUSAR REPRODUCCIÓN",
+            text="⏸️ PAUSAR PREVISUALIZACIÓN",
             bg="#e74c3c",
             activebackground="#c0392b"
         )
@@ -1360,20 +1367,21 @@ class VideoPlayerOpenCV:
                 self.semaforo.activate_semaphore()
             self.update_frames()
         else:
-            # MODO REPRODUCCIÓN: Por defecto, siempre (antes y después del procesamiento)
-            print("▶️ MODO REPRODUCCIÓN: Visualización con cuadros (sin OCR)")
-            print(f"🔍 DEBUG: processing_active = {getattr(self, 'processing_active', 'NO DEFINIDO')}")
-            
-            # 🚨 CRÍTICO: El semáforo DEBE funcionar para determinar colores de cuadros
+            # MODO PREVISUALIZACIÓN: Reproducción limpia del video, sin
+            # detecciones, sin polígono y sin banner de semáforo.
+            print("▶️ MODO PREVISUALIZACIÓN: Reproducción limpia (sin detecciones)")
+
+            # 🚨 CRÍTICO: El semáforo del widget DEBE funcionar para mostrar
+            # el color en el panel lateral durante la previsualización.
             if hasattr(self.semaforo, 'resume_semaphore'):
                 self.semaforo.resume_semaphore()
-                print("🚦 SEMÁFORO ACTIVADO en modo reproducción")
+                print("🚦 SEMÁFORO ACTIVADO en modo previsualización")
             else:
-                self.semaforo.activate_semaphore() 
-                print("🚦 SEMÁFORO INICIADO en modo reproducción")
-                
+                self.semaforo.activate_semaphore()
+                print("🚦 SEMÁFORO INICIADO en modo previsualización")
+
             self.optimization_mode = "reproduction"
-            self.update_frames_optimized()
+            self.update_frames_preview()
         
         print("▶️ REPRODUCCIÓN INICIADA")
 
@@ -1383,9 +1391,9 @@ class VideoPlayerOpenCV:
         self.is_paused = True
         self.running = False
         
-        # Cambiar botón a CONTINUAR REPRODUCCIÓN
+        # Cambiar botón a CONTINUAR PREVISUALIZACIÓN
         self.play_pause_button.config(
-            text="▶️ CONTINUAR REPRODUCCIÓN",
+            text="👁️ CONTINUAR PREVISUALIZACIÓN",
             bg="#27ae60",
             activebackground="#2ecc71"
         )
@@ -1412,6 +1420,40 @@ class VideoPlayerOpenCV:
             self._after_id = None
         
         print("⏸️ REPRODUCCIÓN PAUSADA")
+
+    def update_frames_preview(self):
+        """🎬 PREVISUALIZAR: reproduce el video de forma limpia, SIN detecciones,
+        SIN polígono y SIN banner de semáforo. Solo muestra el frame y las
+        etiquetas de información. El estado del semáforo se ve en el widget."""
+        if not self.running or not self.cap or self.is_paused:
+            return
+
+        ret, frame = self.cap.read()
+        if not ret:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            self._after_id = self.parent.after(int(1000 / 30), self.update_frames_preview)
+            return
+
+        # Mostrar el frame original sin anotaciones
+        bgr_img = self.resize_and_letterbox(frame)
+        rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+        imgtk = ImageTk.PhotoImage(Image.fromarray(rgb_img))
+        self.video_label.config(image=imgtk)
+        self.video_label.image = imgtk
+
+        # Métricas y siguiente frame
+        dt = time.time() - self.last_time
+        self.last_time = time.time()
+        if dt > 0:
+            self.fps_calc = 0.9 * self.fps_calc + 0.1 * (1.0 / dt)
+
+        process = psutil.Process(os.getpid())
+        mem_mb = process.memory_info().rss / (1024 * 1024)
+        dev = "GPU" if self.using_gpu else "CPU"
+        info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | PREVISUALIZAR"
+        self.info_label.config(text=info_text)
+
+        self._after_id = self.parent.after(10, self.update_frames_preview)
 
     def _calculate_timestamp_with_time_range(self, video_timestamp):
         """Calcular timestamp alineado con la franja horaria configurada"""
@@ -1699,32 +1741,10 @@ class VideoPlayerOpenCV:
 
         # Procesar placas si está en rojo (mejorado)
         current_state = self.semaforo.get_current_state()
-        
-        # Agregar información visual del estado del semáforo en el frame
-        # Texto con fondo para mejor visibilidad especialmente en la noche
-        semaforo_text = f"Semaforo: {current_state.upper()}"
-        
-        # Color según estado
-        if current_state == "red":
-            text_color = (0, 0, 255)  # Rojo
-            bg_color = (255, 255, 255)  # Fondo blanco
-        elif current_state == "yellow":
-            text_color = (0, 255, 255)  # Amarillo
-            bg_color = (0, 0, 0)  # Fondo negro
-        else:  # green
-            text_color = (0, 255, 0)  # Verde
-            bg_color = (0, 0, 0)  # Fondo negro
-        
-        # Añadir texto con fondo para mejor visibilidad
-        text_size = cv2.getTextSize(semaforo_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 3)[0]
-        cv2.rectangle(frame_with_cars, 
-                    (5, 5), 
-                    (text_size[0] + 20, 40), 
-                    bg_color, -1)
-        cv2.putText(frame_with_cars, semaforo_text, 
-                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, 
-                    text_color, 3)
-        
+
+        # El estado del semáforo (verde/amarillo/rojo) se muestra SOLO en el
+        # widget Semaforo del panel lateral, NO se dibuja sobre el video.
+
         # Indicador de modo nocturno si es el caso
         if is_night:
             cv2.putText(frame_with_cars, "MODO NOCTURNO", 
@@ -2179,6 +2199,65 @@ class VideoPlayerOpenCV:
             if hasattr(self, 'reason_label') and self.reason_label is not None:
                 self.text_labels.append(self.reason_label)
         
+        def apply_validation(self, classification, plate_text=None, confidence=None):
+            """Reclasifica el card EN VIVO según la validación final.
+
+            NID (✓) -> verde | NIE (sin check / sin placa) -> rojo.
+            Actualiza transcripción, estado, fondo, bordes y, si se pasa,
+            la precisión del modelo OCR (Plate Recognizer) sin recrear el widget.
+            """
+            self.classification = classification
+            if plate_text:
+                self.plate_text = plate_text
+            if confidence is not None:
+                self.confidence = confidence
+
+            bg = "#f8f9fa" if classification == "NID" else "#fff5f5"
+            self.card_frame.config(bg=bg)
+            self.text_frame.config(bg=bg)
+            self.img_frame.config(bg=bg)
+
+            id_prefix = f"[#{self.track_id}] " if self.track_id is not None else ""
+            if self.plate_text and self.plate_text != "NIE":
+                display_text = f"{id_prefix}Placa: {self.plate_text}"
+            else:
+                display_text = f"{id_prefix}SIN IDENTIFICAR"
+            self.plate_label.config(text=display_text, bg=bg)
+
+            symbol = "✅" if classification == "NID" else "❌"
+            status_nick = "VALIDO" if classification == "NID" else "NO IDENTIFICADO"
+            status_color = "#27ae60" if classification == "NID" else "#e74c3c"
+            self.status_label.config(text=f"{symbol} {status_nick}", fg=status_color, bg=bg)
+
+            self.tr_label.config(bg=bg)
+
+            # Precisión del modelo OCR (Plate Recognizer) en la card
+            validated_conf = max(0.0, min(1.0, self.confidence))
+            accuracy_pct = validated_conf * 100
+            if validated_conf >= 0.85:
+                conf_color = "#27ae60"  # Verde
+            elif validated_conf >= 0.70:
+                conf_color = "#f39c12"  # Ámbar
+            else:
+                conf_color = "#e74c3c"  # Rojo
+            if self.panel_size in ['xs']:
+                conf_text = f"{accuracy_pct:.0f}%"
+            elif self.panel_size in ['small']:
+                conf_text = f"Acc: {accuracy_pct:.1f}%"
+            else:
+                conf_text = f"Precisión OCR: {accuracy_pct:.1f}%"
+            self.conf_label.config(text=conf_text, fg=conf_color, bg=bg)
+
+            if hasattr(self, 'reason_label') and self.reason_label is not None:
+                self.reason_label.config(
+                    fg="#95a5a6" if classification == "NID" else "#c0392b",
+                    bg=bg,
+                )
+            if hasattr(self, 'img_label'):
+                self.img_label.config(
+                    highlightbackground="#27ae60" if classification == "NID" else "#e74c3c"
+                )
+
         def create_image_content(self):
             """Crea el contenido de imagen con degradado automático"""
             # PRIORIDAD: Usar plate_img (recorte de placa) sobre vehicle_img
@@ -3021,6 +3100,122 @@ class VideoPlayerOpenCV:
             print(f"   nid_label: {hasattr(self, 'nid_label')}")
             print(f"   nie_label: {hasattr(self, 'nie_label')}")
 
+    def apply_official_validation(self, evidences, pending_infractions=None):
+        """Reclasifica las cards del panel lateral según la validación final.
+
+        - NID = evidencia validada (✓) CON placa reconocida.
+        - NIE = el resto: sin check, placa no reconocida, o pendiente sin placa
+          (los recuadros amarillos "PENDIENTE" del pipeline oficial).
+        - Muestra la transcripción de la placa cuando está disponible.
+        - Refresca NID/NIE/TI/TR al final.
+        """
+        evidence_by_track = {}
+        for ev in (evidences or []):
+            evidence_by_track[ev.track_id] = ev
+        pending_by_track = {}
+        for pend in (pending_infractions or []):
+            pending_by_track[pend.get("vehicle_id")] = pend
+
+        # Índice de cards existentes por track_id
+        card_by_track = {}
+        for plate_data in list(getattr(self, "detected_plates_widgets", [])):
+            if not isinstance(plate_data, dict):
+                continue
+            card = plate_data.get("card_instance")
+            tid = getattr(card, "track_id", None)
+            if tid is not None:
+                card_by_track[tid] = plate_data
+
+        # 1) Evidencias confirmadas (las que pasaron por PlateReviewWindow)
+        for tid, ev in evidence_by_track.items():
+            cls = "NID" if (ev.validated and ev.plate_text) else "NIE"
+            trans = ev.plate_text or None
+            ocr_conf = getattr(ev, "ocr_confidence", 0.0) or 0.0
+            if tid in card_by_track:
+                plate_data = card_by_track[tid]
+                plate_data["classification"] = cls
+                if trans:
+                    plate_data["plate_text"] = trans
+                plate_data["quality_score"] = ocr_conf
+                card = plate_data.get("card_instance")
+                if card is not None:
+                    card.apply_validation(cls, trans, ocr_conf)
+            else:
+                self._create_card_for_validation(cls, trans, tid, ev.timestamp_seconds,
+                                                 ev.crop_path, ev.vehicle_class, ocr_conf)
+
+        # 2) Pendientes sin placa detectada -> NIE (recuadro amarillo)
+        for tid, pend in pending_by_track.items():
+            if tid in evidence_by_track:
+                continue
+            if tid in card_by_track:
+                plate_data = card_by_track[tid]
+                plate_data["classification"] = "NIE"
+                card = plate_data.get("card_instance")
+                if card is not None:
+                    card.apply_validation("NIE", None)
+            else:
+                self._create_card_for_validation("NIE", None, tid,
+                                                 pend.get("timestamp_seconds"),
+                                                 pend.get("crop_path"),
+                                                 pend.get("vehicle_class", "VEH"))
+
+        # Refrescar métricas inmediatamente y de nuevo tras crear cards nuevas
+        self._update_metrics_panel()
+        parent = getattr(self, "parent", None)
+        if parent is not None:
+            parent.after(300, self._update_metrics_panel)
+
+    def _create_card_for_validation(self, classification, plate_text, track_id,
+                                    timestamp, crop_path, vehicle_class="VEH", ocr_confidence=0.0):
+        """Crea una card nueva desde el resultado de validación (si no existía)."""
+        img = None
+        if crop_path and os.path.exists(crop_path):
+            try:
+                img = cv2.imread(crop_path)
+                if img is None or img.size == 0:
+                    img = None
+            except Exception:
+                img = None
+        reason = ("✅ Placa leída correctamente" if classification == "NID"
+                  else "🔍 Sin placa detectada (NIE)")
+        self._safe_add_plate_to_panel(
+            plate_img=img if img is not None else self._empty_plate_fallback(),
+            plate_text=plate_text or "NIE",
+            timestamp=timestamp or 0,
+            confidence=0.5,
+            vehicle_img=img,
+            classification=classification,
+            reason=reason,
+            track_id=track_id,
+        )
+        # _safe_add_plate_to_panel re-clasifica internamente; forzamos la
+        # clasificación de validación una vez creada la card.
+        parent = getattr(self, "parent", None)
+        if parent is not None:
+            parent.after(200, lambda: self._apply_card_classification(track_id, classification, plate_text, ocr_confidence))
+
+    def _apply_card_classification(self, track_id, classification, plate_text=None, confidence=None):
+        """Aplica la clasificación de validación a una card creada recientemente."""
+        for plate_data in getattr(self, "detected_plates_widgets", []):
+            if not isinstance(plate_data, dict):
+                continue
+            card = plate_data.get("card_instance")
+            if getattr(card, "track_id", None) == track_id:
+                plate_data["classification"] = classification
+                if plate_text:
+                    plate_data["plate_text"] = plate_text
+                if confidence is not None:
+                    plate_data["quality_score"] = confidence
+                card.apply_validation(classification, plate_text, confidence)
+                return
+
+    def _empty_plate_fallback(self):
+        """Crea una imagen vacía pequeña para cards sin crop disponible."""
+        blank = np.zeros((80, 140, 3), dtype=np.uint8)
+        cv2.putText(blank, "SIN PLACA", (18, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+        return blank
+
     def clear_detected_plates(self):
         """Limpia todas las placas detectadas del panel lateral"""
         try:
@@ -3113,16 +3308,83 @@ class VideoPlayerOpenCV:
             )
             return
         
-        # Todo configurado - Iniciar procesamiento directamente
-        print("✅ Video completamente configurado. Iniciando procesamiento...")
+        # Todo configurado - Iniciar procesamiento de forma INLINE en la
+        # visualización principal (sin abrir una ventana nueva).
+        print("✅ Video completamente configurado. Iniciando procesamiento inline...")
         try:
-            self.load_video(self.current_video_path)
+            self.iniciar_procesamiento_inline()
         except Exception as e:
             messagebox.showerror(
                 "Error", 
                 f"Error iniciando procesamiento: {str(e)}",
                 parent=self.parent
             )
+
+    def iniciar_procesamiento_inline(self):
+        """Inicia el pipeline oficial renderizando en el reproductor principal.
+
+        En lugar de abrir el `PreprocessingDialog` como ventana nueva, se ejecuta
+        en modo inline: el video se muestra en el `video_label` de esta pantalla
+        y se monta una barra de progreso pequeña. Al terminar la evaluación, se
+        sigue abriendo la ventana de revisión (PlateReviewWindow).
+        """
+        from src.gui.preprocessing_dialog import PreprocessingDialog
+
+        # Pausar cualquier reproducción en curso
+        self.running = False
+        self.is_playing = False
+        self.is_paused = True
+        if hasattr(self, "_after_id") and self._after_id:
+            try:
+                self.parent.after_cancel(self._after_id)
+            except Exception:
+                pass
+            self._after_id = None
+
+        self.processing_active = True
+        self._show_inline_progress(True)
+
+        def on_complete(success, infractions=None):
+            self.processing_active = False
+            self._show_inline_progress(False)
+            if success and infractions and len(infractions) > 0:
+                try:
+                    from src.gui.infractions_management_window import create_infractions_window
+                    inf_win = tk.Toplevel(self.parent)
+                    create_infractions_window(inf_win, lambda: inf_win.destroy())
+                except Exception as e:
+                    print(f"❌ Error abriendo panel de gestión: {e}")
+
+        try:
+            self._inline_dialog = PreprocessingDialog(
+                self.parent,
+                self.current_video_path,
+                self,
+                on_complete=on_complete,
+                inline=True,
+                render_target=self.video_label,
+                progress_mount=self.progress_mount,
+            )
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.processing_active = False
+            self._show_inline_progress(False)
+            raise
+
+    def _show_inline_progress(self, visible):
+        """Muestra/oculta el contenedor de progreso del procesamiento inline."""
+        try:
+            if visible:
+                if hasattr(self, 'progress_mount') and self.progress_mount is not None:
+                    self.progress_mount.pack(side="bottom", fill="x", padx=10, pady=(0, 4))
+                self._processing_progress_visible = True
+            else:
+                if hasattr(self, 'progress_mount') and self.progress_mount is not None:
+                    self.progress_mount.pack_forget()
+                self._processing_progress_visible = False
+        except Exception as e:
+            print(f"Error mostrando barra de progreso: {e}")
 
     def _on_plates_canvas_configure(self, event):
         """Actualiza el ancho del frame interno cuando cambia el tamaño del canvas, limitando frecuencia."""
@@ -3581,17 +3843,10 @@ class VideoPlayerOpenCV:
             # Contar desde widgets con clasificación actualizada
             for plate_data in self.detected_plates_widgets:
                 if isinstance(plate_data, dict):
-                    # Usar clasificación guardada con confianza SIIV
-                    if 'plate_text' in plate_data:
-                        # Obtener confianza SIIV guardada (calidad original)
-                        siiv_confidence = plate_data.get('quality_score', plate_data.get('confidence', 0.5))
-                        classification, _, _ = self.classify_detection_quality(
-                            plate_data['plate_text'], 
-                            detection_confidence=siiv_confidence
-                        )
-                    else:
-                        classification = plate_data.get('classification', 'NIE')
-                    
+                    # Usar la clasificación YA GUARDADA en la card (ya refleja la
+                    # validación final NID/NIE), NO re-clasificar desde el texto:
+                    # evita que TI diverga de los contadores NID/NIE.
+                    classification = plate_data.get('classification', 'NIE')
                     if classification == 'NID':
                         nid_detections += 1
                     else:
