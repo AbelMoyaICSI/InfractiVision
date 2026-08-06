@@ -1,96 +1,108 @@
-# main.py
-import tkinter as tkcls
-import uuid
-import json
-import os
+"""InfractiVision – Composition Root.
+
+Punto de entrada único del sistema. Aquí (y SOLO aquí):
+    1. Se carga configuración (config/settings.py).
+    2. Se construye el contenedor de dependencias (DI).
+    3. Se levanta la presentación (Tkinter GUI).
+
+NO contiene lógica de negocio: todo se delega a Casos de Uso.
+"""
+from __future__ import annotations
+
 import getpass
+import json
 import socket
-import sys
 import threading
-import time
+import tkinter as tk
+import uuid
+from pathlib import Path
 
-from src.gui.app_manager import AppManager
-from src.path_helper import resource_path  # <-- usamos el helper
+from src.composition_root import build_container
+from src.core.logger import get_logger
+from src.core.utils.icon import set_window_icon
+from src.core.utils.paths import APPDATA_DIR
 
-# Precarga de LPRNet en background
-def preload_lprnet_engine():
-    """Precarga LPRNet en background para inicio más rápido"""
-    try:
-        print("⚡ Precargando LPRNet Master Engine en background...")
-        from src.core.ocr.recognizer import get_lprnet_predictor
-        get_lprnet_predictor()  # Esto inicializa el motor LPRNet y carga pesos
-        print("✅ LPRNet Master Engine precargado exitosamente")
-    except Exception as e:
-        print(f"⚠️ Error precargando LPRNet: {e}")
-
-def get_config_path() -> str:
-    """
-    Devuelve una ruta ESCRIBIBLE para la configuración del usuario.
-    En Windows usa %APPDATA%\InfractiVision\infractivision_config.json,
-    y si no existe APPDATA, cae a ~/.infractivision/infractivision_config.json
-    """
-    appdata = os.environ.get("APPDATA")
-    if appdata:
-        cfg_dir = os.path.join(appdata, "InfractiVision")
-    else:
-        # Fallback genérico
-        cfg_dir = os.path.join(os.path.expanduser("~"), ".infractivision")
-    os.makedirs(cfg_dir, exist_ok=True)
-    return os.path.join(cfg_dir, "infractivision_config.json")
+log = get_logger("main")
 
 
-CONFIG_PATH = get_config_path()
+# ─── IDs de usuario / dispositivo (config persistente) ─────────────────────
+def _config_file() -> Path:
+    """Ruta del JSON de IDs en el directorio de datos del usuario."""
+    APPDATA_DIR.mkdir(parents=True, exist_ok=True)
+    return APPDATA_DIR / "infractivision_config.json"
 
 
-def load_ids():
-    """
-    Carga user_id, device_id, username y hostname desde CONFIG_PATH.
-    Si no existe, los genera y los guarda.
-    """
-    if os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+def _load_or_create_ids() -> dict:
+    path = _config_file()
+    if path.exists():
+        with path.open("r", encoding="utf-8") as f:
             return json.load(f)
-
     ids = {
-        "user_id":   str(uuid.uuid4()),
+        "user_id": str(uuid.uuid4()),
         "device_id": str(uuid.uuid4()),
-        "username":  getpass.getuser(),
-        "hostname":  socket.gethostname()
+        "username": getpass.getuser(),
+        "hostname": socket.gethostname(),
     }
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    with path.open("w", encoding="utf-8") as f:
         json.dump(ids, f, indent=2)
     return ids
 
 
-def main():
-    # Cargamos (o creamos) los IDs únicos
-    ids = load_ids()
-    user_id   = ids["user_id"]
-    device_id = ids["device_id"]
+# ─── Precarga LPRNet (background) ──────────────────────────────────────────
+def _preload_lprnet_in_background() -> None:
+    def _job():
+        try:
+            from src.core.ocr.recognizer import get_lprnet_predictor
+            get_lprnet_predictor()
+            log.info("LPRNet Master Engine precargado")
+        except Exception as e:
+            log.warning("LPRNet preload falló: %s", e)
 
-    # Ventana principal
-    root = tkcls.Tk()
+    threading.Thread(target=_job, daemon=True).start()
+
+
+# ─── Bootstrap GUI ─────────────────────────────────────────────────────────
+def main() -> None:
+    ids = _load_or_create_ids()
+
+    root = tk.Tk()
     root.title("InfractiVision")
-    try:
-        # Ícono desde recursos empaquetados
-        root.iconbitmap(resource_path("img/icon.ico"))
-    except Exception:
-        # No rompemos la app si el icono no está
-        pass
-
-    # Tamaño/estado
+    set_window_icon(root)
     root.geometry("1280x720")
     try:
-        root.state("zoomed")  # Windows
+        root.state("zoomed")
     except Exception:
         pass
 
-    # Iniciar precarga de LPRNet en background
-    lpr_thread = threading.Thread(target=preload_lprnet_engine, daemon=True)
-    lpr_thread.start()
-    
-    # Instanciar gestor de la app
-    app = AppManager(root, user_id=user_id, device_id=device_id)
+    _preload_lprnet_in_background()
+
+    # El proveedor de estado del semáforo se inyecta más tarde, cuando la GUI
+    # crea su panel `Semaforo`. Por ahora, valor por defecto "green".
+    traffic_light_state: dict[str, str] = {"value": "green"}
+
+    container = build_container(
+        traffic_light_state_provider=lambda: traffic_light_state["value"]
+    )
+    log.info("Container listo. Iniciando MainWindow.")
+
+    # Presentación: usamos MainWindow que monta la GUI legacy (AppManager).
+    from src.presentation.gui import MainWindow
+
+    main_window = MainWindow(  # noqa: F841 (se mantiene viva por el mainloop)
+        root=root,
+        process_frame_uc=container.process_frame,
+        user_id=ids["user_id"],
+        device_id=ids["device_id"],
+        traffic_light_state=traffic_light_state,
+    )
+
+    # Exponemos el container y el dict de estado para que las pantallas
+    # internas (p. ej. el reproductor) puedan actualizar el estado del semáforo
+    # llamando a `root.tk_infractivision["traffic_light_state"]["value"] = "red"`.
+    root.tk_infractivision = {  # type: ignore[attr-defined]
+        "container": container,
+        "traffic_light_state": traffic_light_state,
+    }
 
     root.mainloop()
 

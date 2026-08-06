@@ -1,6 +1,14 @@
-# src/utils/paths.py
+# src/core/utils/paths.py
+"""Resolución multiplataforma de rutas de datos del usuario.
+
+Cumple convenciones nativas en cada SO:
+    Windows: %APPDATA%\\InfractiVision         (ej. C:\\Users\\X\\AppData\\Roaming)
+    macOS:   ~/Library/Application Support/InfractiVision
+    Linux:   $XDG_CONFIG_HOME/InfractiVision   (default: ~/.config/InfractiVision)
+"""
 from pathlib import Path
 import sys, os, json, shutil
+
 
 def resource_path(rel: str) -> str:
     # Carpeta temporal si es onefile, o carpeta del exe si es onedir
@@ -10,8 +18,25 @@ def resource_path(rel: str) -> str:
         base = Path(getattr(sys, "frozen", False) and sys.executable or __file__).resolve().parent
     return str(base / rel)
 
+
+def _user_data_root() -> Path:
+    """Directorio raíz para datos del usuario, según la plataforma."""
+    if sys.platform.startswith("win"):
+        # Windows: %APPDATA% (Roaming) suele estar definido siempre.
+        root = os.getenv("APPDATA")
+        if root:
+            return Path(root) / "InfractiVision"
+        return Path.home() / "AppData" / "Roaming" / "InfractiVision"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "InfractiVision"
+    # Linux / *BSD: estándar XDG.
+    xdg = os.getenv("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else (Path.home() / ".config")
+    return base / "InfractiVision"
+
+
 # Dirs de datos del usuario (no requieren admin)
-APPDATA_DIR = Path(os.getenv("APPDATA", str(Path.home() / "AppData/Roaming"))) / "InfractiVision"
+APPDATA_DIR = _user_data_root()
 CONFIG_DIR  = APPDATA_DIR / "config"
 OUTPUT_DIR  = APPDATA_DIR / "output"
 LOGS_DIR    = APPDATA_DIR / "logs"
@@ -31,20 +56,6 @@ _DEFAULT_CONFIGS = [
     "speed_limit_config.json",
     "time_presets.json",
 ]
-def ensure_user_config():
-    for name in _DEFAULT_CONFIGS:
-        dst = CONFIG_DIR / name
-        if not dst.exists():
-            src = Path(resource_path(f"config/{name}"))
-            if src.exists():
-                try:
-                    shutil.copy2(src, dst)
-                except Exception:
-                    dst.write_text("{}", encoding="utf-8")
-            else:
-                dst.write_text("{}", encoding="utf-8")
-
-# Helpers para cargar/guardar settings
 def load_settings() -> dict:
     if SETTINGS_JSON.exists():
         try:
@@ -53,5 +64,3 @@ def load_settings() -> dict:
             pass
     return {}
 
-def save_settings(cfg: dict) -> None:
-    SETTINGS_JSON.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")

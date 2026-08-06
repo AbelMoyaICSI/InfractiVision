@@ -1,0 +1,56 @@
+﻿file,plate,confidence,error,method,video,predicted,expected,exact_match,similarity,ground_truth_count
+Av-Condorcanqui_v124_best.jpg,Wis-833,0.0,,google_vision,Av-Condorcanqui.mp4,WIS-833,VAA-850,False,0.1667,8
+Av-Condorcanqui_v132_best.jpg,Vis-833,0.0,,google_vision,Av-Condorcanqui.mp4,VIS-833,VAA-850,False,0.3333,8
+Av-Condorcanqui_v135_best.jpg,C50-941,0.0,,google_vision,Av-Condorcanqui.mp4,C50-941,C50-941,True,1.0,8
+Av-Condorcanqui_v142_best.jpg,C50-941,0.0,,google_vision,Av-Condorcanqui.mp4,C50-941,VAA-850,False,0.3333,8
+Av-Condorcanqui_v146_best.jpg,,0.0,,google_vision,Av-Condorcanqui.mp4,,VAA-850,False,0.0,8
+Av-Condorcanqui_v149_best.jpg,,0.0,,google_vision,Av-Condorcanqui.mp4,,VAA-850,False,0.0,8
+Av-Condorcanqui_v17_best.jpg,1H PERU,0.0,,google_vision,Av-Condorcanqui.mp4,1HP-ERU,T3F-170,False,0.1667,8
+Av-Condorcanqui_v214_best.jpg,,0.0,,google_vision,Av-Condorcanqui.mp4,,VAA-850,False,0.0,8
+Av-Condorcanqui_v233_best.jpg,H2V-554,0.0,,google_vision,Av-Condorcanqui.mp4,H2V-554,VAA-850,False,0.3333,8
+Av-Condorcanqui_v25_best.jpg,,0.0,,google_vision,Av-Condorcanqui.mp4,,VAA-850,False,0.0,8
+Av-Condorcanqui_v26_best.jpg,150,0.0,,google_vision,Av-Condorcanqui.mp4,150,VAA-850,False,0.4444,8
+Av-Condorcanqui_v2_best.jpg,AS FELIDAY,0.0,,google_vision,Av-Condorcanqui.mp4,ASFELIDAY,VAA-850,False,0.2667,8
+Av-Condorcanqui_v33_best.jpg,O FE,0.0,,google_vision,Av-Condorcanqui.mp4,OFE,T3F-170,False,0.2222,8
+Av-Condorcanqui_v4_best.jpg,1TH PERU,0.0,,google_vision,Av-Condorcanqui.mp4,1THPERU,T4N-392,False,0.1538,8
+Av-Condorcanqui_v66_best.jpg,BMJ-851,0.0,,google_vision,Av-Condorcanqui.mp4,BMJ-851,BMJ-851,True,1.0,8
+Av-Condorcanqui_v69_best.jpg,,0.0,,google_vision,Av-Condorcanqui.mp4,,VAA-850,False,0.0,8
+Av-Condorcanqui_v70_best.jpg,,0.0,,google_vision,Av-Condorcanqui.mp4,,VAA-850,False,0.0,8
+Av-Condorcanqui_v83_best.jpg,PERO,0.0,,google_vision,Av-Condorcanqui.mp4,PERO,BO7-451,False,0.2,8
+VID2EDIT ‐ Hecho con Clipchamp_v103_best.jpg,PERO,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,PERO,TEQ-850,False,0.2,14
+VID2EDIT ‐ Hecho con Clipchamp_v108_best.jpg,IT,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,IT,TEQ-850,False,0.25,14
+VID2EDIT ‐ Hecho con Clipchamp_v115_best.jpg,IT PERU,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,ITP-ERU,TEQ-850,False,0.3333,14
+VID2EDIT ‐ Hecho con Clipchamp_v119_best.jpg,PERU,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,PERU,TEQ-850,False,0.2,14
+VID2EDIT ‐ Hecho con Clipchamp_v120_best.jpg,PERO,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,PERO,TEQ-850,False,0.2,14
+VID2EDIT ‐ Hecho con Clipchamp_v125_best.jpg,IT,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,IT,TEQ-850,False,0.25,14
+VID2EDIT ‐ Hecho con Clipchamp_v126_best.jpg,,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,,TEQ-850,False,0.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v12_best.jpg,120-974,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,120-974,T5X-243,False,0.3333,14
+VID2EDIT ‐ Hecho con Clipchamp_v134_best.jpg,TST-045,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,TST-045,T5T-045,False,0.8333,14
+VID2EDIT ‐ Hecho con Clipchamp_v141_best.jpg,14E-110,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,14E-110,T4E-110,False,0.8333,14
+VID2EDIT ‐ Hecho con Clipchamp_v143_best.jpg,IP PERU,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,IPP-ERU,TEQ-850,False,0.1667,14
+VID2EDIT ‐ Hecho con Clipchamp_v14_best.jpg,120-914,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,120-914,T2Q-914,False,0.6667,14
+VID2EDIT ‐ Hecho con Clipchamp_v151_best.jpg,TST-045,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,TST-045,T5T-045,False,0.8333,14
+VID2EDIT ‐ Hecho con Clipchamp_v153_best.jpg,r PERU,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,RPERU,TEQ-850,False,0.1818,14
+VID2EDIT ‐ Hecho con Clipchamp_v154_best.jpg,T PERU,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,TPERU,TEQ-850,False,0.3636,14
+VID2EDIT ‐ Hecho con Clipchamp_v159_best.jpg,16C-533,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,16C-533,T6C-533,False,0.8333,14
+VID2EDIT ‐ Hecho con Clipchamp_v161_best.jpg,14E-110,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,14E-110,T4E-110,False,0.8333,14
+VID2EDIT ‐ Hecho con Clipchamp_v176_best.jpg,T5X-243,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,T5X-243,T5X-243,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v177_best.jpg,,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,,TEQ-850,False,0.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v182_best.jpg,16C-533,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,16C-533,T6C-533,False,0.8333,14
+VID2EDIT ‐ Hecho con Clipchamp_v19_best.jpg,T7F-234,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,T7F-234,T7Q-367,False,0.5,14
+VID2EDIT ‐ Hecho con Clipchamp_v1_best.jpg,T PERU,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,TPERU,TEQ-850,False,0.3636,14
+VID2EDIT ‐ Hecho con Clipchamp_v22_best.jpg,,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,,TEQ-850,False,0.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v24_best.jpg,,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,,TEQ-850,False,0.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v25_best.jpg,T7F-234,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,T7F-234,T7Q-367,False,0.5,14
+VID2EDIT ‐ Hecho con Clipchamp_v28_best.jpg,,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,,TEQ-850,False,0.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v30_best.jpg,T7F-234,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,T7F-234,T7Q-367,False,0.5,14
+VID2EDIT ‐ Hecho con Clipchamp_v31_best.jpg,,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,,TEQ-850,False,0.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v32_best.jpg,140-222,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,140-222,T4C-222,False,0.6667,14
+VID2EDIT ‐ Hecho con Clipchamp_v36_best.jpg,T7F-234,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,T7F-234,T7Q-367,False,0.5,14
+VID2EDIT ‐ Hecho con Clipchamp_v49_best.jpg,PERU,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,PERU,TEQ-850,False,0.2,14
+VID2EDIT ‐ Hecho con Clipchamp_v4_best.jpg,T5M-212,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,T5M-212,T5M-212,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v60_best.jpg,P3S-454,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,P3S-454,P3S-454,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v76_best.jpg,,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,,TEQ-850,False,0.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v87_best.jpg,,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,,TEQ-850,False,0.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v98_best.jpg,IT PERU,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,ITP-ERU,TEQ-850,False,0.3333,14
+VID2EDIT ‐ Hecho con Clipchamp_v9_best.jpg,15H-212,0.0,,google_vision,VID2EDIT ‐ Hecho con Clipchamp.mp4,15H-212,T4E-110,False,0.3333,14

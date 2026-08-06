@@ -101,14 +101,6 @@ class AsyncPlateProcessor:
             'added_time': time.time()
         })
         
-    def get_processed_result(self, track_id):
-        """Obtiene el resultado procesado para un track_id"""
-        return self.processed_results.get(track_id)
-        
-    def is_processed(self, track_id):
-        """Verifica si un track_id ya fue procesado"""
-        return track_id in self.processed_results
-        
     def _worker_loop(self):
         """Loop principal del worker - procesa durante VERDE/AMARILLO"""
         while self.running:
@@ -235,16 +227,6 @@ class AsyncPlateProcessor:
         except Exception as e:
             print(f"⚠️ Error procesando track {track_id}: {e}")
             
-    def get_stats(self):
-        """Retorna estadísticas del procesador"""
-        return {
-            **self.stats,
-            'pending_count': self.pending_queue.qsize(),
-            'processed_total': len(self.processed_results)
-        }
-
-
-# Singleton
 _processor_instance = None
 
 def get_async_processor():

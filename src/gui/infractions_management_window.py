@@ -16,6 +16,9 @@ CONFIG_PATH = resource_path("config/infractivision_config.json")
 # Ruta centralizada del archivo de infracciones
 INF_FILE = resource_path("data/infracciones.json")
 
+# Ruta centralizada del archivo de infracciones NIE (incorrectamente registradas)
+NIE_FILE = resource_path("data/nie_infracciones.json")
+
 # Ruta del historial de migraciones (ACUMULATIVO)
 MIGRATIONS_HISTORY_FILE = resource_path("data/historial_migraciones.json")
 
@@ -69,25 +72,31 @@ def add_migration_to_history(num_infractions, estado="Exitosa"):
         print(f"Error agregando migración al historial: {e}")
         return False
 
+def _load_json_array(file_path):
+    """Lee un archivo JSON y devuelve el array de infracciones (compatible con dict/list)."""
+    if not os.path.exists(file_path):
+        return []
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and 'infracciones' in data:
+                return data['infracciones']
+            elif isinstance(data, list):
+                return data
+            else:
+                print(f"⚠️ Formato inesperado en JSON: {type(data)}")
+                return []
+    except Exception as e:
+        print(f"Error cargando infracciones: {e}")
+        return []
+
+
 # Función para cargar datos de infracciones (movida al principio)
 def load_infractions_data():
-    if os.path.exists(INF_FILE):
-        try:
-            with open(INF_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                # CORREGIR: Extraer array de infracciones si existe la clave
-                if isinstance(data, dict) and 'infracciones' in data:
-                    return data['infracciones']
-                elif isinstance(data, list):
-                    return data
-                else:
-                    print(f"⚠️ Formato inesperado en JSON: {type(data)}")
-                    return []
-        except Exception as e:
-            print(f"Error cargando infracciones: {e}")
-            return []
-    else:
-        return []
+    """Carga las infracciones LOCALES fusionando NID (infracciones.json) y NIE (nie_infracciones.json)."""
+    nid = _load_json_array(INF_FILE)
+    nie = _load_json_array(NIE_FILE)
+    return nid + nie
 
 
 def delete_infraction_files(infraction_data):
@@ -123,6 +132,12 @@ def delete_all_infractions():
             with open(infractions_file, 'w', encoding='utf-8') as f:
                 json.dump([], f, indent=2)
         
+        # Limpiar archivo de infracciones NIE
+        nie_file = resource_path("data/nie_infracciones.json")
+        if os.path.exists(nie_file):
+            with open(nie_file, 'w', encoding='utf-8') as f:
+                json.dump([], f, indent=2)
+        
         # Limpiar directorios de imágenes
         output_dirs = [
             resource_path("data/output/placas"),
@@ -141,31 +156,30 @@ def delete_all_infractions():
         print(f"Error eliminando todas las infracciones: {e}")
         return False
 
-def remove_infraction_from_json(placa_to_remove):
-    """Elimina una infracción específica del archivo JSON"""
+def _filter_infractions_file(file_path, placa_to_remove):
+    """Elimina las entradas con la placa indicada del archivo JSON si existe."""
+    if not os.path.exists(file_path):
+        return True
     try:
-        infractions_file = resource_path("data/infracciones.json")
-        if not os.path.exists(infractions_file):
-            return True
-        
-        # Cargar infracciones actuales
-        with open(infractions_file, 'r', encoding='utf-8') as f:
-            infractions = json.load(f)
-        
-        # Filtrar la infracción a eliminar
-        updated_infractions = [
-            inf for inf in infractions 
-            if inf.get('placa', '') != placa_to_remove
-        ]
-        
-        # Guardar la lista actualizada
-        with open(infractions_file, 'w', encoding='utf-8') as f:
-            json.dump(updated_infractions, f, indent=2, ensure_ascii=False)
-        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        is_dict = isinstance(data, dict) and 'infracciones' in data
+        infractions = data['infracciones'] if is_dict else (data if isinstance(data, list) else [])
+        updated = [inf for inf in infractions if inf.get('placa', '') != placa_to_remove]
+        output = {'infracciones': updated} if is_dict else updated
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(output, f, indent=2, ensure_ascii=False)
         return True
     except Exception as e:
         print(f"Error eliminando infracción del JSON: {e}")
         return False
+
+
+def remove_infraction_from_json(placa_to_remove):
+    """Elimina una infracción específica de los archivos JSON (NID y NIE)"""
+    ok_nid = _filter_infractions_file(resource_path("data/infracciones.json"), placa_to_remove)
+    ok_nie = _filter_infractions_file(resource_path("data/nie_infracciones.json"), placa_to_remove)
+    return ok_nid and ok_nie
 
 def show_migrations(refresh_callback=None, all_data_ref=None):
     """Mostrar historial de migraciones exitosas"""
@@ -741,13 +755,16 @@ def generate_performance_indicators_json(software_infractions, software_processi
 
 def create_infractions_window(window: tk.Toplevel, back_callback):
     window.configure(bg="#ffffff")
-    window.state("zoomed")
+    
+    # MODIFICACIÓN DE PORTABILIDAD (desactivada para evitar segfault)
+    # La ventana se abre con el tamaño heredado de la ventana principal.
+    # El usuario puede maximizar manualmente si lo desea.
+    pass
 
     # 1) Cargar todas las infracciones al inicio
-    # Cargar datos
     all_data = load_infractions_data()
 
-
+    # (El resto del código de la interfaz se mantiene exactamente igual...)
     # 3) Cabecera
     header = tk.Frame(window, bg="#ffffff")
     header.pack(fill="x", padx=30, pady=20)
@@ -1342,38 +1359,28 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
         except Exception as e:
             messagebox.showerror("Error", f"Error aplicando filtro: {e}")
 
-    # Función para refrescar los datos desde el archivo
+    # Función para sincronizar los datos desde los archivos locales (NID + NIE)
     def refresh_data():
         nonlocal all_data
-
-        # 1) Leer el user_id que guardaste localmente
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-                user_id = cfg.get("user_id")
-        except Exception:
-            messagebox.showerror("Error", "No se pudo leer el user_id")
-            return
-
-        # 2) Llamada HTTP al endpoint de tu backend
-        try:
-            url = f"https://infracti-backend-627388491148.us-central1.run.app/infracciones/{user_id}/registros"
-            resp = requests.get(url, timeout=10)
-            resp.raise_for_status()
-
-            # Aquí insertas el print para depurar
-            all_data = resp.json()
-            print("DEBUG: recibí del backend:", all_data)
-
-        except requests.RequestException as e:
-            messagebox.showerror(
-                "Error", f"No se pudieron cargar datos del servidor: {e}"
-            )
-            return
-
-
-        # 3) Actualizar la vista con los registros traídos de la nube
+        all_data = load_infractions_data()
         apply_filter()
+        nid_count = sum(1 for inf in all_data if inf.get('clasificacion', 'NID') == 'NID')
+        nie_count = sum(1 for inf in all_data if inf.get('clasificacion', 'NID') != 'NID')
+        print(f"🔄 Sincronización local: {len(all_data)} infracciones ({nid_count} NID + {nie_count} NIE)")
+        messagebox.showinfo(
+            "Sincronización local",
+            f"Infracciones sincronizadas desde archivos locales:\n\n"
+            f"• {nid_count} NID (validadas correctamente)\n"
+            f"• {nie_count} NIE (sin validar)\n"
+            f"• Total: {len(all_data)}"
+        )
+
+    tk.Button(
+        actions, text="🔄 SINCRONIZAR LOCAL", font=("Arial", 12),
+        bg="#27ae60", fg="white", bd=0,
+        activebackground="#1e8449", activeforeground="white",
+        cursor="hand2", command=refresh_data
+    ).pack(side="left", padx=10)
 
     tk.Button(
         actions, text="FILTRAR", font=("Arial", 12),

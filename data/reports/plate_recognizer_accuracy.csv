@@ -1,0 +1,66 @@
+﻿file,plate,confidence,error,method,video,predicted,expected,exact_match,similarity,ground_truth_count
+Av-Condorcanqui_v1025_best.jpg,t1c106,0.991,,plate_recognizer,Av-Condorcanqui.mp4,T1C-106,T3F-170,False,0.5,8
+Av-Condorcanqui_v1028_best.jpg,t1c106,0.922,,plate_recognizer,Av-Condorcanqui.mp4,T1C-106,T3F-170,False,0.5,8
+Av-Condorcanqui_v210_best.jpg,bd7451,0.889,,plate_recognizer,Av-Condorcanqui.mp4,BD7-451,BO7-451,False,0.8333,8
+Av-Condorcanqui_v212_best.jpg,bmo536,0.995,,plate_recognizer,Av-Condorcanqui.mp4,BMO-536,BMO-536,True,1.0,8
+Av-Condorcanqui_v239_best.jpg,bd7451,0.997,,plate_recognizer,Av-Condorcanqui.mp4,BD7-451,BO7-451,False,0.8333,8
+Av-Condorcanqui_v261_best.jpg,bmj851,0.989,,plate_recognizer,Av-Condorcanqui.mp4,BMJ-851,BMJ-851,True,1.0,8
+Av-Condorcanqui_v268_best.jpg,bmj851,0.997,,plate_recognizer,Av-Condorcanqui.mp4,BMJ-851,BO7-451,False,0.5,8
+Av-Condorcanqui_v269_best.jpg,,0.0,,plate_recognizer,Av-Condorcanqui.mp4,,VAA-850,False,0.0,8
+Av-Condorcanqui_v289_best.jpg,bmj851,0.941,,plate_recognizer,Av-Condorcanqui.mp4,BMJ-851,BO7-451,False,0.5,8
+Av-Condorcanqui_v416_best.jpg,nissan,0.947,,plate_recognizer,Av-Condorcanqui.mp4,NIS-SAN,VAA-850,False,0.1667,8
+Av-Condorcanqui_v428_best.jpg,w1s833,0.927,,plate_recognizer,Av-Condorcanqui.mp4,W1S-833,VAA-850,False,0.1667,8
+Av-Condorcanqui_v432_best.jpg,c5o941,0.832,,plate_recognizer,Av-Condorcanqui.mp4,C5O-941,C50-941,False,0.8333,8
+Av-Condorcanqui_v510_best.jpg,,0.0,,plate_recognizer,Av-Condorcanqui.mp4,,VAA-850,False,0.0,8
+Av-Condorcanqui_v528_best.jpg,m2v554,0.985,,plate_recognizer,Av-Condorcanqui.mp4,M2V-554,VAA-850,False,0.3333,8
+Av-Condorcanqui_v723_best.jpg,vaa850,1.0,,plate_recognizer,Av-Condorcanqui.mp4,VAA-850,VAA-850,True,1.0,8
+Av-Condorcanqui_v725_best.jpg,t3f170,0.997,,plate_recognizer,Av-Condorcanqui.mp4,T3F-170,T3F-170,True,1.0,8
+Av-Condorcanqui_v774_best.jpg,t6m025,0.997,,plate_recognizer,Av-Condorcanqui.mp4,T6M-025,T4N-392,False,0.3333,8
+Av-Condorcanqui_v784_best.jpg,t6m025,0.997,,plate_recognizer,Av-Condorcanqui.mp4,T6M-025,T4N-392,False,0.3333,8
+Av-Condorcanqui_v886_best.jpg,t4n392,0.999,,plate_recognizer,Av-Condorcanqui.mp4,T4N-392,T4N-392,True,1.0,8
+Av-Condorcanqui_v897_best.jpg,m3v662,0.994,,plate_recognizer,Av-Condorcanqui.mp4,M3V-662,M3V-662,True,1.0,8
+Av-Condorcanqui_v900_best.jpg,m3v662,0.998,,plate_recognizer,Av-Condorcanqui.mp4,M3V-662,C50-941,False,0.0,8
+Av-Condorcanqui_v904_best.jpg,m3v662,0.998,,plate_recognizer,Av-Condorcanqui.mp4,M3V-662,C50-941,False,0.0,8
+Av-Condorcanqui_v928_best.jpg,t1c106,0.981,,plate_recognizer,Av-Condorcanqui.mp4,T1C-106,C50-941,False,0.1667,8
+Av-Condorcanqui_v983_best.jpg,t1c106,0.98,,plate_recognizer,Av-Condorcanqui.mp4,T1C-106,C50-941,False,0.1667,8
+Traffic IP Camera video (DEMO 1)_v5_best.jpg,a3k961,0.998,,plate_recognizer,Traffic IP Camera video (DEMO 1).mp4,A3K-961,A3K-961,True,1.0,4
+Traffic IP Camera video (DEMO 1)_v6_best.jpg,a968b6,0.972,,plate_recognizer,Traffic IP Camera video (DEMO 1).mp4,A96-8B6,A96-8B6,True,1.0,4
+VID1EDIT ‐ Hecho con Clipchamp_v21_best.jpg,cdy070,0.918,,plate_recognizer,VID1EDIT ‐ Hecho con Clipchamp.mp4,CDY-070,CDY-070,True,1.0,7
+VID1EDIT ‐ Hecho con Clipchamp_v28_best.jpg,t5k479,0.958,,plate_recognizer,VID1EDIT ‐ Hecho con Clipchamp.mp4,T5K-479,T5K-479,True,1.0,7
+VID1EDIT ‐ Hecho con Clipchamp_v32_best.jpg,t4x198,1.0,,plate_recognizer,VID1EDIT ‐ Hecho con Clipchamp.mp4,T4X-198,T4X-198,True,1.0,7
+VID1EDIT ‐ Hecho con Clipchamp_v78_best.jpg,adc145,1.0,,plate_recognizer,VID1EDIT ‐ Hecho con Clipchamp.mp4,ADC-145,ADC-145,True,1.0,7
+VID1EDIT ‐ Hecho con Clipchamp_v88_best.jpg,bpx306,1.0,,plate_recognizer,VID1EDIT ‐ Hecho con Clipchamp.mp4,BPX-306,BPX-306,True,1.0,7
+VID2COLISEO_v160_best.jpg,,0.0,,plate_recognizer,VID2COLISEO.MOV,,TEN-929,False,0.0,4
+VID2COLISEO_v162_best.jpg,ten929,0.901,,plate_recognizer,VID2COLISEO.MOV,TEN-929,TEN-929,True,1.0,4
+VID2COLISEO_v163_best.jpg,t6t825,0.829,,plate_recognizer,VID2COLISEO.MOV,T6T-825,T6T-025,False,0.8333,4
+VID2COLISEO_v57_best.jpg,eukz069,0.725,,plate_recognizer,VID2COLISEO.MOV,EUKZ069,BKZ-068,False,0.6154,4
+VID2EDIT ‐ Hecho con Clipchamp_v149_best.jpg,bvj513,0.999,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,BVJ-513,BVJ-513,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v162_best.jpg,t7c065,1.0,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,T7C-065,T7C-065,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v171_best.jpg,t9s885,1.0,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,T9S-885,T9S-885,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v217_best.jpg,t4e110,0.999,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,T4E-110,T4E-110,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v21_best.jpg,t5m212,0.937,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,T5M-212,T5M-212,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v220_best.jpg,t6c533,0.991,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,T6C-533,T6C-533,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v227_best.jpg,t7q367,0.914,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,T7Q-367,T7Q-367,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v228_best.jpg,t5x243,0.975,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,T5X-243,T5X-243,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v29_best.jpg,abj746,0.912,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,ABJ-746,ABJ-746,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v32_best.jpg,t7f234,0.999,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,T7F-234,T2Q-914,False,0.5,14
+VID2EDIT ‐ Hecho con Clipchamp_v51_best.jpg,t4c222,0.993,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,T4C-222,T4C-222,True,1.0,14
+VID2EDIT ‐ Hecho con Clipchamp_v83_best.jpg,p3s454,0.968,,plate_recognizer,VID2EDIT ‐ Hecho con Clipchamp.mp4,P3S-454,P3S-454,True,1.0,14
+VID4EDIT ‐ Hecho con Clipchamp_v1_best.jpg,t5u677,0.976,,plate_recognizer,VID4EDIT ‐ Hecho con Clipchamp.mp4,T5U-677,T5U-677,True,1.0,10
+VID4EDIT ‐ Hecho con Clipchamp_v232_best.jpg,t7o644,0.833,,plate_recognizer,VID4EDIT ‐ Hecho con Clipchamp.mp4,T7O-644,T70-644,False,0.8333,10
+VID4EDIT ‐ Hecho con Clipchamp_v238_best.jpg,t6c470,0.998,,plate_recognizer,VID4EDIT ‐ Hecho con Clipchamp.mp4,T6C-470,T6C-470,True,1.0,10
+VID4EDIT ‐ Hecho con Clipchamp_v63_best.jpg,cek390,1.0,,plate_recognizer,VID4EDIT ‐ Hecho con Clipchamp.mp4,CEK-390,CEK-390,True,1.0,10
+VID4EDIT ‐ Hecho con Clipchamp_v68_best.jpg,,0.0,,plate_recognizer,VID4EDIT ‐ Hecho con Clipchamp.mp4,,V7T-222,False,0.0,10
+VID4EDIT ‐ Hecho con Clipchamp_v69_best.jpg,m5m516,0.977,,plate_recognizer,VID4EDIT ‐ Hecho con Clipchamp.mp4,M5M-516,M5M-516,True,1.0,10
+VID4EDIT ‐ Hecho con Clipchamp_v73_best.jpg,t4z499,0.999,,plate_recognizer,VID4EDIT ‐ Hecho con Clipchamp.mp4,T4Z-499,T4Z-499,True,1.0,10
+VID4EDIT ‐ Hecho con Clipchamp_v78_best.jpg,v7t222,0.972,,plate_recognizer,VID4EDIT ‐ Hecho con Clipchamp.mp4,V7T-222,V7T-222,True,1.0,10
+VID4EDIT ‐ Hecho con Clipchamp_v80_best.jpg,m3p299,0.994,,plate_recognizer,VID4EDIT ‐ Hecho con Clipchamp.mp4,M3P-299,M3P-299,True,1.0,10
+VID7EDIT ‐ Hecho con Clipchamp_v14_best.jpg,t6p400,0.992,,plate_recognizer,VID7EDIT ‐ Hecho con Clipchamp.mp4,T6P-400,T6P-400,True,1.0,12
+VID7EDIT ‐ Hecho con Clipchamp_v19_best.jpg,t4s298,0.999,,plate_recognizer,VID7EDIT ‐ Hecho con Clipchamp.mp4,T4S-298,T6E-290,False,0.5,12
+VID7EDIT ‐ Hecho con Clipchamp_v1_best.jpg,t6d461,0.999,,plate_recognizer,VID7EDIT ‐ Hecho con Clipchamp.mp4,T6D-461,T6D-461,True,1.0,12
+VID7EDIT ‐ Hecho con Clipchamp_v21_best.jpg,m1a636,0.999,,plate_recognizer,VID7EDIT ‐ Hecho con Clipchamp.mp4,M1A-636,T3H-169,False,0.3333,12
+VID7EDIT ‐ Hecho con Clipchamp_v23_best.jpg,t6e290,0.999,,plate_recognizer,VID7EDIT ‐ Hecho con Clipchamp.mp4,T6E-290,T6E-290,True,1.0,12
+VID7EDIT ‐ Hecho con Clipchamp_v24_best.jpg,t7u596,0.998,,plate_recognizer,VID7EDIT ‐ Hecho con Clipchamp.mp4,T7U-596,T7U-596,True,1.0,12
+VID7EDIT ‐ Hecho con Clipchamp_v28_best.jpg,tzu009,0.95,,plate_recognizer,VID7EDIT ‐ Hecho con Clipchamp.mp4,TZU-009,T7U-009,False,0.8333,12
+VID7EDIT ‐ Hecho con Clipchamp_v35_best.jpg,t6y544,0.993,,plate_recognizer,VID7EDIT ‐ Hecho con Clipchamp.mp4,T6Y-544,T6Y-544,True,1.0,12
+VID7EDIT ‐ Hecho con Clipchamp_v9_best.jpg,,0.0,,plate_recognizer,VID7EDIT ‐ Hecho con Clipchamp.mp4,,T7U-009,False,0.0,12

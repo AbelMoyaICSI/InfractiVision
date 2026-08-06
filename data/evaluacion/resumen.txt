@@ -1,0 +1,85 @@
+EVALUACIÓN DE RENDIMIENTO — InfractiVision vs Ground Truth
+============================================================================================================================================
+
+Fecha: 01/07/2026 23:06:09
+Dataset: C:\Users\pixge\Desktop\InfractiVision\tests\verdad.test.json
+Videos procesados: 8
+
+TABLA COMPARATIVA POR VIDEO
+--------------------------------------------------------------------------------------------------------------------------------------------
+Video                                  |             Infr. Det. |                    Placas |         Tiempo | %Acierto
+                                       |        Esp  Det   Rec% |           Esp  Mat   Rec% |   Pipe   Video | Global
+--------------------------------------------------------------------------------------------------------------------------------------------
+VID4EDIT ‐ Hecho con Clipchamp.mp4   |   10    4   40.0% |   10    2   20.0% |   626    185 |   33.3%
+Traffic IP Camera video (DEMO 1).mp4 |    4    0    0.0% |    4    0    0.0% |   119     30 |    0.0%
+Av-Condorcanqui.mp4                  |    8    9  112.5% |    8    0    0.0% |  2681    403 |   75.0%
+VID2EDIT ‐ Hecho con Clipchamp.mp4   |   14   11   78.6% |   14    1    7.1% |  1054    114 |   54.8%
+VID7EDIT ‐ Hecho con Clipchamp.mp4   |   12    4   33.3% |   12    0    0.0% |  3794    530 |   22.2%
+VID1EDIT ‐ Hecho con Clipchamp.mp4   |    7    5   71.4% |    7    0    0.0% |   492     79 |   47.6%
+VID2COLISEO.MOV                      |    4    3   75.0% |    4    0    0.0% |   631    201 |   50.0%
+Night Time Traffic Camera video (... |    0    0    0.0% |    0    0    0.0% |    37     12 |    0.0%
+--------------------------------------------------------------------------------------------------------------------------------------------
+TOTALES                                |   59   36   61.0% |   59    3    5.1% |  9434      — |   35.4%
+
+DETALLE DE PLACAS POR VIDEO
+--------------------------------------------------------------------------------------------------------------------------------------------
+
+VID4EDIT ‐ Hecho con Clipchamp.mp4
+  Esperadas (10):
+  Matched exactas (0):
+  Matched fuzzy (2):
+  No match (detectadas extra): ['MU77', 'T651']
+  No detectadas: ['T3G464', 'T4Z499', 'M5M516', 'T5U677', 'M3P299', 'V7T222', 'T70644', 'T1T646']
+
+Traffic IP Camera video (DEMO 1).mp4
+  Esperadas (4):
+  Matched exactas (0):
+  Matched fuzzy (0):
+  No detectadas: ['APH188', 'A3K961', 'A968B6', 'AV6190']
+
+Av-Condorcanqui.mp4
+  Esperadas (8):
+  Matched exactas (0):
+  Matched fuzzy (0):
+  No match (detectadas extra): ['T6P3535', 'D051', 'T741', 'BTN-516', 'T10J1', 'T21-8E5', 'MM075', 'T4555', 'TT775']
+  No detectadas: ['BMO536', 'BO7451', 'BMJ851', 'C50941', 'VAA850', 'T3F170', 'T4N392', 'M3V662']
+
+VID2EDIT ‐ Hecho con Clipchamp.mp4
+  Esperadas (14):
+  Matched exactas (0):
+  Matched fuzzy (1):
+  No match (detectadas extra): ['CK9-197', 'FL72U3U6', 'TU77', 'T1', 'T7F-92X', 'TE94', 'V577', 'TN64', 'D067', 'T35']
+  No detectadas: ['T5M212', 'TEQ850', 'T2Q914', 'ABJ746', 'T4C222', 'P3S454', 'BVJ513', 'T7C065', 'T9S885', 'T4E110', 'T5T045', 'T7Q367', 'T6C533']
+
+VID7EDIT ‐ Hecho con Clipchamp.mp4
+  Esperadas (12):
+  Matched exactas (0):
+  Matched fuzzy (0):
+  No match (detectadas extra): ['H259', 'T353E89', 'T1911', 'T441']
+  No detectadas: ['F5P035', 'T1D547', 'T6D461', 'T2V265', 'T6P400', 'T6E290', 'T7U596', 'T7U009', 'T3H169', 'T6Y544', 'T7R868', 'EUH662']
+
+VID1EDIT ‐ Hecho con Clipchamp.mp4
+  Esperadas (7):
+  Matched exactas (0):
+  Matched fuzzy (0):
+  No match (detectadas extra): ['HY7', 'BN7', 'B51-383', 'D747', 'AK14999']
+  No detectadas: ['CDY070', 'T5K479', 'T4X198', 'BUR396', 'BUJ851', 'ADC145', 'BPX306']
+
+VID2COLISEO.MOV
+  Esperadas (4):
+  Matched exactas (0):
+  Matched fuzzy (0):
+  No match (detectadas extra): ['A51', 'TFH-979', 'T61H5']
+  No detectadas: ['BKZ068', 'AWV351', 'TEN929', 'T6T025']
+
+Night Time Traffic Camera video (DEMO 4).mp4
+  Esperadas (0):
+  Matched exactas (0):
+  Matched fuzzy (0):
+
+INDICADORES GLOBALES
+  NID: 36
+  NIE: 0
+  TIR: 36
+  TI:  100.0%
+  TR:  9434.3s
