@@ -388,6 +388,60 @@ def show_migrations(refresh_callback=None, all_data_ref=None):
     )
     actualizar_btn.pack(side="left", padx=10)
     
+    # Botón subir a Firestore (formato por-video)
+    def subir_firestore():
+        import threading as _threading
+        from src.automations.firestore_migrator import migrate_videos_to_firestore
+
+        def _run():
+            try:
+                result = migrate_videos_to_firestore(verbose=True)
+                migrados = result.get("migrados", 0)
+                errores = result.get("errores", [])
+                # Registrar en el historial acumulativo
+                add_migration_to_history(migrados, "Exitosa" if migrados else "Sin datos")
+                migrations_window.after(
+                    0,
+                    lambda: messagebox.showinfo(
+                        "Migración a Firestore",
+                        f"☁️ Documentos subidos: {migrados}\n\n"
+                        + (f"⚠️ Errores: {len(errores)}\n" if errores else "")
+                        + "✅ Migración completada (colección 'migraciones').",
+                        parent=migrations_window,
+                    ),
+                )
+            except Exception as ex:
+                migrations_window.after(
+                    0,
+                    lambda: messagebox.showerror(
+                        "Error al migrar",
+                        f"❌ {ex}",
+                        parent=migrations_window,
+                    ),
+                )
+
+        migrations_window.after(
+            0,
+            lambda: messagebox.showinfo(
+                "Migración a Firestore",
+                "☁️ Subiendo documentos por video a Firestore, espere...",
+                parent=migrations_window,
+            ),
+        )
+        _threading.Thread(target=_run, daemon=True).start()
+
+    subir_btn = tk.Button(
+        button_frame,
+        text="☁️ SUBIR A FIRESTORE",
+        command=subir_firestore,
+        bg="#27ae60",
+        fg="white",
+        font=("Arial", 12),
+        padx=20,
+        pady=5
+    )
+    subir_btn.pack(side="left", padx=10)
+
     # Botón limpiar historial de migraciones
     vaciar_btn = tk.Button(
         button_frame,
