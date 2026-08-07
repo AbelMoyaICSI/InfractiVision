@@ -30,7 +30,10 @@ class DeepSortTracker(TrackerPort):
             from deep_sort_realtime.deepsort_tracker import DeepSort  # type: ignore
 
             log.info("DeepSORT (deep_sort_realtime) cargado, max_age=%d", max_age)
-            return DeepSort(max_age=max_age)
+            try:
+                return DeepSort(max_age=max_age, embedder_gpu=False)
+            except TypeError:
+                return DeepSort(max_age=max_age)
         except Exception as e:  # pragma: no cover - fallback en runtime
             log.warning("deep_sort_realtime no disponible (%s). Usando centroide.", e)
             return None
@@ -49,7 +52,9 @@ class DeepSortTracker(TrackerPort):
                 ds_input.append(([x1, y1, x2 - x1, y2 - y1], v.confidence, str(v.class_id)))
             tracks = self._impl.update_tracks(ds_input, frame=frame_bgr)
         except Exception as e:
-            raise TrackerError(f"Falla DeepSORT: {e}") from e
+            log.warning("DeepSORT update falló (%s). Volviendo a tracker centroide.", e)
+            self._impl = None
+            return self._update_centroid(detections)
 
         out: list[Vehicle] = []
         for t in tracks:

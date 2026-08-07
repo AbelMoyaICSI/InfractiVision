@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from pathlib import Path
 import os
 from src.path_helper import resource_path
+from src.core.utils import get_default_device
 
 class PlateRecognizerModel:
     """Modelo especializado en reconocimiento de placas vehiculares"""
@@ -13,7 +14,7 @@ class PlateRecognizerModel:
     def __init__(self):
         # Cargar modelo pre-entrenado si está disponible
         self.model = None
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = get_default_device()
         self.load_or_create_model()
         
         # Caracteres que puede reconocer
@@ -37,8 +38,19 @@ class PlateRecognizerModel:
                     phase='test',
                     dropout_rate=0.0  # En inferencia no usamos dropout
                 )
-                self.model.load_state_dict(torch.load(str(model_path), map_location=self.device))
-                self.model.to(self.device)
+                self.model.load_state_dict(torch.load(str(model_path), map_location=self.device, weights_only=False))
+                try:
+                    self.model.to(self.device)
+                except Exception as e:
+                    if self.device.type == 'cuda':
+                        print(f"[PlateRecognizerModel] Falló mover modelo a GPU: {e} | Usando CPU como fallback temporal")
+                        self.device = torch.device('cpu')
+                        try:
+                            self.model.to(self.device)
+                        except Exception as inner:
+                            print(f"[PlateRecognizerModel] Error al mover modelo a CPU: {inner}")
+                    else:
+                        print(f"[PlateRecognizerModel] Error al mover modelo a CPU: {e}")
                 self.model.eval()
                 print("Modelo de reconocimiento de placas cargado correctamente")
             except Exception as e:
@@ -46,6 +58,9 @@ class PlateRecognizerModel:
                 self.create_default_model()
         else:
             self.create_default_model()
+
+    def _select_device(self):
+        return get_default_device()
 
     def create_default_model(self):
         """Crea un modelo por defecto si no se puede cargar el pre-entrenado"""
