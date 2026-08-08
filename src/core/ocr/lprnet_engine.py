@@ -5,6 +5,7 @@ import numpy as np
 import cv2
 import os
 from src.path_helper import resource_path
+from src.core.utils import get_default_device
 
 # DICCIONARIO OFICIAL DEL ENTRENAMIENTO (Longitud 35)
 CHARS = [
@@ -82,7 +83,7 @@ class LPRNet(nn.Module):
 
 class LPRNetPredictor:
     def __init__(self, model_path=None):
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = get_default_device()
         self.class_num = len(CHARS)
         self.model = LPRNet(class_num=self.class_num, dropout_rate=0)
         
@@ -113,12 +114,29 @@ class LPRNetPredictor:
                 print("[LPRNet] No se encontro ningun archivo de pesos.")
             
         if model_path and os.path.exists(model_path):
-            self.model.load_state_dict(torch.load(model_path, map_location=self.device))
-            print(f"[LPRNet] Pesos cargados desde {os.path.basename(model_path)}")
+            try:
+                self.model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=False))
+                print(f"[LPRNet] Pesos cargados desde {os.path.basename(model_path)}")
+            except Exception as e:
+                print(f"[LPRNet] Falló cargar pesos en {self.device}: {e} | Reintentando en CPU")
+                self.device = torch.device('cpu')
+                self.model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=False))
         else:
             print(f"[LPRNet] No se encontro ningun archivo de pesos.")
             
-        self.model.to(self.device)
+        try:
+            self.model.to(self.device)
+        except Exception as e:
+            if self.device.type == 'cuda':
+                print(f"[LPRNet] Falló mover modelo a GPU: {e} | Usando CPU como fallback temporal")
+                self.device = torch.device('cpu')
+                try:
+                    self.model.to(self.device)
+                except Exception as inner:
+                    print(f"[LPRNet] Error al mover modelo a CPU: {inner}")
+            else:
+                print(f"[LPRNet] Error al mover modelo a CPU: {e}")
+
         self.model.eval()
 
         # 🎯 DETECTOR DE PLACA INTEGRADO (YOLO) PARA GUIAR EL RECORTE
@@ -130,6 +148,9 @@ class LPRNetPredictor:
         except Exception as e:
             self.plate_detector = None
             print(f"[LPRNet] No se pudo cargar el detector de placas: {e}")
+
+    def _select_device(self):
+        return get_default_device()
 
     def decode_greedy(self, logits, threshold=0.15):
         """

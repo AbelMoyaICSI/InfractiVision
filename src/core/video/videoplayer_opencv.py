@@ -10,6 +10,7 @@ import os
 import numpy as np
 import torch
 import psutil
+from src.core.utils import get_default_device
 from src.core.utils.audio import play_beep  # multiplataforma
 from src.core.utils.icon import set_window_icon  # multiplataforma
 import re  # Para patrones de placas
@@ -94,7 +95,7 @@ class VideoPlayerOpenCV:
             self.plate_model = None
         
         # Estado de hardware (GPU/CPU) para la barra de información.
-        # Se sincroniza con el VehicleDetector una vez creado.
+        # Se sincroniza con el selector global de dispositivo en el arranque.
         self._sync_hardware_state()
         
         self.CAR_CLASS_ID = 2               # en COCO, 'car' = 2
@@ -4059,16 +4060,28 @@ class VideoPlayerOpenCV:
         """Sincroniza el estado GPU/CPU para la barra de información.
 
         Usa el VehicleDetector si ya está creado (fuente canónica: detecta CUDA
-        vía torch); si no, consulta torch directamente.
+        vía torch); si no, valida el dispositivo global activo.
         """
         if hasattr(self, 'vehicle_detector') and self.vehicle_detector is not None:
             self.using_gpu = self.vehicle_detector.using_gpu
             gi = getattr(self.vehicle_detector, 'hardware_info', {}).get('gpu', {})
         else:
-            self.using_gpu = torch.cuda.is_available()
+            device = get_default_device()
+            self.using_gpu = device.type == 'cuda'
             gi = {}
+
+        gpu_name = ''
+        if self.using_gpu:
+            try:
+                gpu_name = torch.cuda.get_device_name(device.index)
+            except Exception:
+                try:
+                    gpu_name = torch.cuda.get_device_name(0)
+                except Exception:
+                    gpu_name = ''
+
         self.gpu_info = {
-            'name': gi.get('name') or (torch.cuda.get_device_name(0) if self.using_gpu else ''),
+            'name': gi.get('name') or gpu_name,
             'available': self.using_gpu,
             'cuda_available': self.using_gpu,
             'memory': gi.get('memory', 0.0),
@@ -4088,23 +4101,28 @@ class VideoPlayerOpenCV:
     def update_system_info(self):
         """Actualizar información del sistema en la interfaz"""
         try:
-            # Información de GPU/CPU
-            if hasattr(self, 'gpu_info') and self.gpu_info.get('name'):
+            self._sync_hardware_state()
+            gpu_text = "💻 Solo CPU"
+            if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+                try:
+                    gpu_name = torch.cuda.get_device_name(0)
+                    gpu_text = f"🚀 {gpu_name}"
+                except Exception:
+                    gpu_text = "🚀 GPU detectada"
+            elif hasattr(self, 'gpu_info') and self.gpu_info.get('name'):
                 if self.gpu_info.get('cuda_available'):
-                    gpu_text = f"🚀 {self.gpu_info['name'][:20]}..."
+                    gpu_text = f"🚀 {self.gpu_info['name']}"
                 else:
-                    gpu_text = f"🔍 {self.gpu_info['name'][:20]}... (sin CUDA)"
-            else:
-                gpu_text = "💻 Solo CPU"
-            
+                    gpu_text = f"🔍 {self.gpu_info['name']}... (sin CUDA)"
+
             # Información de Internet
             has_internet = self.check_internet_connection()
             internet_text = "🌐 Conectado" if has_internet else "🔌 Sin Internet"
-            
+
             # Combinar información
             system_text = f"{gpu_text} | {internet_text}"
             self.system_info_label.config(text=system_text)
-            
+
         except Exception as e:
             self.system_info_label.config(text="🔧 Sistema: Detectando...")
             print(f"Error actualizando info del sistema: {e}")

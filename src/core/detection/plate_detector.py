@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 from datetime import datetime
+from src.core.utils import get_default_device, USE_CUDA
 
 class PlateDetector:
     """
@@ -17,6 +18,10 @@ class PlateDetector:
         Args:
             model_path: Ruta al modelo YOLO para detección de placas
         """
+        self.device = get_default_device()
+        self.half = self.device.type == 'cuda'
+        self.force_cpu = False
+
         try:
             # FIXED: Better model path resolution
             model_paths = [
@@ -41,6 +46,17 @@ class PlateDetector:
                         break
                     except Exception as e:
                         print(f"PlateDetector: Error loading {path}: {e}")
+                        if self.device.type == 'cuda':
+                            print("[PlateDetector] Error en soporte CUDA durante carga; reintentando en CPU como fallback temporal")
+                            self.device = torch.device('cpu')
+                            self.half = False
+                            try:
+                                self.model = YOLO(path)
+                                model_loaded = True
+                                print("PlateDetector: Modelo cargado correctamente en CPU (fallback temporal)")
+                                break
+                            except Exception as inner:
+                                print(f"PlateDetector: Error loading {path} en CPU: {inner}")
                         continue
             
             if not model_loaded:
@@ -50,18 +66,24 @@ class PlateDetector:
             print(f"Error al cargar modelo de detección de placas: {e}")
             self.model = None
         
-        # 🚀 CONFIGURACIÓN EDGE TURBO (GPU + FP16)
-        import torch
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.half = torch.cuda.is_available()
-        
-        if self.model and torch.cuda.is_available():
-            self.model.to(self.device)
-            # NO llamar a model.half() aquí: ultralytics fusiona conv+BN en la
-            # primera inferencia y un modelo ya en FP16 lanza
-            # "expected scalar type Half but found Float". Se pasa half=... a la
-            # llamada de inferencia y ultralytics hace half() tras el fuse.
-            print(f"[PlateDetector] MODO TURBO ACTIVADO ({self.device})")
+        # Configuración de umbral para detección nocturna
+        self.night_brightness_threshold = 60
+
+        if self.model:
+            try:
+                self.model.to(self.device)
+                if self.device.type == 'cuda':
+                    print(f"[PlateDetector] MODO TURBO ACTIVADO ({self.device})")
+                else:
+                    print("[PlateDetector] CUDA no disponible en este intento; usando CPU de fallback temporal")
+            except Exception as e:
+                print(f"[PlateDetector] Falló mover modelo a {self.device}: {e} | Usando CPU temporalmente")
+                self.device = torch.device('cpu')
+                self.half = False
+                try:
+                    self.model.to(self.device)
+                except Exception as inner:
+                    print(f"[PlateDetector] Error al mover modelo a CPU: {inner}")
         
         # Estadísticas de rendimiento
         self.detection_stats = {
@@ -71,22 +93,24 @@ class PlateDetector:
             'night_detections': 0,
             'night_failures': 0
         }
-        
-        # Night detection settings
-        self.night_detection_enabled = True
-        self.night_brightness_threshold = 85  # More sensitive to dark conditions
-    
+
+    def _select_device(self):
+        return get_default_device()
+
+    def _is_cuda_arch_supported(self, device_index: int) -> bool:
+        return USE_CUDA
+
     def detect(self, image, conf=0.5, classes=[0], draw=False, is_night=None):
         """
         Detecta placas en la imagen con técnicas mejoradas.
-        
+
         Args:
             image: Imagen donde buscar placas
             conf: Umbral de confianza para detecciones (0-1)
             classes: Lista de IDs de clases a detectar (0=placa por defecto)
             draw: Si es True, dibuja las detecciones en la imagen
             is_night: Si es True, aplica técnicas de detección nocturna
-            
+
         Returns:
             Lista de detecciones en formato (x1, y1, x2, y2, score, class_id)
         """
