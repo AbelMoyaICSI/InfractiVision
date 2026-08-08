@@ -1,5 +1,10 @@
 {
+<<<<<<< Updated upstream
   "fecha_generacion": "23/06/2026 12:05:43",
+=======
+  "fecha_generacion": "04/01/2026 23:33:00",
+  "periodo_analisis": "04/01/2026 - 04/01/2026",
+>>>>>>> Stashed changes
   "dias_analizados": 1,
   "indicadores": {
     "TI": {
@@ -22,17 +27,28 @@
         "fuente": "Estimación basada en registros históricos de campo"
       },
       "con_software": {
+<<<<<<< Updated upstream
         "tiempo_promedio_minutos": 0.01,
         "tiempos_individuales": [
           0.04,
           0.01,
           0.0,
           0.0
+=======
+        "tiempo_promedio_minutos": 0.43,
+        "tiempos_individuales": [
+          0.43
+>>>>>>> Stashed changes
         ],
         "muestras_analizadas": 4
       },
+<<<<<<< Updated upstream
       "reduccion_tiempo_porcentual": 99.8,
       "veces_mas_rapido": 637.2
+=======
+      "reduccion_tiempo_porcentual": 93.97,
+      "veces_mas_rapido": 16.59
+>>>>>>> Stashed changes
     },
     "NID": {
       "descripcion": "Número de Infracciones Detectadas correctamente",
@@ -49,9 +65,15 @@
   },
   "resumen_global": {
     "ti_porcentaje_acierto": "100.0%",
+<<<<<<< Updated upstream
     "tiempo_registro_minutos": "0.01 min",
     "infracciones_detectadas_hoy": 4,
     "nid_total": 4,
+=======
+    "tiempo_registro_minutos": "0.43 min",
+    "infracciones_detectadas_hoy": 1,
+    "nid_total": 1,
+>>>>>>> Stashed changes
     "nie_total": 0,
     "tir_total": 4
   }

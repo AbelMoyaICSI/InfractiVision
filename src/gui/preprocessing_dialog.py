@@ -1844,8 +1844,21 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 self.percentage_label.config(text=f"80% | Iniciando análisis profundo...")
                 self._phase2_index = 0
                 
+<<<<<<< Updated upstream
                 # NUEVO: Flag para evitar múltiples ejecuciones asíncronas
                 self._phase2_processing = False
+=======
+                # 🔧 OCULTAR solo elementos de video innecesarios (mantener contador visible)
+                try:
+                    if hasattr(self, 'semaphore_frame'):
+                        self.semaphore_frame.pack_forget()
+                    if hasattr(self, 'monitor_side'):
+                        self.monitor_side.pack_forget()
+                    # ✅ Mantener infractions_label visible durante Fase 2
+                except:
+                    pass
+
+>>>>>>> Stashed changes
                 
                 # Transición inmediata (50ms en lugar de 500ms)
                 self._safe_after(50, self._run_phase2_analysis)
@@ -1899,6 +1912,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         self.infractions_counter_label.config(text=f"Analizando: {self._phase2_index + 1}/{len(captured)}", foreground="#3498db")
         self.phase_label.config(text=f"Fase 2: Procesando Vehículo {self._phase2_index + 1}/{len(captured)}")
 
+<<<<<<< Updated upstream
         def ocr_worker_task(infraction, index):
             """Hilo de trabajo interno para OCR pesado con Fusión Multicuadro (Consensus)"""
             try:
@@ -2171,6 +2185,12 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         vehicle_img = data['vehicle_img']
         inf = data['infraction']
         custom_reason = data.get('reason') # Razón específica de Phase 2
+=======
+        # 2. Extraer PLACA usando process_plate DIRECTAMENTE (más rápido)
+        plate = None
+        plate_text = "No detectada"
+        confidence = 0.0
+>>>>>>> Stashed changes
         
         print(f"📊 UI DEBUG: Recibido Fase 2 - Placa: {plate_text} (Conf: {confidence:.2f})")
         
@@ -2179,6 +2199,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         actual_infraction = None
         if vehicle_img is not None:
             try:
+<<<<<<< Updated upstream
                 # Si no se detectó texto, usamos NIE (No Identificada Externamente)
                 save_text = plate_text if plate_text not in ["No detectada", "No legible", "Error OCR", "", None] else "NIE"
                 
@@ -2188,6 +2209,122 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                     plate_text=save_text,
                     plate_img=plate if (plate is not None and plate.size > 0) else self._get_plate_crop(vehicle_img, (0, 0, vehicle_img.shape[1], vehicle_img.shape[0])),
                     vehicle_img=vehicle_img, # Imagen con recuadro verde
+=======
+                # 🔄 Actualizar GUI para evitar "No responde"
+                self.dialog.update_idletasks()
+                
+                # Usar process_plate directamente (ya hace detección + OCR)
+                from src.core.processing.plate_processing import process_plate
+                is_night = getattr(self, 'is_night', False)
+                
+                result = process_plate(vehicle_img, is_night=is_night)
+                
+                if result and len(result) >= 4:
+                    bbox, plate_img, plate_text_result, conf = result
+                    if plate_text_result and len(plate_text_result) >= 4:
+                        plate_text = plate_text_result
+                        confidence = conf
+                        plate = plate_img
+                        print(f"✅ OCR directo: '{plate_text}' (conf: {confidence:.2f})")
+                
+            except Exception as e:
+                print(f"⚠️ Error en OCR Fase 2: {e}")
+                plate_text = "Error OCR"
+                confidence = 0.0
+
+        
+        # ========== IZQUIERDA: VEHICULO O PLACA ==========
+        # Si tenemos placa la mostramos grande, si no, el vehículo
+        left_img = plate if (plate is not None and plate.size > 0) else vehicle_img
+        title_left = "PLACA DETECTADA" if (plate is not None and plate.size > 0) else "VEHICULO INFRACTOR"
+        
+        cv2.putText(display, title_left, (60, 45), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        if left_img is not None and left_img.size > 0:
+            try:
+                h, w = left_img.shape[:2]
+                # Ajustar escala para que quepa en 280x200
+                scale = min(280/max(w,1), 200/max(h,1))
+                new_w, new_h = max(1, int(w*scale)), max(1, int(h*scale))
+                img_resized = cv2.resize(left_img, (new_w, new_h))
+                
+                # Centrar en el área izquierda (0-320)
+                x_off = (320 - new_w) // 2
+                y_off = 70
+                display[y_off:y_off+new_h, x_off:x_off+new_w] = img_resized
+            except Exception as e:
+                 print(f"Error dibujando left_img: {e}")
+                 cv2.putText(display, "Error visual", (80, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1)
+        
+        # Datos descriptivos abajo a la izquierda
+        cv2.putText(display, f"Infraccion #{inf['id']}", (80, 310), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        cv2.putText(display, f"Tiempo local: {inf['timestamp']:.1f}s", (90, 335), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
+        
+        # ========== DERECHA: ANALISIS OCR ==========
+        cv2.putText(display, "ANALISIS OCR", (410, 45), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        # Box con matrícula (ESTILO PREMIUM)
+        cv2.rectangle(display, (340, 110), (620, 200), (0, 60, 0), -1)  # Fondo verde oscuro
+        cv2.rectangle(display, (340, 110), (620, 200), (0, 255, 0), 2)  # Borde verde neón
+        
+        cv2.putText(display, "MATRICULA:", (350, 135), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
+        
+        # Placa en amarillo brillante y grande
+        plate_display_text = plate_text.upper() if plate_text else "---"
+        cv2.putText(display, plate_display_text, (365, 175), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.95, (0, 255, 255), 3)
+        
+        # 3. Barra de confianza (ESTILO PLATE CARD)
+        conf_pct = int(confidence * 100)
+        if confidence >= 0.85:
+            conf_color = (0, 200, 0)   # Verde
+            status_text = "NID - DETECCION VALIDA"
+        elif confidence >= 0.70:
+            conf_color = (0, 150, 255) # Ámbar/Naranja
+            status_text = "NID - VALIDACION RECOMENDADA"
+        else:
+            conf_color = (0, 0, 255)   # Rojo
+            status_text = "NIE - REVISAR MANUALMENTE"
+            
+        cv2.rectangle(display, (340, 220), (620, 240), (40, 40, 40), -1)
+        bar_w = int(280 * confidence)
+        cv2.rectangle(display, (340, 220), (340 + bar_w, 240), conf_color, -1)
+        
+        cv2.putText(display, f"Confianza: {conf_pct}%", (340, 215), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        # 4. Estado final
+        cv2.putText(display, status_text, (340, 280), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, conf_color, 1)
+        
+        status_main = "LEIDA" if confidence >= 0.70 else "REVISAR"
+        cv2.putText(display, status_main, (430, 330), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.0, conf_color, 3)
+        
+        # ========== MOSTRAR EN UI ==========
+        try:
+            rgb = cv2.cvtColor(display, cv2.COLOR_BGR2RGB)
+            imgtk = ImageTk.PhotoImage(Image.fromarray(rgb))
+            self.video_label.config(image=imgtk)
+            self.video_label.image = imgtk
+            self.dialog.update_idletasks() # Forzar dibujado
+        except Exception as e:
+            print(f"❌ Error actualizando UI Fase 2: {e}")
+
+        # 🚀 REGISTRO OFICIAL DE INFRACCIÓN
+        if plate_text and plate_text not in ["No detectada", "No legible", "Error OCR"]:
+            try:
+                # Crear registro oficial para que aparezca en el panel principal
+                inf_id = self._create_infraction_record(
+                    plate_text=plate_text,
+                    plate_img=plate if (plate is not None and plate.size > 0) else left_img,
+                    vehicle_img=inf.get('full_frame'),
+>>>>>>> Stashed changes
                     frame_index=inf.get('frame_index', 0),
                     fps=self.fps,
                     bbox=inf.get('bbox'),
@@ -2313,6 +2450,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 cv2.rectangle(display, (x_off, 80), (x_off+new_w, 80+new_h), (80, 80, 80), 1)
             except: pass
         
+<<<<<<< Updated upstream
         cv2.putText(display, f"Infraccion #{inf['id']}", (120, 370), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
         
         # --- LADO DERECHO: ANÁLISIS OCR (RECORTE QUIRÚRGICO) ---
@@ -2369,6 +2507,12 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         
         # Disparar inmediatamente el siguiente análisis sin esperar al after principal si es posible
         self._safe_after(50, self._run_phase2_analysis)
+=======
+        # Siguiente infracción (delay reducido + actualizar GUI)
+        self._phase2_index += 1
+        self.dialog.update_idletasks()  # Mantener GUI responsiva
+        self.dialog.after(100, self._run_phase2_analysis)  # Reducido de 1000ms a 100ms
+>>>>>>> Stashed changes
 
     
     def _get_plate_crop(self, frame, bbox):
@@ -2465,6 +2609,74 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             print(f"⚠️ Error en _enhance_plate_for_ocr: {e}")
             return plate_img
 
+    def _multi_pass_ocr_voting(self, vehicle_img, plate_crop=None):
+        """
+        OCR optimizado: Una sola pasada con detección de placa y upscaling inteligente.
+        OPTIMIZADO para velocidad sin sacrificar precisión.
+        
+        Returns:
+            tuple: (plate_text, confidence, plate_img)
+        """
+        from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
+        
+        if vehicle_img is None or vehicle_img.size == 0:
+            return "No detectada", 0.0, None
+        
+        try:
+            # ========== PASO 1: DETECTAR Y RECORTAR SOLO LA PLACA ==========
+            plate_region = None
+            h, w = vehicle_img.shape[:2]
+            
+            # Intentar usar el detector de placas para crop preciso
+            try:
+                from src.core.processing.plate_processing import process_plate
+                is_night = getattr(self, 'is_night', False)
+                result = process_plate(vehicle_img, is_night=is_night)
+                
+                if result and len(result) >= 4:
+                    bbox, plate_img_detected, plate_text_detected, conf = result
+                    # Si process_plate ya detectó la placa, usar su resultado directamente
+                    if plate_text_detected and len(plate_text_detected) >= 4:
+                        print(f"✅ Placa detectada directamente: '{plate_text_detected}' (conf: {conf:.2f})")
+                        return plate_text_detected, conf, plate_img_detected
+                    # Si detectó la región pero no el texto, usar el crop
+                    if plate_img_detected is not None and plate_img_detected.size > 0:
+                        plate_region = plate_img_detected
+            except Exception as e:
+                print(f"⚠️ Detector de placas falló, usando crop heurístico: {e}")
+            
+            # Fallback: Crop heurístico (40% inferior del vehículo)
+            if plate_region is None:
+                plate_y1 = int(h * 0.55)  # 55% desde arriba
+                plate_region = vehicle_img[plate_y1:h, :].copy()
+            
+            # ========== PASO 2: UPSCALING INTELIGENTE (SOLO BAJA RES) ==========
+            ph, pw = plate_region.shape[:2]
+            if pw < 100:
+                # Baja resolución: aplicar upscale 2x
+                scale = 2.0
+                plate_region = cv2.resize(plate_region, None, fx=scale, fy=scale, 
+                                         interpolation=cv2.INTER_CUBIC)
+                print(f"🔍 Upscaling 2x aplicado (ancho original: {pw}px)")
+            
+            # ========== PASO 3: MEJORA RÁPIDA Y OCR ==========
+            enhanced = self._enhance_plate_for_ocr(plate_region)
+            if enhanced is None:
+                enhanced = plate_region
+            
+            plate_text = recognize_plate(enhanced)
+            
+            if plate_text and len(plate_text) >= 4:
+                confidence, _ = calculate_siiv_confidence(plate_text, 0.75)
+                print(f"📖 OCR: '{plate_text}' (conf: {confidence:.2f})")
+                return plate_text, confidence, enhanced
+            
+            return "No detectada", 0.0, plate_region
+            
+        except Exception as e:
+            print(f"❌ Error en OCR optimizado: {e}")
+            return "Error OCR", 0.0, vehicle_img
+
     def _perform_smart_ocr(self, plate_img):
         """Lectura de placa con Homografía v6.3 + LPRNet (igual que test_geoloc_surgical_gui.py)."""
         if plate_img is None or plate_img.size == 0:
@@ -2472,6 +2684,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         try:
             from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
 
+<<<<<<< Updated upstream
             # ── PASO 0: Homografía v6.3 (padding → perspectiva) ──
             use_autocrop = True
             try:
@@ -2492,6 +2705,10 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 print(f"⚠️ SmartOCR Error: {_he}")
 
             # ── PASO 1: Mejora óptica de imagen ──
+=======
+            
+            # Mejorar imagen antes de OCR
+>>>>>>> Stashed changes
             enhanced = self._enhance_plate_for_ocr(plate_img)
             src_img = enhanced if enhanced is not None else plate_img
 
@@ -2847,6 +3064,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                     except Exception as anpr_error:
                         print(f"⚠️  Error en ANPR para frame {frame_index}: {anpr_error}")
             
+<<<<<<< Updated upstream
             # 🚀 MÉTODO MASTER: Recorte Quirúrgico + OCR Directo
             try:
                 from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence, get_lprnet_predictor
@@ -2875,6 +3093,31 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 
             except Exception as master_error:
                 print(f"⚠️ Error en extracción Master: {master_error}")
+=======
+            # Método 3: OCR alternativo con mejora de imagen
+            if not plate_text or len(plate_text) < 4:
+                try:
+                    from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
+                    
+                    # Usar imagen mejorada si está disponible
+                    if enhance_plate_image is not None:
+                        is_night_scene = getattr(self, 'is_night', False)
+                        enhanced_roi = enhance_plate_image(vehicle_roi, is_night=is_night_scene)
+                        plate_text = recognize_plate(enhanced_roi)
+                        plate_img = enhanced_roi if plate_text else None
+                    else:
+                        plate_text = recognize_plate(vehicle_roi)
+                        plate_img = vehicle_roi if plate_text else None
+                    
+                    # Si se detectó placa, calcular confianza SIIV
+                    if plate_text and len(plate_text) >= 4:
+                        siiv_conf, siiv_details = calculate_siiv_confidence(plate_text, 0.70)
+                        print(f"⚠️ Método 3 (OCR alternativo): '{plate_text}' (conf: {siiv_conf:.2f})")
+                        return plate_text, plate_img, siiv_conf
+                        
+                except ImportError:
+                    pass
+>>>>>>> Stashed changes
         
         except Exception as e:
             print(f"❌ Error extrayendo placa del frame {frame_index}: {e}")
