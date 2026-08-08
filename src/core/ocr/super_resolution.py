@@ -36,7 +36,7 @@ class PlateUpscaler:
             
             # Verificar que opencv tiene el módulo dnn_superres
             if not hasattr(cv2, 'dnn_superres'):
-                print("⚠️ OpenCV no tiene módulo dnn_superres. Instalando opencv-contrib-python...")
+                print("[SR] OpenCV no tiene modulo dnn_superres.")
                 self.model_loaded = False
                 return
             
@@ -44,10 +44,10 @@ class PlateUpscaler:
             self.sr.readModel(model_path)
             self.sr.setModel("fsrcnn", 3)  # Escala 3x
             self.model_loaded = True
-            print("✅ Super-Resolución FSRCNN cargada correctamente (40KB, 3x)")
+            print("[SR] FSRCNN cargada correctamente (40KB, 3x)")
             
         except Exception as e:
-            print(f"⚠️ No se pudo cargar FSRCNN: {e}")
+            print(f"[SR] No se pudo cargar FSRCNN: {e}")
             self.model_loaded = False
     
     def upscale(self, plate_img, min_width=80):
@@ -72,17 +72,17 @@ class PlateUpscaler:
         
         # Si el modelo no está cargado, usar bicúbico como fallback
         if not self.model_loaded or self.sr is None:
-            print(f"🔍 Fallback bicúbico: {w}px → {w*3}px")
+            print(f"[SR] Fallback bubicubico: {w}px -> {w*3}px")
             return cv2.resize(plate_img, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
         
         try:
             # Aplicar Super-Resolución FSRCNN
             upscaled = self.sr.upsample(plate_img)
-            print(f"🚀 FSRCNN SR: {w}x{h}px → {upscaled.shape[1]}x{upscaled.shape[0]}px")
+            print(f"[SR] FSRCNN: {w}x{h}px -> {upscaled.shape[1]}x{upscaled.shape[0]}px")
             return upscaled
             
         except Exception as e:
-            print(f"⚠️ Error en SR, usando bicúbico: {e}")
+            print(f"[SR] Error en SR, usando bubicubico: {e}")
             return cv2.resize(plate_img, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
 
 

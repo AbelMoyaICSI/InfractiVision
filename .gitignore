@@ -47,6 +47,7 @@ secrets/
 config/*.json
 data/*.json
 *.json
+!*test.json
 !requirements.txt
 !package*.json
 

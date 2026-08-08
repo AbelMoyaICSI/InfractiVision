@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 from src.path_helper import resource_path
+from src.core.utils.icon import set_window_icon
 import os
 
 class ManualWindow:
@@ -17,10 +18,7 @@ class ManualWindow:
         self.window.configure(bg='white')
         self.window.resizable(True, True)
         
-        # Configurar icono
-        icon_path = resource_path("img/icon.ico")
-        if os.path.exists(icon_path):
-            self.window.iconbitmap(icon_path)
+        set_window_icon(self.window)
         
         # Hacer ventana modal
         self.window.transient(self.parent)

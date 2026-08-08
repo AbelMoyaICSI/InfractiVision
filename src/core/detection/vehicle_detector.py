@@ -1,7 +1,18 @@
 import cv2
+import os
 import torch
 import psutil
 import numpy as np
+from src.core.utils import get_default_device
+
+# PyTorch 2.6+ changed torch.load default to weights_only=True
+# ultralytics 8.x still needs weights_only=False for DetectionModel unpickling
+_original_torch_load = torch.load
+def _patched_torch_load(*args, **kwargs):
+    kwargs.setdefault("weights_only", False)
+    return _original_torch_load(*args, **kwargs)
+torch.load = _patched_torch_load
+
 from ultralytics import YOLO
 
 class VehicleDetector:
@@ -9,16 +20,11 @@ class VehicleDetector:
         # Cargar modelo con configuración optimizada
         self.model = YOLO(model_path)
         
-        # Dispositivo óptimo (GPU/CPU) con MODO TURBO (FP16)
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.using_gpu = torch.cuda.is_available()
-        # FP16 (Half Precision) - Dobla la velocidad en GPUs modernas, igual que en cámaras ANPR
-        self.half = self.using_gpu 
-        
-        if self.using_gpu:
-            self.model.to(self.device)
-            if self.half:
-                self.model.half() # Convertir a FP16 para velocidad máxima
+        # Dispositivo óptimo global: GPU compatible o CPU
+        self.device = get_default_device()
+        self.using_gpu = self.device.type == 'cuda'
+        self.half = self.using_gpu
+        self._setup_device()
         
         # MEJORA: Detección avanzada de hardware y configuración ultra-adaptativa
         self.hardware_info = self._detect_hardware_capabilities()
@@ -36,28 +42,58 @@ class VehicleDetector:
             'hardware_score': self.hardware_info['score']
         }
         
-        print(f"🚀 VehicleDetector: {self.hardware_info['description']}")
+        print(f"[VehicleDetector] {self.hardware_info['description']}")
+
+    def _select_device(self):
+        """Selector local obsoleto, usar get_default_device() global."""
+        return get_default_device()
+
+    def _setup_device(self):
+        """Configura el modelo en el dispositivo elegido, con fallback a CPU si falla."""
+        try:
+            self.model.to(self.device)
+        except Exception as e:
+            if self.device.type == 'cuda':
+                print(f"[VehicleDetector] Falló mover modelo a GPU: {e} | Fallback a CPU temporal")
+                self.device = torch.device('cpu')
+                self.using_gpu = False
+                self.half = False
+                try:
+                    self.model.to(self.device)
+                except Exception as inner:
+                    print(f"[VehicleDetector] Error al mover modelo a CPU: {inner}")
+            else:
+                print(f"[VehicleDetector] Error al mover modelo a CPU: {e}")
+
+        self.using_gpu = self.device.type == 'cuda'
+        self.half = self.using_gpu
 
     def _detect_hardware_capabilities(self):
         """Detecta capacidades avanzadas del hardware para configuración óptima"""
         import time
         start_time = time.time()
         
-        # Información de GPU
+        gpu_available = self.device.type == 'cuda' and torch.cuda.is_available()
         gpu_info = {
-            'available': torch.cuda.is_available(),
-            'count': torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            'available': gpu_available,
+            'count': torch.cuda.device_count() if gpu_available else 0,
             'memory': 0,
-            'compute_capability': None
+            'compute_capability': None,
+            'name': None
         }
         
         if gpu_info['available']:
             try:
-                gpu_info['memory'] = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
-                gpu_info['compute_capability'] = torch.cuda.get_device_properties(0).major
-                gpu_info['name'] = torch.cuda.get_device_properties(0).name
-            except:
-                pass
+                props = torch.cuda.get_device_properties(self.device)
+                gpu_info['memory'] = props.total_memory / (1024**3)  # GB
+                gpu_info['compute_capability'] = float(f"{props.major}.{props.minor}")
+                gpu_info['name'] = props.name
+            except Exception:
+                gpu_info['available'] = False
+                gpu_info['count'] = 0
+                gpu_info['memory'] = 0
+                gpu_info['compute_capability'] = None
+                gpu_info['name'] = "unknown"
         
         # Información de CPU
         cpu_info = {
@@ -72,19 +108,17 @@ class VehicleDetector:
         description = ""
         
         if gpu_info['available'] and gpu_info['memory'] > 0:
-            # GPU disponible - calcular score basado en memoria y compute capability
-            gpu_score = min(50, gpu_info['memory'] * 5)  # Hasta 50 puntos por memoria
-            if gpu_info['compute_capability'] and gpu_info['compute_capability'] >= 6:
-                gpu_score += 20  # +20 para compute capability moderna
-            if gpu_info['compute_capability'] and gpu_info['compute_capability'] >= 8:
-                gpu_score += 10  # +10 para última generación
+            gpu_score = min(50, gpu_info['memory'] * 5)
+            if gpu_info['compute_capability'] and gpu_info['compute_capability'] >= 6.0:
+                gpu_score += 20
+            if gpu_info['compute_capability'] and gpu_info['compute_capability'] >= 8.0:
+                gpu_score += 10
             score += gpu_score
             description = f"GPU {gpu_info.get('name', 'CUDA')} ({gpu_info['memory']:.1f}GB) + CPU {cpu_info['cores']}C"
         else:
-            # Solo CPU - calcular score basado en cores y frecuencia
-            cpu_score = min(40, cpu_info['cores'] * 5)  # Hasta 40 puntos por cores
-            freq_score = min(20, (cpu_info['frequency'] - 1000) / 100)  # Hasta 20 por frecuencia
-            memory_score = min(20, cpu_info['memory'] * 2)  # Hasta 20 por memoria
+            cpu_score = min(40, cpu_info['cores'] * 5)
+            freq_score = min(20, max(0, (cpu_info['frequency'] - 1000) / 100))
+            memory_score = min(20, cpu_info['memory'] * 2)
             score = cpu_score + freq_score + memory_score
             description = f"CPU {cpu_info['cores']}C/{cpu_info['threads']}T @ {cpu_info['frequency']:.0f}MHz"
         
@@ -93,7 +127,7 @@ class VehicleDetector:
         return {
             'gpu': gpu_info,
             'cpu': cpu_info,
-            'score': min(100, max(10, score)),  # Entre 10-100
+            'score': min(100, max(10, score)),
             'description': description,
             'detection_time': detection_time
         }
@@ -102,8 +136,7 @@ class VehicleDetector:
         """Configura parámetros adaptativos según hardware detectado"""
         score = self.hardware_info['score']
         
-        # 🔧 AJUSTE: Si NO hay GPU, forzar configuración CPU optimizada
-        has_gpu = self.hardware_info['gpu']['available']
+        has_gpu = self.using_gpu
         
         if not has_gpu:
             # 🖥️ MODO CPU - Optimización agresiva para CPUs sin GPU
@@ -111,11 +144,11 @@ class VehicleDetector:
             self.conf_threshold = 0.25  # Reducido para detectar más vehículos
             self.max_det = 50
             self.batch_size = 1
-            print("�️  Configuración CPU OPTIMIZADA:")
-            print(f"   📏 Tamaño de imagen: {self.imgsz}px (múltiplo de 32 para YOLO)")
-            print(f"   🎯 Umbral confianza: {self.conf_threshold} (reducido para mejor detección)")
-            print(f"   ⚡ Max detecciones: {self.max_det}")
-            print(f"   💡 Procesamiento optimizado para CPU")
+            print("[CPU] Configuracion CPU OPTIMIZADA:")
+            print(f"   Tamano de imagen: {self.imgsz}px (multiple de 32 para YOLO)")
+            print(f"   Umbral confianza: {self.conf_threshold} (reducido para mejor deteccion)")
+            print(f"   Max detecciones: {self.max_det}")
+            print(f"   Procesamiento optimizado para CPU")
             return
         
         # Resto de configuraciones para GPU
@@ -124,25 +157,25 @@ class VehicleDetector:
             self.conf_threshold = 0.25
             self.max_det = 150
             self.batch_size = 4
-            print("� Configuración ULTRA: Hardware de gama alta detectado")
+            print("[GPU] Configuracion ULTRA: Hardware de gama alta detectado")
         elif score >= 60:  # Hardware potente  
             self.imgsz = 640
             self.conf_threshold = 0.3
             self.max_det = 100
             self.batch_size = 2
-            print("🚀 Configuración ALTA: Hardware potente detectado")
+            print("[GPU] Configuracion ALTA: Hardware potente detectado")
         elif score >= 40:  # Hardware medio
             self.imgsz = 480
             self.conf_threshold = 0.35
             self.max_det = 75
             self.batch_size = 1
-            print("⚡ Configuración MEDIA: Hardware estándar detectado")
+            print("[GPU] Configuracion MEDIA: Hardware estandar detectado")
         else:  # Hardware básico con GPU
             self.imgsz = 416
             self.conf_threshold = 0.4
             self.max_det = 50
             self.batch_size = 1
-            print("💻 Configuración BÁSICA GPU")
+            print("[GPU] Configuracion BASICA GPU")
         
         # Configuración adicional para GPU
         if self.using_gpu and self.hardware_info['gpu']['memory'] > 0:
@@ -219,6 +252,7 @@ class VehicleDetector:
             max_det=self.max_det,
             imgsz=self.imgsz,
             device=self.device,
+            half=self.half,
             classes=valid_classes  # 🚀 FILTRO AGRESIVO: Solo carros, buses y camiones
         )
         
@@ -264,22 +298,73 @@ class VehicleDetector:
         
         return detections
 
+    def detect_batch(
+        self, frames: list, conf: float | None = None
+    ) -> list[list[tuple]]:
+        """
+        Run YOLO inference on a batch of frames for maximum GPU throughput.
+
+        Args:
+            frames: list of BGR images (np.ndarray).
+            conf: confidence threshold (None = adaptive auto).
+
+        Returns:
+            List of detection lists — one list per input frame.
+            Each detection is (x1, y1, x2, y2, cls_id).
+        """
+        import time
+
+        valid_classes = [2, 5, 7]  # car, bus, truck
+
+        if conf is None:
+            # pick a safe default for batch processing
+            conf = 0.30
+
+        t0 = time.time()
+
+        results = self.model.predict(
+            frames,
+            conf=conf,
+            verbose=False,
+            max_det=self.max_det,
+            imgsz=self.imgsz,
+            device=self.device,
+            half=self.half,
+            classes=valid_classes,
+            stream=False,  # batch mode
+        )
+
+        all_detections: list[list[tuple]] = []
+        for r in results:
+            dets: list[tuple] = []
+            for box in r.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cls_id = int(box.cls[0])
+                conf_val = float(box.conf[0])
+                if conf_val >= conf and cls_id in valid_classes:
+                    dets.append((x1, y1, x2, y2, cls_id))
+            all_detections.append(dets)
+
+        # Update stats
+        elapsed = time.time() - t0
+        n_total = sum(len(d) for d in all_detections)
+        self.detection_stats["total_detections"] += n_total
+        self.detection_stats["processing_times"].append(elapsed / max(len(frames), 1))
+        if len(self.detection_stats["processing_times"]) > 100:
+            self.detection_stats["processing_times"] = (
+                self.detection_stats["processing_times"][-100:]
+            )
+
+        if self.detection_stats["processing_times"]:
+            avg_t = sum(self.detection_stats["processing_times"]) / len(
+                self.detection_stats["processing_times"]
+            )
+            self.detection_stats["average_fps"] = 1.0 / avg_t if avg_t > 0 else 0
+
+        return all_detections
+
     def _get_class_name(self, cls_id):
         """Retorna el nombre amigable de la clase"""
         names = {2: "Carro", 5: "Bus", 7: "Camion"}
         return names.get(cls_id, f"Vehiculo_{cls_id}")
     
-    def get_performance_stats(self):
-        """Retorna estadísticas de rendimiento del detector"""
-        return {
-            'total_detections': self.detection_stats['total_detections'],
-            'average_fps': round(self.detection_stats['average_fps'], 2),
-            'hardware_score': self.detection_stats['hardware_score'],
-            'hardware_description': self.hardware_info['description'],
-            'current_config': {
-                'imgsz': self.imgsz,
-                'conf_threshold': self.conf_threshold,
-                'max_det': self.max_det,
-                'batch_size': getattr(self, 'batch_size', 1)
-            }
-        }

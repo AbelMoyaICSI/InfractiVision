@@ -5,6 +5,7 @@ import numpy as np
 import cv2
 import os
 from src.path_helper import resource_path
+from src.core.utils import get_default_device
 
 # DICCIONARIO OFICIAL DEL ENTRENAMIENTO (Longitud 35)
 CHARS = [
@@ -82,7 +83,7 @@ class LPRNet(nn.Module):
 
 class LPRNetPredictor:
     def __init__(self, model_path=None):
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = get_default_device()
         self.class_num = len(CHARS)
         self.model = LPRNet(class_num=self.class_num, dropout_rate=0)
         
@@ -98,27 +99,44 @@ class LPRNetPredictor:
             
             if os.path.exists(v4_path):
                 model_path = v4_path
-                print("🚀 LPRNet Engine: Usando weights V4_CORREGIDO (78.86%, 4X mejor)")
+                print("[LPRNet] Usando weights V4_CORREGIDO (78.86%, 4X mejor)")
             elif os.path.exists(v3_path):
                 model_path = v3_path
-                print("🏆 LPRNet Engine: Usando weights V3_ESPECIALISTA (80% precisión)")
+                print("[LPRNet] Usando weights V3_ESPECIALISTA (80% precision)")
             elif os.path.exists(v2_path):
                 model_path = v2_path
-                print("📦 LPRNet Engine: Usando weights CONSENSO_V2 (75% precisión)")
+                print("[LPRNet] Usando weights CONSENSO_V2 (75% precision)")
             elif os.path.exists(master_path):
                 model_path = master_path
-                print("📦 LPRNet Engine: Usando weights MASTER_FINAL (fallback)")
+                print("[LPRNet] Usando weights MASTER_FINAL (fallback)")
             else:
                 model_path = None
-                print("⚠️ LPRNet Engine: No se encontró ningún archivo de pesos.")
+                print("[LPRNet] No se encontro ningun archivo de pesos.")
             
         if model_path and os.path.exists(model_path):
-            self.model.load_state_dict(torch.load(model_path, map_location=self.device))
-            print(f"✅ LPRNet Engine: Pesos cargados exitosamente desde {model_path}")
+            try:
+                self.model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=False))
+                print(f"[LPRNet] Pesos cargados desde {os.path.basename(model_path)}")
+            except Exception as e:
+                print(f"[LPRNet] Falló cargar pesos en {self.device}: {e} | Reintentando en CPU")
+                self.device = torch.device('cpu')
+                self.model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=False))
         else:
-            print(f"⚠️ LPRNet Engine: No se encontró ningún archivo de pesos.")
+            print(f"[LPRNet] No se encontro ningun archivo de pesos.")
             
-        self.model.to(self.device)
+        try:
+            self.model.to(self.device)
+        except Exception as e:
+            if self.device.type == 'cuda':
+                print(f"[LPRNet] Falló mover modelo a GPU: {e} | Usando CPU como fallback temporal")
+                self.device = torch.device('cpu')
+                try:
+                    self.model.to(self.device)
+                except Exception as inner:
+                    print(f"[LPRNet] Error al mover modelo a CPU: {inner}")
+            else:
+                print(f"[LPRNet] Error al mover modelo a CPU: {e}")
+
         self.model.eval()
 
         # 🎯 DETECTOR DE PLACA INTEGRADO (YOLO) PARA GUIAR EL RECORTE
@@ -126,10 +144,13 @@ class LPRNetPredictor:
             from src.core.detection.plate_detector import PlateDetector
             plate_model_path = resource_path("models/license_plate_detector.pt")
             self.plate_detector = PlateDetector(plate_model_path)
-            print("👁️ LPRNet Engine: Detector YOLO-Plate cargado como guía.")
+            print("[LPRNet] Detector YOLO-Plate cargado como guia.")
         except Exception as e:
             self.plate_detector = None
-            print(f"⚠️ LPRNet Engine: No se pudo cargar el detector de placas: {e}")
+            print(f"[LPRNet] No se pudo cargar el detector de placas: {e}")
+
+    def _select_device(self):
+        return get_default_device()
 
     def decode_greedy(self, logits, threshold=0.15):
         """
@@ -280,35 +301,32 @@ class LPRNetPredictor:
         
         return cv2.resize(img, target_size, interpolation=cv2.INTER_LANCZOS4)
 
-    def predict(self, img_bgr, return_processed=False, autocrop=True):
+    def predict(self, img_bgr, return_processed=False, autocrop=True, preprocessed=False):
         if img_bgr is None or img_bgr.size == 0:
             return ("", 0.0) if not return_processed else ("", 0.0, img_bgr)
 
-        # Paso 1: Autocrop quirúrgico
-        cropped = self.autocrop_plate(img_bgr) if autocrop else img_bgr
-        
-        # Paso 1.5: VALIDACIÓN PRE-OCR (Bypass para asegurar captura)
-        # valido, razon = self.es_placa_valida(cropped)
-        # if not valido:
-        #    if return_processed: return "", 0.0, cropped
-        #    return "", 0.0
-        
-        # Paso 2: Super-Resolución CONDICIONAL (V4 - Del otro chat)
-        # Solo si la placa es muy pequeña (< 80px en dimensión mínima)
-        h, w = cropped.shape[:2]
-        min_dim = min(h, w)
-        
-        if min_dim < 80:
-            try:
-                from src.core.ocr.super_resolution import apply_super_resolution
-                cropped = apply_super_resolution(cropped)
-                # print(f"✨ SR aplicada (era {w}x{h})")
-            except:
-                pass  # Si SR no disponible, continuar sin ella
-        
-        # Paso 3: Adaptación para LPRNet (recorte anti-logo + stretching)
-        img_data = self.adapt_for_lprnet(cropped, (94, 24))
-        
+        # TODO: eliminar preprocessed cuando los callers internos ya no lo necesiten
+        if preprocessed:
+            cropped = img_bgr
+            img_data = img_bgr
+        else:
+            # Paso 1: Autocrop quirúrgico
+            cropped = self.autocrop_plate(img_bgr) if autocrop else img_bgr
+
+            # Paso 2: Super-Resolución CONDICIONAL (solo si placa muy pequeña)
+            h, w = cropped.shape[:2]
+            min_dim = min(h, w)
+
+            if min_dim < 80:
+                try:
+                    from src.core.ocr.super_resolution import upscale_plate
+                    cropped = upscale_plate(cropped, min_width=80)
+                except Exception:
+                    pass
+
+            # Paso 3: Adaptación para LPRNet (recorte anti-logo + stretching)
+            img_data = self.adapt_for_lprnet(cropped, (94, 24))
+
         # Paso 4: Normalización EXACTA del entrenamiento
         img_prep = img_data.astype('float32')
         img_prep = (img_prep - 127.5) * 0.0078125

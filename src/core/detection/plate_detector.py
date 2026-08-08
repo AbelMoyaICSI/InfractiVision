@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 from datetime import datetime
+from src.core.utils import get_default_device, USE_CUDA
 
 class PlateDetector:
     """
@@ -17,6 +18,10 @@ class PlateDetector:
         Args:
             model_path: Ruta al modelo YOLO para detección de placas
         """
+        self.device = get_default_device()
+        self.half = self.device.type == 'cuda'
+        self.force_cpu = False
+
         try:
             # FIXED: Better model path resolution
             model_paths = [
@@ -41,6 +46,17 @@ class PlateDetector:
                         break
                     except Exception as e:
                         print(f"PlateDetector: Error loading {path}: {e}")
+                        if self.device.type == 'cuda':
+                            print("[PlateDetector] Error en soporte CUDA durante carga; reintentando en CPU como fallback temporal")
+                            self.device = torch.device('cpu')
+                            self.half = False
+                            try:
+                                self.model = YOLO(path)
+                                model_loaded = True
+                                print("PlateDetector: Modelo cargado correctamente en CPU (fallback temporal)")
+                                break
+                            except Exception as inner:
+                                print(f"PlateDetector: Error loading {path} en CPU: {inner}")
                         continue
             
             if not model_loaded:
@@ -50,16 +66,24 @@ class PlateDetector:
             print(f"Error al cargar modelo de detección de placas: {e}")
             self.model = None
         
-        # 🚀 CONFIGURACIÓN EDGE TURBO (GPU + FP16)
-        import torch
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.half = torch.cuda.is_available()
-        
-        if self.model and torch.cuda.is_available():
-            self.model.to(self.device)
-            if self.half:
-                self.model.half()
-            print(f"🚀 PlateDetector: MODO TURBO ACTIVADO ({self.device})")
+        # Configuración de umbral para detección nocturna
+        self.night_brightness_threshold = 60
+
+        if self.model:
+            try:
+                self.model.to(self.device)
+                if self.device.type == 'cuda':
+                    print(f"[PlateDetector] MODO TURBO ACTIVADO ({self.device})")
+                else:
+                    print("[PlateDetector] CUDA no disponible en este intento; usando CPU de fallback temporal")
+            except Exception as e:
+                print(f"[PlateDetector] Falló mover modelo a {self.device}: {e} | Usando CPU temporalmente")
+                self.device = torch.device('cpu')
+                self.half = False
+                try:
+                    self.model.to(self.device)
+                except Exception as inner:
+                    print(f"[PlateDetector] Error al mover modelo a CPU: {inner}")
         
         # Estadísticas de rendimiento
         self.detection_stats = {
@@ -69,22 +93,24 @@ class PlateDetector:
             'night_detections': 0,
             'night_failures': 0
         }
-        
-        # Night detection settings
-        self.night_detection_enabled = True
-        self.night_brightness_threshold = 85  # More sensitive to dark conditions
-    
+
+    def _select_device(self):
+        return get_default_device()
+
+    def _is_cuda_arch_supported(self, device_index: int) -> bool:
+        return USE_CUDA
+
     def detect(self, image, conf=0.5, classes=[0], draw=False, is_night=None):
         """
         Detecta placas en la imagen con técnicas mejoradas.
-        
+
         Args:
             image: Imagen donde buscar placas
             conf: Umbral de confianza para detecciones (0-1)
             classes: Lista de IDs de clases a detectar (0=placa por defecto)
             draw: Si es True, dibuja las detecciones en la imagen
             is_night: Si es True, aplica técnicas de detección nocturna
-            
+
         Returns:
             Lista de detecciones en formato (x1, y1, x2, y2, score, class_id)
         """
@@ -102,7 +128,7 @@ class PlateDetector:
             
             if is_night:
                 self.detection_stats['night_detections'] += 1
-                print("🌙 PlateDetector: Enhanced night mode activated with multi-capture")
+                print("[PlateDetector] Enhanced night mode activated with multi-capture")
             
             # Optimizar imagen para mejor detección con multi-capture para noche
             if is_night:
@@ -128,6 +154,8 @@ class PlateDetector:
                 classes=classes,
                 iou=0.45,  # IoU threshold optimizado
                 agnostic_nms=True,  # NMS mejorado
+                device=self.device,
+                half=self.half,
                 verbose=False
             )
             
@@ -381,7 +409,7 @@ class PlateDetector:
     def _select_best_night_enhancement(self, image):
         """Selecciona la mejor mejora nocturna probando múltiples técnicas"""
         try:
-            print("🔍 PlateDetector: Generating multiple night enhancement variants...")
+            print("[PlateDetector] Generating multiple night enhancement variants...")
             
             # Generar múltiples variantes
             variants = []
@@ -417,17 +445,17 @@ class PlateDetector:
             
             for name, variant in variants:
                 score = self._evaluate_night_variant(variant)
-                print(f"🔍 Variant '{name}': score {score:.3f}")
+                print(f"[Variant] '{name}': score {score:.3f}")
                 
                 if score > best_score:
                     best_score = score
                     best_variant = variant
             
             if best_variant is not None:
-                print(f"🎯 Selected best night variant with score {best_score:.3f}")
+                print(f"[PlateDetector] Selected best night variant with score {best_score:.3f}")
                 return best_variant
             else:
-                print("⚠️ No good variant found, using standard enhancement")
+                print("[PlateDetector] No good variant found, using standard enhancement")
                 return self._apply_night_enhancement(image)
                 
         except Exception as e:
@@ -556,30 +584,3 @@ class PlateDetector:
             'night_failures': self.detection_stats['night_failures']
         }
     
-    def reset_stats(self):
-        """Reiniciar estadísticas"""
-        self.detection_stats = {
-            'total_detections': 0,
-            'successful_detections': 0,
-            'average_confidence': 0.0,
-            'night_detections': 0,
-            'night_failures': 0
-        }
-        print("PlateDetector: Estadísticas reiniciadas")
-    
-    def print_performance_report(self):
-        """Imprimir reporte de rendimiento"""
-        stats = self.get_detection_stats()
-        print("\n" + "="*40)
-        print("📊 REPORTE PlateDetector")
-        print("="*40)
-        print(f"🔍 Detecciones totales: {stats['total_detections']}")
-        print(f"✅ Detecciones exitosas: {stats['successful_detections']}")
-        print(f"📈 Tasa de éxito: {stats['success_rate']:.1f}%")
-        print(f"⭐ Confianza promedio: {stats['average_confidence']:.3f}")
-        print(f"🌙 Detecciones nocturnas: {stats['night_detections']}")
-        print(f"🌙 Fallos nocturnos: {stats['night_failures']}")
-        if stats['night_detections'] > 0:
-            night_success_rate = (stats['night_detections'] - stats['night_failures']) / stats['night_detections'] * 100
-            print(f"🌙 Tasa éxito nocturno: {night_success_rate:.1f}%")
-        print("="*40)

@@ -1,3 +1,4 @@
+import threading
 import tkinter as tk
 from tkinter import messagebox, filedialog
 import json, os
@@ -15,6 +16,9 @@ CONFIG_PATH = resource_path("config/infractivision_config.json")
 
 # Ruta centralizada del archivo de infracciones
 INF_FILE = resource_path("data/infracciones.json")
+
+# Ruta centralizada del archivo de infracciones NIE (incorrectamente registradas)
+NIE_FILE = resource_path("data/nie_infracciones.json")
 
 # Ruta del historial de migraciones (ACUMULATIVO)
 MIGRATIONS_HISTORY_FILE = resource_path("data/historial_migraciones.json")
@@ -69,25 +73,31 @@ def add_migration_to_history(num_infractions, estado="Exitosa"):
         print(f"Error agregando migración al historial: {e}")
         return False
 
+def _load_json_array(file_path):
+    """Lee un archivo JSON y devuelve el array de infracciones (compatible con dict/list)."""
+    if not os.path.exists(file_path):
+        return []
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and 'infracciones' in data:
+                return data['infracciones']
+            elif isinstance(data, list):
+                return data
+            else:
+                print(f"⚠️ Formato inesperado en JSON: {type(data)}")
+                return []
+    except Exception as e:
+        print(f"Error cargando infracciones: {e}")
+        return []
+
+
 # Función para cargar datos de infracciones (movida al principio)
 def load_infractions_data():
-    if os.path.exists(INF_FILE):
-        try:
-            with open(INF_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                # CORREGIR: Extraer array de infracciones si existe la clave
-                if isinstance(data, dict) and 'infracciones' in data:
-                    return data['infracciones']
-                elif isinstance(data, list):
-                    return data
-                else:
-                    print(f"⚠️ Formato inesperado en JSON: {type(data)}")
-                    return []
-        except Exception as e:
-            print(f"Error cargando infracciones: {e}")
-            return []
-    else:
-        return []
+    """Carga las infracciones LOCALES fusionando NID (infracciones.json) y NIE (nie_infracciones.json)."""
+    nid = _load_json_array(INF_FILE)
+    nie = _load_json_array(NIE_FILE)
+    return nid + nie
 
 
 def delete_infraction_files(infraction_data):
@@ -123,6 +133,12 @@ def delete_all_infractions():
             with open(infractions_file, 'w', encoding='utf-8') as f:
                 json.dump([], f, indent=2)
         
+        # Limpiar archivo de infracciones NIE
+        nie_file = resource_path("data/nie_infracciones.json")
+        if os.path.exists(nie_file):
+            with open(nie_file, 'w', encoding='utf-8') as f:
+                json.dump([], f, indent=2)
+        
         # Limpiar directorios de imágenes
         output_dirs = [
             resource_path("data/output/placas"),
@@ -141,31 +157,30 @@ def delete_all_infractions():
         print(f"Error eliminando todas las infracciones: {e}")
         return False
 
-def remove_infraction_from_json(placa_to_remove):
-    """Elimina una infracción específica del archivo JSON"""
+def _filter_infractions_file(file_path, placa_to_remove):
+    """Elimina las entradas con la placa indicada del archivo JSON si existe."""
+    if not os.path.exists(file_path):
+        return True
     try:
-        infractions_file = resource_path("data/infracciones.json")
-        if not os.path.exists(infractions_file):
-            return True
-        
-        # Cargar infracciones actuales
-        with open(infractions_file, 'r', encoding='utf-8') as f:
-            infractions = json.load(f)
-        
-        # Filtrar la infracción a eliminar
-        updated_infractions = [
-            inf for inf in infractions 
-            if inf.get('placa', '') != placa_to_remove
-        ]
-        
-        # Guardar la lista actualizada
-        with open(infractions_file, 'w', encoding='utf-8') as f:
-            json.dump(updated_infractions, f, indent=2, ensure_ascii=False)
-        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        is_dict = isinstance(data, dict) and 'infracciones' in data
+        infractions = data['infracciones'] if is_dict else (data if isinstance(data, list) else [])
+        updated = [inf for inf in infractions if inf.get('placa', '') != placa_to_remove]
+        output = {'infracciones': updated} if is_dict else updated
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(output, f, indent=2, ensure_ascii=False)
         return True
     except Exception as e:
         print(f"Error eliminando infracción del JSON: {e}")
         return False
+
+
+def remove_infraction_from_json(placa_to_remove):
+    """Elimina una infracción específica de los archivos JSON (NID y NIE)"""
+    ok_nid = _filter_infractions_file(resource_path("data/infracciones.json"), placa_to_remove)
+    ok_nie = _filter_infractions_file(resource_path("data/nie_infracciones.json"), placa_to_remove)
+    return ok_nid and ok_nie
 
 def show_migrations(refresh_callback=None, all_data_ref=None):
     """Mostrar historial de migraciones exitosas"""
@@ -741,13 +756,67 @@ def generate_performance_indicators_json(software_infractions, software_processi
 
 def create_infractions_window(window: tk.Toplevel, back_callback):
     window.configure(bg="#ffffff")
-    window.state("zoomed")
 
-    # 1) Cargar todas las infracciones al inicio
-    # Cargar datos
-    all_data = load_infractions_data()
+    # MODIFICACIÓN DE PORTABILIDAD (desactivada para evitar segfault)
+    # La ventana se abre con el tamaño heredado de la ventana principal.
+    # El usuario puede maximizar manualmente si lo desea.
 
+    # Carga asíncrona de datos de infracciones para que el hilo principal no se bloquee.
+    loading_label = tk.Label(
+        window,
+        text="Cargando infracciones...",
+        font=("Arial", 16),
+        bg="#ffffff",
+        fg="#333333"
+    )
+    loading_label.pack(pady=40)
 
+    all_data = []
+    data_loaded = False
+    current_population_job = None
+    window_active = True
+
+    def preprocess_infractions_data(data_list):
+        valid_data = [item for item in data_list if isinstance(item, dict)]
+        try:
+            valid_data = sorted(
+                valid_data,
+                key=lambda x: (
+                    0 if x.get('clasificacion', 'NID') == 'NID' else 1,
+                    -(datetime.strptime(x.get('fecha', '01/01/2000'), '%d/%m/%Y').timestamp()),
+                    -int(x.get('hora', '00:00:00').replace(':', ''))
+                )
+            )
+        except Exception as e:
+            print(f"Error al ordenar infracciones en background: {e}")
+            valid_data = sorted(
+                valid_data,
+                key=lambda x: (0 if x.get('clasificacion', 'NID') == 'NID' else 1)
+            )
+        return valid_data
+
+    def on_data_loaded(data):
+        nonlocal all_data, data_loaded
+        if not window_active:
+            return
+        all_data = data
+        data_loaded = True
+        if loading_label.winfo_exists():
+            loading_label.destroy()
+        populate_cards(all_data)
+
+    def load_data_thread_func():
+        try:
+            raw_data = load_infractions_data()
+            processed = preprocess_infractions_data(raw_data)
+            window.after(0, lambda: on_data_loaded(processed))
+        except Exception as e:
+            print(f"Error cargando infracciones en background: {e}")
+            window.after(0, lambda: on_data_loaded([]))
+
+    threading.Thread(target=load_data_thread_func, daemon=True).start()
+
+    # (El resto del código de la interfaz se mantiene exactamente igual...)
     # 3) Cabecera
     header = tk.Frame(window, bg="#ffffff")
     header.pack(fill="x", padx=30, pady=20)
@@ -1342,38 +1411,28 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
         except Exception as e:
             messagebox.showerror("Error", f"Error aplicando filtro: {e}")
 
-    # Función para refrescar los datos desde el archivo
+    # Función para sincronizar los datos desde los archivos locales (NID + NIE)
     def refresh_data():
         nonlocal all_data
-
-        # 1) Leer el user_id que guardaste localmente
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-                user_id = cfg.get("user_id")
-        except Exception:
-            messagebox.showerror("Error", "No se pudo leer el user_id")
-            return
-
-        # 2) Llamada HTTP al endpoint de tu backend
-        try:
-            url = f"https://infracti-backend-627388491148.us-central1.run.app/infracciones/{user_id}/registros"
-            resp = requests.get(url, timeout=10)
-            resp.raise_for_status()
-
-            # Aquí insertas el print para depurar
-            all_data = resp.json()
-            print("DEBUG: recibí del backend:", all_data)
-
-        except requests.RequestException as e:
-            messagebox.showerror(
-                "Error", f"No se pudieron cargar datos del servidor: {e}"
-            )
-            return
-
-
-        # 3) Actualizar la vista con los registros traídos de la nube
+        all_data = load_infractions_data()
         apply_filter()
+        nid_count = sum(1 for inf in all_data if inf.get('clasificacion', 'NID') == 'NID')
+        nie_count = sum(1 for inf in all_data if inf.get('clasificacion', 'NID') != 'NID')
+        print(f"🔄 Sincronización local: {len(all_data)} infracciones ({nid_count} NID + {nie_count} NIE)")
+        messagebox.showinfo(
+            "Sincronización local",
+            f"Infracciones sincronizadas desde archivos locales:\n\n"
+            f"• {nid_count} NID (validadas correctamente)\n"
+            f"• {nie_count} NIE (sin validar)\n"
+            f"• Total: {len(all_data)}"
+        )
+
+    tk.Button(
+        actions, text="🔄 SINCRONIZAR LOCAL", font=("Arial", 12),
+        bg="#27ae60", fg="white", bd=0,
+        activebackground="#1e8449", activeforeground="white",
+        cursor="hand2", command=refresh_data
+    ).pack(side="left", padx=10)
 
     tk.Button(
         actions, text="FILTRAR", font=("Arial", 12),
@@ -1464,11 +1523,242 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
 
+    def cleanup_window(event=None):
+        nonlocal window_active, batch_job_id
+        window_active = False
+        if batch_job_id is not None:
+            try:
+                window.after_cancel(batch_job_id)
+            except Exception:
+                pass
+            batch_job_id = None
+
+    container.bind("<Destroy>", cleanup_window)
+
+    image_load_threads = []
+    pending_cards = []
+    batch_job_id = None
+    batch_size = 3
+
+    def load_vehicle_image_async(vehicle_path, img_label):
+        def worker():
+            try:
+                from PIL import Image, ImageTk
+                img = Image.open(vehicle_path)
+                img = img.resize((150, 100), Image.LANCZOS)
+                photo = ImageTk.PhotoImage(img)
+                def assign_image():
+                    if not window_active:
+                        return
+                    if img_label.winfo_exists():
+                        img_label.config(image=photo, text="")
+                        img_label.image = photo
+                window.after(0, assign_image)
+            except Exception as e:
+                print(f"Error cargando imagen en background: {e}")
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        image_load_threads.append(thread)
+
     def clear_cards():
+        nonlocal batch_job_id
+        if batch_job_id is not None:
+            window.after_cancel(batch_job_id)
+            batch_job_id = None
         for child in scrollable_frame.winfo_children():
             child.destroy()
 
+    def add_scroll_to_card_and_children(widget):
+        """Agrega scroll a un widget y todos sus hijos recursivamente"""
+        try:
+            widget.bind("<MouseWheel>", on_mousewheel)
+            widget.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+            widget.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
+        except Exception:
+            pass
+        for child in widget.winfo_children():
+            add_scroll_to_card_and_children(child)
+
+    def render_card(inf):
+        # Card principal con elevación y bordes redondeados
+        card = tk.Frame(scrollable_frame, bg="#F2F2F2", bd=1, relief=tk.RAISED)
+        card.pack(fill="x", padx=15, pady=10, expand=True)
+
+        # Parte superior: información principal
+        top_frame = tk.Frame(card, bg="#F2F2F2")
+        top_frame.pack(fill="x", padx=15, pady=(10, 5), expand=True)
+
+        # Marco de imagen con tamaño fijo
+        img_frame = tk.Frame(top_frame, width=150, height=100, bg="#DDDDDD", relief=tk.SUNKEN, bd=1)
+        img_frame.pack(side="left", padx=10, pady=10)
+        img_frame.pack_propagate(False)
+
+        vehicle_path = inf.get('vehicle_path', '')
+        img_label = tk.Label(img_frame, text="[Cargando imagen]" if vehicle_path else "[Sin imagen]", bg="#DDDDDD", fg="#777777")
+        img_label.pack(fill="both", expand=True)
+
+        if vehicle_path and os.path.exists(vehicle_path):
+            load_vehicle_image_async(vehicle_path, img_label)
+
+        # Primera columna de información
+        text_left = tk.Frame(top_frame, bg="#F2F2F2")
+        text_left.pack(side="left", fill="y", padx=(0,20), pady=10)
+
+        placa_info = inf.get('placa','No identificada')
+        tk.Label(text_left, text=f"Placa: {placa_info}", font=("Arial", 12, "bold"), bg="#F2F2F2", fg="#273D86").pack(anchor="w")
+
+        fecha_info = inf.get('fecha','')
+        hora_info = inf.get('hora','')
+        tiempo_str = f"Fecha: {fecha_info}   Hora: {hora_info}"
+        tk.Label(text_left, text=tiempo_str, font=("Arial", 12), bg="#F2F2F2", fg="#555555").pack(anchor="w")
+
+        tk.Frame(top_frame, bg="#CCCCCC", width=2).pack(side="left", fill="y", pady=10)
+
+        text_right = tk.Frame(top_frame, bg="#F2F2F2")
+        text_right.pack(side="left", fill="both", expand=True, padx=20, pady=10)
+
+        ubicacion_info = inf.get('ubicacion','Desconocida')
+        tk.Label(text_right, text=f"Ubicación: {ubicacion_info}", font=("Arial", 12), bg="#F2F2F2", fg="#333333", wraplength=800, justify="left", anchor="w").pack(anchor="w", fill="x")
+
+        tipo_info = inf.get('tipo','Semáforo en rojo')
+        tk.Label(text_right, text=f"Tipo: {tipo_info}", font=("Arial", 12), bg="#F2F2F2", fg="#333333").pack(anchor="w")
+
+        clasificacion = inf.get('clasificacion', 'NID')
+        raw_confianza = inf.get('confianza', 0)
+        confianza = max(0.0, min(1.0, raw_confianza))
+        NID_THRESHOLD_EXCELLENT = 0.85
+        NID_THRESHOLD_GOOD = 0.65
+        if clasificacion == 'NID':
+            if confianza >= NID_THRESHOLD_EXCELLENT:
+                clasificacion_color = "#27ae60"
+                clasificacion_texto = f"✅ NID - Excelente (Confianza: {confianza:.2f})"
+            elif confianza >= NID_THRESHOLD_GOOD:
+                clasificacion_color = "#2ecc71"
+                clasificacion_texto = f"✅ NID - Bueno (Confianza: {confianza:.2f})"
+            else:
+                clasificacion_color = "#f39c12"
+                clasificacion_texto = f"⚠️ NIE - Confianza baja ({confianza:.2f})"
+        else:
+            clasificacion_color = "#e74c3c"
+            metadata = inf.get('metadata_clasificacion', {})
+            razon = metadata.get('razon', 'confianza_insuficiente')
+            clasificacion_texto = f"❌ NIE - {razon} ({confianza:.2f})"
+        tk.Label(text_right, text=clasificacion_texto, font=("Arial", 11, "bold"), bg="#F2F2F2", fg=clasificacion_color).pack(anchor="w")
+
+        if inf.get('tiempo_procesamiento', 0):
+            total_seconds = int(float(inf.get('tiempo_procesamiento', 0)))
+            mins_dec = inf.get('tiempo_procesamiento', 0) / 60.0
+            tr_text = f"TR: {mins_dec:.2f}min ({total_seconds}s)"
+        else:
+            tr_text = "TR: 0.00min (0s)"
+        tk.Label(text_right, text=tr_text, font=("Arial", 10), bg="#F2F2F2", fg="#7f8c8d").pack(anchor="w")
+
+        # Espacio para botones simples (detalles, ver placa, eliminar)
+        btn_frame = tk.Frame(card, bg="#F2F2F2")
+        btn_frame.pack(fill="x", padx=15, pady=(0, 10), expand=True)
+
+        # Botones ligeros sin lógica pesada adicional
+        def create_show_plate_func(plate_path, placa_text):
+            def show_plate_func():
+                if plate_path and os.path.exists(plate_path):
+                    try:
+                        plate_window = tk.Toplevel(window)
+                        plate_window.title(f"Placa: {placa_text}")
+                        from PIL import Image, ImageTk
+                        img = Image.open(plate_path)
+                        photo = ImageTk.PhotoImage(img)
+                        img_label = tk.Label(plate_window, image=photo)
+                        img_label.image = photo
+                        img_label.pack(padx=20, pady=20)
+                        tk.Button(plate_window, text="Cerrar", command=plate_window.destroy).pack(pady=10)
+                    except Exception as e:
+                        messagebox.showerror("Error", f"No se pudo cargar la imagen: {e}")
+                else:
+                    messagebox.showinfo("Información", "No hay imagen de placa disponible")
+            return show_plate_func
+
+        plate_path = inf.get('plate_path', '')
+        placa_text = inf.get('placa', 'No identificada')
+        tk.Button(btn_frame, text="Ver placa", command=create_show_plate_func(plate_path, placa_text), bg="#3366FF", fg="white", cursor="hand2").pack(side="right", padx=5)
+
+        def create_delete_func(infraction_data):
+            def delete_func():
+                result = messagebox.askyesno(
+                    "Confirmar eliminación",
+                    f"¿Eliminar la infracción de la placa {infraction_data.get('placa', 'No identificada')}?\n\nSe eliminarán las imágenes asociadas."
+                )
+                if result:
+                    deleted_files = delete_infraction_files(infraction_data)
+                    placa_to_remove = infraction_data.get('placa', '')
+                    if remove_infraction_from_json(placa_to_remove):
+                        nonlocal all_data
+                        all_data = load_infractions_data()
+                        apply_filter()
+                        msg = "Infracción eliminada correctamente."
+                        if deleted_files:
+                            msg += f"\nArchivos eliminados: {', '.join(deleted_files)}"
+                        messagebox.showinfo("Éxito", msg)
+                    else:
+                        messagebox.showerror("Error", "No se pudo eliminar la infracción del registro.")
+            return delete_func
+
+        tk.Button(btn_frame, text="🗑️ Eliminar", command=create_delete_func(inf), bg="#e74c3c", fg="white", cursor="hand2", font=("Arial", 9)).pack(side="right", padx=5)
+
+        def create_show_details_func(infraction_data):
+            def show_details_func():
+                details_window = tk.Toplevel(window)
+                details_window.title(f"Detalles - Placa: {infraction_data.get('placa', 'No identificada')}")
+                details_window.geometry("500x400")
+                details_window.configure(bg="#f8f9fa")
+                details_window.update_idletasks()
+                width, height = 500, 400
+                x = (details_window.winfo_screenwidth() - width) // 2
+                y = (details_window.winfo_screenheight() - height) // 2
+                details_window.geometry(f"{width}x{height}+{x}+{y}")
+                title_label = tk.Label(details_window, text="📋 Detalles de la Infracción", font=("Arial", 16, "bold"), bg="#f8f9fa", fg="#2c3e50")
+                title_label.pack(pady=20)
+                details_frame = tk.Frame(details_window, bg="#f8f9fa")
+                details_frame.pack(fill="both", expand=True, padx=20, pady=10)
+                details_info = [
+                    ("🚗 Placa:", infraction_data.get('placa', 'No identificada')),
+                    ("📅 Fecha:", infraction_data.get('fecha', 'Sin fecha')),
+                    ("⏰ Hora:", infraction_data.get('hora', 'Sin hora')),
+                    ("📍 Ubicación:", infraction_data.get('ubicacion', 'Sin ubicación')),
+                    ("🚦 Tipo:", infraction_data.get('tipo', 'Sin especificar')),
+                    ("🎥 Timestamp:", infraction_data.get('video_timestamp', 'No disponible')),
+                    ("📊 ID Único:", infraction_data.get('id', 'No disponible')),
+                ]
+                for label, value in details_info:
+                    row_frame = tk.Frame(details_frame, bg="#ffffff", relief="ridge", bd=1)
+                    row_frame.pack(fill="x", pady=2)
+                    tk.Label(row_frame, text=label, font=("Arial", 10, "bold"), bg="#ffffff", width=15, anchor="w").pack(side="left", padx=10, pady=5)
+                    tk.Label(row_frame, text=str(value), font=("Arial", 10), bg="#ffffff", anchor="w").pack(side="left", padx=10, pady=5)
+                close_btn = tk.Button(details_window, text="Cerrar", command=details_window.destroy, bg="#3498db", fg="white", font=("Arial", 12), padx=20, pady=5)
+                close_btn.pack(pady=20)
+            return show_details_func
+
+        tk.Button(btn_frame, text="Ver detalles", command=create_show_details_func(inf), bg="#5D6D7E", fg="white", cursor="hand2").pack(side="right", padx=5)
+
+        add_scroll_to_card_and_children(card)
+
+    def render_next_batch():
+        nonlocal batch_job_id
+        if not window_active or not scrollable_frame.winfo_exists():
+            batch_job_id = None
+            return
+        if not pending_cards:
+            batch_job_id = None
+            return
+        for _ in range(batch_size):
+            if not pending_cards:
+                break
+            inf = pending_cards.pop(0)
+            render_card(inf)
+        batch_job_id = window.after(50, render_next_batch)
+
     def populate_cards(data_list):
+        if not window_active:
+            return
         clear_cards()
         if not data_list:
             tk.Label(
@@ -1477,454 +1767,34 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             ).pack(pady=80, padx=80)
             return
 
-        # CORREGIR: Validar que data_list contenga diccionarios, no strings
-        # Filtrar solo elementos que sean diccionarios válidos
-        valid_data = []
-        for item in data_list:
-            if isinstance(item, dict):
-                valid_data.append(item)
-            elif isinstance(item, str):
-                print(f"⚠️ Elemento string ignorado en datos: {item}")
-            else:
-                print(f"⚠️ Elemento de tipo desconocido ignorado: {type(item)} - {item}")
-        
+        valid_data = [item for item in data_list if isinstance(item, dict)]
+        if len(valid_data) != len(data_list):
+            print(f"⚠️ Se ignoraron {len(data_list) - len(valid_data)} elementos inválidos en la carga de infracciones.")
         data_list = valid_data
-        
-        # Ordenar: primero por clasificación (NID primero, NIE al final), luego por fecha y hora (más reciente primero)
+
         try:
-            data_list = sorted(data_list, 
-                            key=lambda x: (
-                                # Prioridad de clasificación: NID=0 (primero), NIE=1 (después)
-                                0 if x.get('clasificacion', 'NID') == 'NID' else 1,
-                                # Luego ordenar por fecha y hora dentro de cada clasificación
-                                -(datetime.strptime(x.get('fecha', '01/01/2000'), '%d/%m/%Y').timestamp()),
-                                -int(x.get('hora', '00:00:00').replace(':', ''))
-                            ))
+            data_list = sorted(
+                data_list,
+                key=lambda x: (
+                    0 if x.get('clasificacion', 'NID') == 'NID' else 1,
+                    -(datetime.strptime(x.get('fecha', '01/01/2000'), '%d/%m/%Y').timestamp()),
+                    -int(x.get('hora', '00:00:00').replace(':', ''))
+                )
+            )
         except Exception as e:
             print(f"Error al ordenar infracciones: {e}")
-            # Fallback: ordenamiento simple por clasificación solo para diccionarios válidos
-            data_list = sorted([x for x in data_list if isinstance(x, dict)], 
-                             key=lambda x: (0 if x.get('clasificacion', 'NID') == 'NID' else 1))
-        
-        # Crear tarjetas con diseño mejorado
-        for inf in data_list:
-            # Card principal con elevación y bordes redondeados
-            card = tk.Frame(scrollable_frame, bg="#F2F2F2", 
-                         bd=1, relief=tk.RAISED)
-            card.pack(fill="x", padx=15, pady=10, expand=True)  # Añadido padding horizontal para separar del borde
-            
-            # MEJORADO: Agregar scroll a esta card específica y todos sus componentes
-            def add_scroll_to_card_and_children(widget):
-                """Agrega scroll a un widget y todos sus hijos recursivamente"""
-                try:
-                    widget.bind("<MouseWheel>", on_mousewheel)
-                    widget.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
-                    widget.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
-                except:
-                    pass
-                # Recursivamente a todos los hijos
-                for child in widget.winfo_children():
-                    add_scroll_to_card_and_children(child)
-            
-            # Parte superior: información principal
-            top_frame = tk.Frame(card, bg="#F2F2F2")
-            top_frame.pack(fill="x", padx=15, pady=(10, 5), expand=True)  # Aumentado el padding interno
-            
-            # Marco de imagen con tamaño fijo
-            img_frame = tk.Frame(top_frame, width=150, height=100, bg="#DDDDDD", 
-                              relief=tk.SUNKEN, bd=1)
-            img_frame.pack(side="left", padx=10, pady=10)
-            img_frame.pack_propagate(False)
-            
-            # Intenta cargar una imagen del vehículo si hay ruta disponible
-            vehicle_path = inf.get('vehicle_path', '')
-            vehicle_img_label = None
-            
-            if vehicle_path and os.path.exists(vehicle_path):
-                try:
-                    from PIL import Image, ImageTk
-                    # Cargar y redimensionar la imagen
-                    img = Image.open(vehicle_path)
-                    img = img.resize((150, 100), Image.LANCZOS)  # Ajustado al nuevo tamaño
-                    photo = ImageTk.PhotoImage(img)
-                    vehicle_img_label = tk.Label(img_frame, image=photo, bg="#DDDDDD")
-                    vehicle_img_label.image = photo  # Guardar referencia
-                    vehicle_img_label.pack(fill="both", expand=True)
-                except Exception as e:
-                    print(f"Error cargando imagen del vehículo: {e}")
-                    vehicle_img_label = None
-            
-            # Si no se pudo cargar la imagen, mostrar texto placeholder
-            if not vehicle_img_label:
-                tk.Label(img_frame, text="[Sin imagen]", 
-                      bg="#DDDDDD", fg="#777777").pack(fill="both", expand=True)
-                
-            # Primera columna de información
-            text_left = tk.Frame(top_frame, bg="#F2F2F2")
-            text_left.pack(side="left", fill="y", padx=(0,20), pady=10)
-            
-            # Placa con estilo destacado (negrita y color corporativo)
-            placa_info = inf.get('placa','No identificada')
-            tk.Label(
-                text_left, text=f"Placa: {placa_info}",
-                font=("Arial", 12, "bold"), bg="#F2F2F2", fg="#273D86"
-            ).pack(anchor="w")
-            
-            # Información temporal
-            fecha_info = inf.get('fecha','')
-            hora_info = inf.get('hora','')
-            timestamp_info = inf.get('video_timestamp','00:00')
-            
-            tiempo_str = f"Fecha: {fecha_info}   Hora: {hora_info}"
-            
-            tk.Label(
-                text_left, text=tiempo_str,
-                font=("Arial", 12), bg="#F2F2F2", fg="#555555"
-            ).pack(anchor="w")
-            
-            # Separador vertical
-            tk.Frame(top_frame, bg="#CCCCCC", width=2).pack(side="left", fill="y", pady=10)
-            
-            # Segunda columna de información
-            text_right = tk.Frame(top_frame, bg="#F2F2F2")
-            text_right.pack(side="left", fill="both", expand=True, padx=20, pady=10)
-            
-            # Ubicación y coordenadas
-            ubicacion_info = inf.get('ubicacion','Desconocida')
-            ubicacion_label = tk.Label(
-                text_right, text=f"Ubicación: {ubicacion_info}",
-                font=("Arial", 12), bg="#F2F2F2", fg="#333333",
-                wraplength=800, justify="left", anchor="w"  # Añadido anchor="w" para alinear a la izquierda
+            data_list = sorted(
+                data_list,
+                key=lambda x: (0 if x.get('clasificacion', 'NID') == 'NID' else 1)
             )
-            ubicacion_label.pack(anchor="w", fill="x")  # Quitado expand=True para mejor control del espaciado
-                
-            # Tipo de infracción
-            tipo_info = inf.get('tipo','Semáforo en rojo')
-            tk.Label(
-                text_right, text=f"Tipo: {tipo_info}",
-                font=("Arial", 12), bg="#F2F2F2", fg="#333333"
-            ).pack(anchor="w")
-            
-            # MEJORADO: Clasificación NID/NIE con rangos de confianza más precisos
-            clasificacion = inf.get('clasificacion', 'NID')  # Por defecto NID si no está especificado
-            raw_confianza = inf.get('confianza', 0)
-            # CRÍTICO: Aplicar el mismo clamp que PlateCard para valores inválidos
-            confianza = max(0.0, min(1.0, raw_confianza))  # Clamp [0,1]
-            
-            # RANGOS DE CONFIANZA MEJORADOS
-            NID_THRESHOLD_EXCELLENT = 0.85  # Excelente
-            NID_THRESHOLD_GOOD = 0.65       # Bueno (mínimo aceptable)
-            
-            if clasificacion == 'NID':
-                if confianza >= NID_THRESHOLD_EXCELLENT:
-                    clasificacion_color = "#27ae60"  # Verde fuerte - Excelente
-                    clasificacion_texto = f"✅ NID - Excelente (Confianza: {confianza:.2f})"
-                elif confianza >= NID_THRESHOLD_GOOD:
-                    clasificacion_color = "#2ecc71"  # Verde - Bueno
-                    clasificacion_texto = f"✅ NID - Bueno (Confianza: {confianza:.2f})"
-                else:
-                    # Debería ser NIE si está por debajo del umbral
-                    clasificacion_color = "#f39c12"  # Naranja - Revisión necesaria
-                    clasificacion_texto = f"⚠️ NIE - Confianza baja ({confianza:.2f})"
-            else:
-                clasificacion_color = "#e74c3c"  # Rojo - Error/NIE
-                metadata = inf.get('metadata_clasificacion', {})
-                razon = metadata.get('razon', 'confianza_insuficiente')
-                clasificacion_texto = f"❌ NIE - {razon} ({confianza:.2f})"
-                
-            tk.Label(
-                text_right, text=clasificacion_texto,
-                font=("Arial", 11, "bold"), bg="#F2F2F2", fg=clasificacion_color
-            ).pack(anchor="w")
-            
-            # TR: Tiempo de Registro (tiempo_procesamiento en minutos)
-            # Este valor DEBE coincidir con TR_individuales migrado a Firestore
-            tiempo_proc = inf.get('tiempo_procesamiento', 0)
-            
-            if tiempo_proc and tiempo_proc > 0:
-                # Convertir segundos a minutos
-                total_seconds = int(float(tiempo_proc))
-                mins_dec = tiempo_proc / 60.0  # Minutos decimales (ej: 0.37)
-                mins = total_seconds // 60
-                secs = total_seconds % 60
-                
-                # FORMATO: TR: 0.37min (22s) - coincide con Firestore
-                tr_text = f"TR: {mins_dec:.2f}min ({total_seconds}s)"
-                tk.Label(
-                    text_right, text=tr_text,
-                    font=("Arial", 10), bg="#F2F2F2", fg="#7f8c8d"
-                ).pack(anchor="w")
-            else:
-                # Mostrar formato de fallback
-                tr_text = "TR: 0.00min (0s)"
-                tk.Label(
-                    text_right, text=tr_text,
-                    font=("Arial", 10), bg="#F2F2F2", fg="#7f8c8d"
-                ).pack(anchor="w")
-            
-            # NUEVO: Duración del video (tiempo nativo - formato completo para cualquier longitud)
-            duracion_video = inf.get('tiempo_video', inf.get('video_timestamp', 'N/A'))
-            if duracion_video != 'N/A' and duracion_video and duracion_video != '00:00':
-                def format_video_duration_complete(duration_str):
-                    """
-                    Formatea duración de video para cualquier longitud:
-                    - Videos <60s: "45s"
-                    - Videos 60s-3599s: "5:30min"
-                    - Videos ≥3600s: "1:25:30h"
-                    Soporta entrada en formatos H:MM:SS, MM:SS, SS
-                    """
-                    try:
-                        if isinstance(duration_str, str) and ':' in duration_str:
-                            time_parts = duration_str.split(':')
-                            
-                            if len(time_parts) == 2:  # MM:SS format
-                                mins, secs = int(time_parts[0]), int(time_parts[1])
-                                total_seconds = mins * 60 + secs
-                                
-                            elif len(time_parts) == 3:  # H:MM:SS format
-                                hours, mins, secs = int(time_parts[0]), int(time_parts[1]), int(time_parts[2])
-                                total_seconds = hours * 3600 + mins * 60 + secs
-                                
-                            else:
-                                return f"Duración del video: {duration_str}"
-                        
-                        elif isinstance(duration_str, (int, float)):
-                            total_seconds = int(duration_str)
-                        
-                        elif isinstance(duration_str, str) and duration_str.isdigit():
-                            total_seconds = int(duration_str)
-                        
-                        else:
-                            return f"Duración del video: {duration_str}"
-                        
-                        # Formatear según longitud total
-                        if total_seconds < 60:
-                            # Videos cortos: solo segundos
-                            return f"Duración del video: {total_seconds}s"
-                        
-                        elif total_seconds < 3600:  # < 1 hora
-                            # Videos medianos: minutos y segundos
-                            mins = total_seconds // 60
-                            secs = total_seconds % 60
-                            return f"Duración del video: {mins}:{secs:02d}min"
-                        
-                        else:  # ≥ 1 hora
-                            # Videos largos: horas, minutos y segundos
-                            hours = total_seconds // 3600
-                            remaining = total_seconds % 3600
-                            mins = remaining // 60
-                            secs = remaining % 60
-                            return f"Duración del video: {hours}:{mins:02d}:{secs:02d}h"
-                    
-                    except (ValueError, IndexError):
-                        return f"Duración del video: {duration_str}"
-                
-                duracion_text = format_video_duration_complete(duracion_video)
-                    
-                tk.Label(
-                    text_right, text=duracion_text,
-                    font=("Arial", 9), bg="#F2F2F2", fg="#95a5a6"
-                ).pack(anchor="w")
-            
-            # NUEVO: Información de configuración del video
-            config_frame = tk.Frame(text_right, bg="#F2F2F2")
-            config_frame.pack(anchor="w", fill="x", pady=(5, 0))
-            
-            # Franja horaria configurada
-            franja_horaria = inf.get('franja_horaria', inf.get('horario_configurado', inf.get('time_range', 'No especificada')))
-            if franja_horaria and franja_horaria != 'No especificada':
-                tk.Label(
-                    config_frame, text=f"⏰ Franja horaria: {franja_horaria}",
-                    font=("Arial", 9), bg="#F2F2F2", fg="#8e44ad"
-                ).pack(anchor="w")
-            
-            # Tiempos de semáforo configurados
-            tiempo_rojo = inf.get('tiempo_rojo', inf.get('semaforo_rojo_seg', inf.get('red_time', 'N/A')))
-            tiempo_verde = inf.get('tiempo_verde', inf.get('semaforo_verde_seg', inf.get('green_time', 'N/A')))
-            tiempo_amarillo = inf.get('tiempo_amarillo', inf.get('semaforo_amarillo_seg', inf.get('yellow_time', 'N/A')))
-            
-            if any(str(t) != 'N/A' and str(t).strip() for t in [tiempo_rojo, tiempo_verde, tiempo_amarillo]):
-                semaforo_text = f"🚦 Semáforo: R:{tiempo_rojo}s V:{tiempo_verde}s A:{tiempo_amarillo}s"
-                tk.Label(
-                    config_frame, text=semaforo_text,
-                    font=("Arial", 9), bg="#F2F2F2", fg="#e67e22"
-                ).pack(anchor="w")
-            
-            # NUEVO: Campo de razón descriptiva
-            razon_infraccion = inf.get('razon', 'Vehículo detectado en infracción de semáforo en rojo')
-            tk.Label(
-                text_right, text=f"📋 Razón: {razon_infraccion}",
-                font=("Arial", 9, "italic"), bg="#F2F2F2", fg="#2ecc71" if clasificacion == "NID" else "#c0392b",
-                wraplength=250, justify="left"
-            ).pack(anchor="w", pady=(2, 0))
-            
-            # Panel de botones para acciones
-            btn_frame = tk.Frame(card, bg="#F2F2F2")
-            btn_frame.pack(fill="x", padx=15, pady=(0, 10), expand=True)  # Aumentado el padding para alinear con el resto
-            
 
-            
-            # Crear una función específica para cada infracción
-            def create_show_plate_func(plate_path, placa_text):
-                def show_plate_func():
-                    if plate_path and os.path.exists(plate_path):
-                        try:
-                            # Crear ventana para mostrar la placa
-                            plate_window = tk.Toplevel(window)
-                            plate_window.title(f"Placa: {placa_text}")
-                            
-                            # Cargar y mostrar la imagen
-                            from PIL import Image, ImageTk
-                            img = Image.open(plate_path)
-                            photo = ImageTk.PhotoImage(img)
-                            img_label = tk.Label(plate_window, image=photo)
-                            img_label.image = photo  # Guardar referencia
-                            img_label.pack(padx=20, pady=20)
-                            
-                            # Botón para cerrar
-                            tk.Button(plate_window, text="Cerrar", 
-                                    command=plate_window.destroy).pack(pady=10)
-                            
-                        except Exception as e:
-                            messagebox.showerror("Error", f"No se pudo cargar la imagen: {e}")
-                    else:
-                        messagebox.showinfo("Información", "No hay imagen de placa disponible")
-                return show_plate_func
-            
-            # Botón para ver la placa - usando closure para evitar problemas con variables
-            plate_path = inf.get('plate_path', '')
-            placa_text = inf.get('placa', 'No identificada')
-            show_plate_func = create_show_plate_func(plate_path, placa_text)
-            
-            tk.Button(
-                btn_frame, text="Ver placa", 
-                command=show_plate_func,
-                bg="#3366FF", fg="white",
-                cursor="hand2"
-            ).pack(side="right", padx=5)
-            
-            # Función para eliminar esta infracción específica
-            def create_delete_func(infraction_data):
-                def delete_func():
-                    result = messagebox.askyesno(
-                        "Confirmar eliminación",
-                        f"¿Eliminar la infracción de la placa {infraction_data.get('placa', 'No identificada')}?\n\n"
-                        "Se eliminarán las imágenes asociadas."
-                    )
-                    
-                    if result:
-                        # Eliminar archivos de imagen
-                        deleted_files = delete_infraction_files(infraction_data)
-                        
-                        # Eliminar del JSON
-                        placa_to_remove = infraction_data.get('placa', '')
-                        if remove_infraction_from_json(placa_to_remove):
-                            # Actualizar la vista
-                            nonlocal all_data
-                            all_data = load_infractions_data()
-                            apply_filter()
-                            
-                            msg = f"Infracción eliminada correctamente."
-                            if deleted_files:
-                                msg += f"\nArchivos eliminados: {', '.join(deleted_files)}"
-                            messagebox.showinfo("Éxito", msg)
-                        else:
-                            messagebox.showerror("Error", "No se pudo eliminar la infracción del registro.")
-                return delete_func
-            
-            # Crear función de eliminación para esta infracción
-            delete_func = create_delete_func(inf)
-            
-            # Botón para eliminar esta infracción
-            tk.Button(
-                btn_frame, text="🗑️ Eliminar", 
-                command=delete_func,
-                bg="#e74c3c", fg="white",
-                cursor="hand2", font=("Arial", 9)
-            ).pack(side="right", padx=5)
-            
-            # Función para mostrar detalles de la infracción
-            def create_show_details_func(infraction_data):
-                def show_details_func():
-                    # Crear ventana de detalles
-                    details_window = tk.Toplevel(window)
-                    details_window.title(f"Detalles - Placa: {infraction_data.get('placa', 'No identificada')}")
-                    details_window.geometry("500x400")
-                    details_window.configure(bg="#f8f9fa")
-                    
-                    # Centrar ventana
-                    details_window.update_idletasks()
-                    width, height = 500, 400
-                    x = (details_window.winfo_screenwidth() - width) // 2
-                    y = (details_window.winfo_screenheight() - height) // 2
-                    details_window.geometry(f"{width}x{height}+{x}+{y}")
-                    
-                    # Título
-                    title_label = tk.Label(
-                        details_window,
-                        text="📋 Detalles de la Infracción",
-                        font=("Arial", 16, "bold"),
-                        bg="#f8f9fa",
-                        fg="#2c3e50"
-                    )
-                    title_label.pack(pady=20)
-                    
-                    # Frame para detalles
-                    details_frame = tk.Frame(details_window, bg="#f8f9fa")
-                    details_frame.pack(fill="both", expand=True, padx=20, pady=10)
-                    
-                    # Mostrar información detallada
-                    details_info = [
-                        ("🚗 Placa:", infraction_data.get('placa', 'No identificada')),
-                        ("📅 Fecha:", infraction_data.get('fecha', 'Sin fecha')),
-                        ("⏰ Hora:", infraction_data.get('hora', 'Sin hora')),
-                        ("📍 Ubicación:", infraction_data.get('ubicacion', 'Sin ubicación')),
-                        ("🚦 Tipo:", infraction_data.get('tipo', 'Sin especificar')),
-                        ("🎥 Timestamp:", infraction_data.get('video_timestamp', 'No disponible')),
-                        ("📊 ID Único:", infraction_data.get('id', 'No disponible')),
-                    ]
-                    
-                    for label, value in details_info:
-                        row_frame = tk.Frame(details_frame, bg="#ffffff", relief="ridge", bd=1)
-                        row_frame.pack(fill="x", pady=2)
-                        
-                        tk.Label(row_frame, text=label, font=("Arial", 10, "bold"),
-                                bg="#ffffff", width=15, anchor="w").pack(side="left", padx=10, pady=5)
-                        tk.Label(row_frame, text=str(value), font=("Arial", 10),
-                                bg="#ffffff", anchor="w").pack(side="left", padx=10, pady=5)
-                    
-                    # Botón cerrar
-                    close_btn = tk.Button(
-                        details_window,
-                        text="Cerrar",
-                        command=details_window.destroy,
-                        bg="#3498db",
-                        fg="white",
-                        font=("Arial", 12),
-                        padx=20,
-                        pady=5
-                    )
-                    close_btn.pack(pady=20)
-                return show_details_func
-            
-            # Crear función de detalles para esta infracción
-            show_details_func = create_show_details_func(inf)
-            
-            # Botón para ver detalles
-            tk.Button(
-                btn_frame, text="Ver detalles",
-                command=show_details_func,
-                bg="#5D6D7E", fg="white",
-                cursor="hand2"
-            ).pack(side="right", padx=5)
-            
-            # APLICAR SCROLL AL FINAL: Después de crear todos los elementos de la card
-            add_scroll_to_card_and_children(card)
+        pending_cards.clear()
+        pending_cards.extend(data_list)
+        render_next_batch()
 
     # Inicializar la vista con todos los datos
     populate_cards(all_data)
-    
-    # Botones de acción adicionales al final
+
     bottom_actions = tk.Frame(window, bg="#ffffff")
     bottom_actions.pack(fill="x", padx=100, pady=10)
     
