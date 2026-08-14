@@ -103,3 +103,5 @@ $RECYCLE.BIN/
 .pytest_cache/
 .coverage
 htmlcov/
+
+indicadore_redindimiento.json
