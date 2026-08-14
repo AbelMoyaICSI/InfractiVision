@@ -194,7 +194,6 @@ hiddenimports = [
     'src.core.video.videoplayer_opencv',
     'src.core.detection.vehicle_detector',
     'src.core.detection.plate_detector',
-    'src.core.detection.plate_recognizer',
     'src.core.detection.anpr',
     'src.core.ocr.recognizer',
     'src.core.processing.plate_processing',
@@ -205,7 +204,6 @@ hiddenimports = [
     'src.core.utils.paths',
     'src.core.utils.timestamp',
     'src.automations.cloud_migrator',
-    'src.utils.precision_utils',
 ]
 
 # Rutas de módulos
