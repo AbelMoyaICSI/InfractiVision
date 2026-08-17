@@ -46,5 +46,17 @@
     "yellow": 5,
     "red": 30,
     "time_slot": "07:00 - 19:00"
+  },
+  "VIDEO1COLISEO-003.mp4": {
+    "green": 30,
+    "yellow": 5,
+    "red": 40,
+    "time_slot": "07:00 - 08:00"
+  },
+  "VID6EDIT \u2010 Hecho con Clipchamp.mp4": {
+    "green": 12,
+    "yellow": 5,
+    "red": 12,
+    "time_slot": "07:00 - 08:00"
   }
 }

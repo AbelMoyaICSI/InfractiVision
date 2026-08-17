@@ -8,6 +8,7 @@ from tkinter import ttk, messagebox
 import cv2
 import os
 import json
+import queue
 import threading
 from PIL import Image, ImageTk
 
@@ -29,6 +30,9 @@ class VideoSelectorWindow:
         self.thumbnail_cache = {}
         self.metadata_cache = {}
         
+        # Cola thread-safe para marshaling de callbacks a la UI
+        self.ui_queue = queue.Queue()
+        
         # Configurar archivos de configuración
         self.config_files = {
             'polygon': resource_path("config/polygon_config.json"),
@@ -38,6 +42,9 @@ class VideoSelectorWindow:
         
         # Crear ventana
         self.create_window()
+        
+        # Iniciar poller de la cola UI (solo el hilo principal toca Tk)
+        self.window.after(50, self._poll_ui_queue)
         
         # Cargar videos en hilo separado para no bloquear UI
         self.load_videos_async()
@@ -177,14 +184,31 @@ class VideoSelectorWindow:
         # Aplicar posición centrada
         self.window.geometry(f"{width}x{height}+{x}+{y}")
 
+    def _poll_ui_queue(self):
+        """Ejecuta en el hilo principal los callbacks encolados por hilos secundarios."""
+        try:
+            while True:
+                callback = self.ui_queue.get_nowait()
+                try:
+                    callback()
+                except tk.TclError:
+                    pass
+        except queue.Empty:
+            pass
+        try:
+            if self.window.winfo_exists():
+                self.window.after(50, self._poll_ui_queue)
+        except tk.TclError:
+            pass
+
     def load_videos_async(self):
         """Cargar videos en hilo separado para optimizar rendimiento"""
         def load_thread():
             try:
                 videos = self.get_video_files()
-                self.window.after(0, lambda: self._safe_display_videos(videos))
+                self.ui_queue.put(lambda: self._safe_display_videos(videos))
             except Exception as e:
-                self.window.after(0, lambda: self._safe_status_error_global(str(e)))
+                self.ui_queue.put(lambda: self._safe_status_error_global(str(e)))
         
         threading.Thread(target=load_thread, daemon=True).start()
     
@@ -402,17 +426,18 @@ class VideoSelectorWindow:
                     self.thumbnail_cache[video['filename']] = thumb
                 
                 # Actualizar UI de forma segura
-                self.window.after(0, lambda: self._safe_update_thumbnail(label, thumb))
+                self.ui_queue.put(lambda: self._safe_update_thumbnail(label, thumb))
             except Exception as e:
-                self.window.after(0, lambda: self._safe_update_thumbnail_error(label))
+                self.ui_queue.put(lambda: self._safe_update_thumbnail_error(label))
         
         threading.Thread(target=load_thumb, daemon=True).start()
     
     def _safe_update_thumbnail(self, label, thumb):
         try:
             if label and label.winfo_exists():
-                label.config(image=thumb, text="", compound="center")
-                label.image = thumb
+                thumb_tk = ImageTk.PhotoImage(thumb)
+                label.config(image=thumb_tk, text="", compound="center")
+                label.image = thumb_tk
         except tk.TclError:
             pass
     
@@ -451,9 +476,8 @@ class VideoSelectorWindow:
                 frame = cv2.resize(frame, (new_width, new_height))
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 
-                # Convertir a PIL y luego a PhotoImage
-                pil_image = Image.fromarray(frame)
-                return ImageTk.PhotoImage(pil_image)
+                # Convertir a PIL (la conversión a PhotoImage ocurre en el hilo principal)
+                return Image.fromarray(frame)
             
         except Exception as e:
             print(f"Error generando thumbnail para {video_path}: {e}")
@@ -463,9 +487,8 @@ class VideoSelectorWindow:
     
     def create_default_thumbnail(self):
         """Crear miniatura por defecto"""
-        # Crear imagen simple con PIL
-        img = Image.new('RGB', (180, 100), color='#bdc3c7')
-        return ImageTk.PhotoImage(img)
+        # Crear imagen simple con PIL (la conversión a PhotoImage ocurre en el hilo principal)
+        return Image.new('RGB', (180, 100), color='#bdc3c7')
     
     def load_video_info_async(self, video, info_frame):
         """Cargar información del video en hilo separado con verificación de existencia."""
@@ -477,9 +500,9 @@ class VideoSelectorWindow:
                     metadata = self.get_video_metadata(video['path'])
                     self.metadata_cache[video['filename']] = metadata
                 
-                self.window.after(0, lambda: self._safe_display_video_info(info_frame, metadata, video))
+                self.ui_queue.put(lambda: self._safe_display_video_info(info_frame, metadata, video))
             except Exception as e:
-                self.window.after(0, lambda: self._safe_info_error(info_frame))
+                self.ui_queue.put(lambda: self._safe_info_error(info_frame))
         
         threading.Thread(target=load_info, daemon=True).start()
     
@@ -580,9 +603,9 @@ class VideoSelectorWindow:
         def load_status():
             try:
                 status = self.get_configuration_status(video['filename'])
-                self.window.after(0, lambda: self._safe_display_status(status_frame, status))
+                self.ui_queue.put(lambda: self._safe_display_status(status_frame, status))
             except Exception as e:
-                self.window.after(0, lambda: self._safe_status_error(status_frame))
+                self.ui_queue.put(lambda: self._safe_status_error(status_frame))
         
         threading.Thread(target=load_status, daemon=True).start()
     
