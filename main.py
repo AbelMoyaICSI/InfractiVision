@@ -48,7 +48,10 @@ def _load_or_create_ids() -> dict:
     return ids
 
 
-# ─── Precarga LPRNet (background) ──────────────────────────────────────────
+# ─── Precarga LPRNet (background, post-mainloop) ──────────────────────────
+# Se lanza DESPUÉS de que el mainloop está vivo: así el arranque no se
+# bloquea y el singleton compartido queda caliente cuando el usuario abra
+# un video o "Foto Rojo" (la GUI legacy usa el mismo get_lprnet_predictor()).
 def _preload_lprnet_in_background() -> None:
     def _job():
         try:
@@ -74,7 +77,8 @@ def main() -> None:
     except Exception:
         pass
 
-    _preload_lprnet_in_background()
+        # Precarga LPRNet solo cuando el mainloop ya está vivo (arranque libre).
+    root.after(300, _preload_lprnet_in_background)
 
     # El proveedor de estado del semáforo se inyecta más tarde, cuando la GUI
     # crea su panel `Semaforo`. Por ahora, valor por defecto "green".
@@ -83,7 +87,7 @@ def main() -> None:
     container = build_container(
         traffic_light_state_provider=lambda: traffic_light_state["value"]
     )
-    log.info("Container listo. Iniciando MainWindow.")
+    log.info("Container listo (modelos lazy). Iniciando MainWindow.")
 
     # Presentación: usamos MainWindow que monta la GUI legacy (AppManager).
     from src.presentation.gui import MainWindow

@@ -206,16 +206,22 @@ class VideoSelectorWindow:
         def load_thread():
             try:
                 videos = self.get_video_files()
-                self.ui_queue.put(lambda: self._safe_display_videos(videos))
+                # Leer los 3 JSON de config UNA sola vez para todos los videos
+                # (antes: 2 lecturas de cada archivo por cada card)
+                status_map = {
+                    video['filename']: self.get_configuration_status(video['filename'])
+                    for video in videos
+                }
+                self.ui_queue.put(lambda: self._safe_display_videos(videos, status_map))
             except Exception as e:
                 self.ui_queue.put(lambda: self._safe_status_error_global(str(e)))
         
         threading.Thread(target=load_thread, daemon=True).start()
     
-    def _safe_display_videos(self, videos):
+    def _safe_display_videos(self, videos, status_map):
         try:
             if self.window.winfo_exists():
-                self.display_videos(videos)
+                self.display_videos(videos, status_map)
         except tk.TclError:
             pass
     
@@ -243,7 +249,7 @@ class VideoSelectorWindow:
         
         return sorted(videos, key=lambda x: x['filename'])
     
-    def display_videos(self, videos):
+    def display_videos(self, videos, status_map):
         """Mostrar videos en grid visual"""
         if not videos:
             self.status_label.config(text="📁 No se encontraron videos en el directorio")
@@ -267,9 +273,9 @@ class VideoSelectorWindow:
             col = idx % columns
             
             # Crear card para cada video
-            self.create_video_card(video, row, col)
+            self.create_video_card(video, row, col, status_map)
     
-    def create_video_card(self, video, row, col):
+    def create_video_card(self, video, row, col, status_map):
         """Crear tarjeta visual para cada video"""
         # Frame principal de la tarjeta
         card_frame = tk.Frame(
@@ -325,7 +331,11 @@ class VideoSelectorWindow:
         status_frame = tk.Frame(card_frame, bg='white')
         status_frame.pack(fill="x", pady=(0, 10))
         
-        self.load_config_status_async(video, status_frame)
+        # Estado ya calculado en el hilo de carga (0 lecturas de disco aquí)
+        self.display_config_status(
+            status_frame,
+            status_map.get(video['filename'], {'polygon': False, 'semaphore': False, 'avenue': False})
+        )
         
         # Botones de acción
         button_frame = tk.Frame(card_frame, bg='white')
@@ -335,9 +345,9 @@ class VideoSelectorWindow:
         main_buttons_frame = tk.Frame(button_frame, bg='white')
         main_buttons_frame.pack(fill="x", pady=(0, 5))
         
-        # Obtener estado de configuración
-        config_status = self.get_configuration_status(video['filename'])
-        total_configured = sum([config_status['polygon'], config_status['semaphore'], config_status['avenue']])
+        # Estado de configuración (precalculado en el hilo de carga)
+        config_status = status_map.get(video['filename'], {})
+        total_configured = sum([config_status.get('polygon', False), config_status.get('semaphore', False), config_status.get('avenue', False)])
         is_fully_configured = total_configured == 3
         
         # Botón Seleccionar - Siempre habilitado, cambia el texto según configuración
@@ -597,35 +607,6 @@ class VideoSelectorWindow:
             fg='#34495e'
         )
         size_label.pack(anchor="w")
-    
-    def load_config_status_async(self, video, status_frame):
-        """Cargar estado de configuración en hilo separado con verificación de existencia."""
-        def load_status():
-            try:
-                status = self.get_configuration_status(video['filename'])
-                self.ui_queue.put(lambda: self._safe_display_status(status_frame, status))
-            except Exception as e:
-                self.ui_queue.put(lambda: self._safe_status_error(status_frame))
-        
-        threading.Thread(target=load_status, daemon=True).start()
-    
-    def _safe_display_status(self, status_frame, status):
-        try:
-            if status_frame and status_frame.winfo_exists():
-                # Limpiar frame actual
-                for widget in status_frame.winfo_children():
-                    widget.destroy()
-                self.display_config_status(status_frame, status)
-        except tk.TclError:
-            pass
-    
-    def _safe_status_error(self, status_frame):
-        try:
-            if status_frame and status_frame.winfo_exists():
-                tk.Label(status_frame, text="❌ Error estado",
-                         font=("Arial", 8), bg='white', fg="#e74c3c").pack()
-        except tk.TclError:
-            pass
     
     def get_configuration_status(self, filename):
         """Obtener estado de configuración del video"""

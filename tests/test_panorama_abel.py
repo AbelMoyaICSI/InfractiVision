@@ -9,8 +9,7 @@ from src.core.detection.plate_detector import PlateDetector
 from src.core.ocr.lprnet_engine import LPRNetPredictor
 
 # ── Importar lógica de rectificación v6.3 ──────────────────────────
-sys.path.insert(0, os.path.join(os.getcwd(), "tests", "perspective_experiment"))
-from auto_rectifier import encontrar_esquinas, aplicar_homografia, order_points
+from src.core.processing.auto_rectifier import encontrar_esquinas, aplicar_homografia, order_points
 # ───────────────────────────────────────────────────────────────────
 
 

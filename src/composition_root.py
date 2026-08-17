@@ -8,6 +8,7 @@ DeepSORT por ByteTrack, SOLO se modifica este archivo.
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -48,6 +49,30 @@ class Container:
 
 # ─── Factories de infraestructura (con lazy load) ─────────────────────────
 
+class Lazy:
+    """Proxy que construye el objeto real recién en el primer uso.
+
+    Permite que `build_container()` no cargue modelos pesados (YOLO, LPRNet,
+    DeepSORT) al arrancar la app: el arranque pasa de ~3.5s a <0.1s y el
+    modelo se carga en el hilo que lo necesite por primera vez.
+    """
+
+    def __init__(self, factory: Callable[[], object]):
+        self._factory = factory
+        self._value = None
+        self._lock = threading.Lock()
+
+    def _get(self) -> object:
+        if self._value is None:
+            with self._lock:
+                if self._value is None:
+                    self._value = self._factory()
+        return self._value
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._get(), name)
+
+
 def _build_repository(settings: Settings) -> ViolationRepositoryPort:
     if settings.database.backend == "mysql" and settings.database.mysql_url:
         from src.infrastructure.database import MySQLViolationRepository
@@ -56,31 +81,39 @@ def _build_repository(settings: Settings) -> ViolationRepositoryPort:
     return SQLiteViolationRepository(settings.database.sqlite_path)
 
 
-def _build_ocr(settings: Settings) -> OCRReaderPort:
-    backend = settings.ocr.backend.lower()
-    if backend == "easyocr":
-        from src.infrastructure.ocr import EasyOCRReader
-        return EasyOCRReader()
-    if backend == "paddleocr":
-        from src.infrastructure.ocr import PaddleOCRReader
-        return PaddleOCRReader()
-    from src.infrastructure.ocr import LPRNetReader
-    return LPRNetReader(regional_context=settings.ocr.regional_context)
+def _build_ocr(settings: Settings) -> object:
+    def factory() -> OCRReaderPort:
+        backend = settings.ocr.backend.lower()
+        if backend == "easyocr":
+            from src.infrastructure.ocr import EasyOCRReader
+            return EasyOCRReader()
+        if backend == "paddleocr":
+            from src.infrastructure.ocr import PaddleOCRReader
+            return PaddleOCRReader()
+        from src.infrastructure.ocr import LPRNetReader
+        return LPRNetReader(regional_context=settings.ocr.regional_context)
+    return Lazy(factory)
 
 
-def _build_vehicle_detector(settings: Settings) -> VehicleDetectorPort:
-    from src.infrastructure.ai import YoloVehicleDetector
-    return YoloVehicleDetector(model_path=settings.models.yolo_vehicle)
+def _build_vehicle_detector(settings: Settings) -> object:
+    def factory() -> VehicleDetectorPort:
+        from src.infrastructure.ai import YoloVehicleDetector
+        return YoloVehicleDetector(model_path=settings.models.yolo_vehicle)
+    return Lazy(factory)
 
 
-def _build_plate_detector(settings: Settings) -> PlateDetectorPort:
-    from src.infrastructure.ai import YoloPlateDetector
-    return YoloPlateDetector(model_path=settings.models.yolo_plate)
+def _build_plate_detector(settings: Settings) -> object:
+    def factory() -> PlateDetectorPort:
+        from src.infrastructure.ai import YoloPlateDetector
+        return YoloPlateDetector(model_path=settings.models.yolo_plate)
+    return Lazy(factory)
 
 
-def _build_tracker() -> TrackerPort:
-    from src.infrastructure.tracking import DeepSortTracker
-    return DeepSortTracker()
+def _build_tracker() -> object:
+    def factory() -> TrackerPort:
+        from src.infrastructure.tracking import DeepSortTracker
+        return DeepSortTracker()
+    return Lazy(factory)
 
 
 def _build_traffic_light(state_provider: Callable[[], str]) -> TrafficLightDetectorPort:

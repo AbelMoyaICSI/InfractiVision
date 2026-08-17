@@ -12,8 +12,7 @@ from src.core.ocr.recognizer import recognize_plate, get_lprnet_predictor
 from src.path_helper import resource_path
 
 # ── Homografía v6.3 ────────────────────────────────────────────────
-sys.path.insert(0, os.path.join(os.getcwd(), "tests", "perspective_experiment"))
-from auto_rectifier import encontrar_esquinas, aplicar_homografia, order_points
+from src.core.processing.auto_rectifier import encontrar_esquinas, aplicar_homografia, order_points
 # ──────────────────────────────────────────────────────────────────
 
 

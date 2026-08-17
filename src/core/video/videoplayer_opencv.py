@@ -8,7 +8,6 @@ import tkinter as tk
 import json
 import os
 import numpy as np
-import torch
 import psutil
 from src.core.utils.audio import play_beep  # multiplataforma
 from src.core.utils.icon import set_window_icon  # multiplataforma
@@ -17,17 +16,56 @@ from collections import deque, defaultdict
 
 from tkinter import messagebox, simpledialog
 from PIL import Image, ImageTk
-from ultralytics import YOLO
 
 from src.core.detection.plate_detector import PlateDetector
 from src.core.detection.vehicle_detector import VehicleDetector
-from src.core.processing.plate_processing import process_plate
 from src.path_helper import resource_path
 
 # Archivos de configuración
 POLYGON_CONFIG_FILE = resource_path("config/polygon_config.json")
 AVENUE_CONFIG_FILE  = resource_path("config/avenue_config.json")
 PRESETS_FILE        = resource_path("config/time_presets.json")
+
+# ─── Lectura/escritura JSON con caché en memoria + escritura atómica ──────
+# Los configs (avenidas, presets de semáforo, polígonos) se leen decenas de
+# veces por video cargado (y una vez por infracción a 30fps). Se cachean en
+# memoria con validación por mtime: si OTRO módulo (p. ej. Semáforo) reescribe
+# el archivo, la caché se invalida sola. 1 stat() por lectura en vez de
+# open+parse.
+_CONFIG_CACHE: dict[str, tuple[float, dict]] = {}
+_CONFIG_LOCK = threading.Lock()
+
+
+def _json_load(path: str) -> dict:
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return {}
+    with _CONFIG_LOCK:
+        cached = _CONFIG_CACHE.get(path)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+    with _CONFIG_LOCK:
+        _CONFIG_CACHE[path] = (mtime, data)
+    return data
+
+
+def _json_save(path: str, data: dict) -> None:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = 0.0
+    with _CONFIG_LOCK:
+        _CONFIG_CACHE[path] = (mtime, data)
 
 from src.gui.preprocessing_dialog import PreprocessingDialog
 
@@ -78,21 +116,6 @@ class VideoPlayerOpenCV:
         if self.traffic_light_state is not None and self.semaforo is not None:
             self._start_semaforo_state_bridge()
 
-        self.yolo = YOLO(resource_path('models/yolov8n.pt'))      # peso pequeño, pre-entrenado en COCO
-        
-        # 🚀 MODELO ESPECÍFICO PARA PLACAS (NUEVO)
-        self.plate_model = None
-        try:
-            plate_model_path = resource_path('models/license_plate_detector.pt')
-            if os.path.exists(plate_model_path):
-                self.plate_model = YOLO(plate_model_path)
-                print("🎯 Modelo específico de placas cargado")
-            else:
-                print("⚠️ Modelo específico no encontrado, usando solo CV")
-        except Exception as e:
-            print(f"⚠️ Error cargando modelo de placas: {e}")
-            self.plate_model = None
-        
         # Estado de hardware (GPU/CPU) para la barra de información.
         # Se sincroniza con el VehicleDetector una vez creado.
         self._sync_hardware_state()
@@ -364,6 +387,17 @@ class VideoPlayerOpenCV:
         )
         self.plate_thread.start()
 
+        # ─── Worker de detección (E3): YOLO/OCR FUERA del hilo de Tk ──────
+        # Tk solo lee frames y muestra el último resultado anotado; toda la
+        # inferencia (vehículos, placas, OCR) corre en este worker daemon.
+        self._detect_in = queue.Queue(maxsize=1)   # (frame, frame_index)
+        self._detect_out = queue.Queue(maxsize=1)  # (frame_anotado, is_night)
+        self._detect_worker_thread = None
+        self._last_annotated_frame = None
+        self._last_is_night = False
+        self._pending_timestamp = None   # último timestamp diferido (Tk lo aplica)
+        self._pending_beeps = []         # infractores nuevos (append atómico)
+
         # Métricas
         self.last_time = time.time()
         self.fps_calc  = 0.0
@@ -450,17 +484,10 @@ class VideoPlayerOpenCV:
         canvas.bind('<Leave>', _unbind_from_mousewheel)
 
     def load_avenue_config(self):
-        if not os.path.exists(AVENUE_CONFIG_FILE):
-            return {}
-        try:
-            with open(AVENUE_CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return {}
+        return _json_load(AVENUE_CONFIG_FILE)
 
     def save_avenue_config(self, data):
-        with open(AVENUE_CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        _json_save(AVENUE_CONFIG_FILE, data)
 
     def get_avenue_for_video(self, video_path):
         config = self.load_avenue_config()
@@ -476,17 +503,10 @@ class VideoPlayerOpenCV:
         self.save_avenue_config(cfg)
 
     def load_time_presets(self):
-        if not os.path.exists(PRESETS_FILE):
-            return {}
-        try:
-            with open(PRESETS_FILE, "r") as f:
-                return json.load(f)
-        except:
-            return {}
+        return _json_load(PRESETS_FILE)
 
     def save_time_presets(self, data):
-        with open(PRESETS_FILE, "w") as f:
-            json.dump(data, f, indent=2)
+        _json_save(PRESETS_FILE, data)
 
     def get_time_preset_for_video(self, video_path):
         presets = self.load_time_presets()
@@ -595,8 +615,7 @@ class VideoPlayerOpenCV:
         if not self.current_video_path or not os.path.exists(POLYGON_CONFIG_FILE):
             return
         try:
-            with open(POLYGON_CONFIG_FILE,"r",encoding="utf-8") as f:
-                presets=json.load(f)
+            presets = _json_load(POLYGON_CONFIG_FILE)
             # Usar solo el nombre del archivo como clave
             video_key = self.get_video_key(self.current_video_path)
             if video_key in presets:
@@ -755,8 +774,7 @@ class VideoPlayerOpenCV:
             return False
         
         try:
-            with open(POLYGON_CONFIG_FILE, "r", encoding="utf-8") as f:
-                presets = json.load(f)
+            presets = _json_load(POLYGON_CONFIG_FILE)
             video_key = self.get_video_key(video_path)
             # Ser más permisivo: solo verificar que exista la clave, no necesariamente 3+ puntos
             return video_key in presets
@@ -1132,16 +1150,9 @@ class VideoPlayerOpenCV:
                 self.have_polygon = True
                 
                 # Guardar en archivo de configuración
-                presets = {}
-                if os.path.exists(POLYGON_CONFIG_FILE):
-                    try:
-                        with open(POLYGON_CONFIG_FILE, "r", encoding="utf-8") as f:
-                            presets = json.load(f)
-                    except:
-                        pass
+                presets = _json_load(POLYGON_CONFIG_FILE)
                 presets[self.get_video_key(video_path)] = polygon_points
-                with open(POLYGON_CONFIG_FILE, "w", encoding="utf-8") as f:
-                    json.dump(presets, f, indent=2)
+                _json_save(POLYGON_CONFIG_FILE, presets)
             
             # Cerrar diálogo y cargar video
             setup.destroy()
@@ -1164,10 +1175,11 @@ class VideoPlayerOpenCV:
         setup.wait_window()
 
     def _load_video_async(self, path):
-        cap_tmp = cv2.VideoCapture(path)
-        cap_tmp.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        ret, frame = cap_tmp.read()
-        cap_tmp.release()
+        if self.cap:
+            self.cap.release()
+        self.cap = cv2.VideoCapture(path)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        ret, frame = self.cap.read()
         if not ret:
             self.parent.after(0, lambda: messagebox.showerror("Error", "No se pudo leer el vídeo."))
             return
@@ -1175,11 +1187,12 @@ class VideoPlayerOpenCV:
 
     def _finish_loading_video(self, path, first_frame):
         self.running = False  # NO iniciar automáticamente
-        if self.cap:
-            self.cap.release()
-        self.cap = cv2.VideoCapture(path)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self.current_video_path = path
+        # Reset del worker de detección (E3): descartar análisis del video anterior
+        self._last_annotated_frame = None
+        self._last_is_night = False
+        self._pending_timestamp = None
+        self._pending_beeps = []
         # Actualizar indicador visual
         self.current_video_label.config(text=f"📹 {os.path.basename(path)}")
         h, w = first_frame.shape[:2]
@@ -1447,8 +1460,7 @@ class VideoPlayerOpenCV:
         if dt > 0:
             self.fps_calc = 0.9 * self.fps_calc + 0.1 * (1.0 / dt)
 
-        process = psutil.Process(os.getpid())
-        mem_mb = process.memory_info().rss / (1024 * 1024)
+        mem_mb = self._get_mem_mb()
         dev = "GPU" if self.using_gpu else "CPU"
         info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | PREVISUALIZAR"
         self.info_label.config(text=info_text)
@@ -1494,15 +1506,14 @@ class VideoPlayerOpenCV:
         """
         while self.plate_running:
             try:
-                # Simplemente vaciar la cola sin procesar los datos
-                if hasattr(self, 'plate_queue') and not self.plate_queue.empty():
+                # get() bloqueante en vez de polling: el hilo duerme hasta que
+                # haya datos, y el timeout corto permite salir al detenerse.
+                if hasattr(self, 'plate_queue'):
                     try:
-                        self.plate_queue.get_nowait()  # Eliminar datos sin procesarlos
+                        self.plate_queue.get(timeout=0.2)
                         self.plate_queue.task_done()
-                    except Exception:
+                    except queue.Empty:
                         pass
-                else:
-                    time.sleep(0.1)
             except Exception as e:
                 print(f"Error en plate_loop: {e}")
                 time.sleep(0.5)
@@ -1713,90 +1724,99 @@ class VideoPlayerOpenCV:
         
         return False
 
-    def update_frames(self):
-        """
-        Actualiza los frames del video y detecta infracciones con soporte mejorado para noche.
-        MODIFICADO: Respeta el estado de pausa
-        """
-        # VERIFICACIÓN ADICIONAL: solo continuar si no está pausado
-        if not self.running or not self.cap or self.is_paused:
-            return
-        
-        ret, frame = self.cap.read()
-        if not ret:
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            self._after_id = self.parent.after(int(1000/30), self.update_frames)
-            return
+    # ─── E3: Worker de detección (YOLO/OCR fuera del hilo de Tk) ──────────
 
-        # Usar nuestra función mejorada para detectar y dibujar vehículos
-        # Ahora capturamos los tres valores devueltos
+    def _start_detect_worker(self):
+        """Arranca (o reinicia) el worker de detección en segundo plano."""
+        if self._detect_worker_thread is not None and self._detect_worker_thread.is_alive():
+            return
+        self._detect_worker_thread = threading.Thread(
+            target=self._detect_worker, daemon=True, name="detect-worker"
+        )
+        self._detect_worker_thread.start()
+
+    def _detect_worker(self):
+        """Bucle del worker: consume frames de `_detect_in` y publica el frame
+        anotado en `_detect_out`. NUNCA toca widgets de Tk."""
+        while self.running:
+            try:
+                item = self._detect_in.get(timeout=0.3)
+            except queue.Empty:
+                continue
+            if item is None:
+                break
+            frame, frame_index = item
+            try:
+                annotated, is_night = self._analyze_frame_off_thread(frame, frame_index)
+            except Exception as e:
+                print(f"❌ Error en worker de detección: {e}")
+                annotated, is_night = frame, False
+            try:
+                self._detect_out.put_nowait((annotated, is_night))
+            except queue.Full:
+                # Tk atrasado: descartar el resultado más viejo y publicar el nuevo
+                try:
+                    self._detect_out.get_nowait()
+                except queue.Empty:
+                    pass
+                self._detect_out.put_nowait((annotated, is_night))
+
+    def _analyze_frame_off_thread(self, frame, frame_index):
+        """Todo el cómputo pesado de un frame: detección de vehículos, polígono,
+        placas + OCR y tracking de infractores. Se ejecuta en el worker."""
+        # 1. Detección de vehículos + condición nocturna
         frame_with_cars, car_detections, is_night = self.detect_and_draw_cars(frame)
-        
-        # Si hay un polígono definido, dibujarlo con color adaptado para visibilidad nocturna
+
+        # 2. Polígono (mismo orden de dibujo que antes: polígono → cuadros rojos)
         if self.polygon_points:
-            pts = np.array(self.polygon_points, np.int32).reshape(-1, 1, 2)
-            # Color más brillante en la noche para mejor visibilidad
+            pts = np.array(list(self.polygon_points), np.int32).reshape(-1, 1, 2)
             poly_color = (0, 220, 255) if is_night else (0, 0, 255)  # Amarillo vs Rojo
             cv2.polylines(frame_with_cars, [pts], True, poly_color, 2)
 
-        # Procesar placas si está en rojo (mejorado)
-        current_state = self.semaforo.get_current_state()
-
-        # El estado del semáforo (verde/amarillo/rojo) se muestra SOLO en el
-        # widget Semaforo del panel lateral, NO se dibuja sobre el video.
-
-        # Indicador de modo nocturno si es el caso
+        # 3. Indicador de modo nocturno
         if is_night:
-            cv2.putText(frame_with_cars, "MODO NOCTURNO", 
-                        (frame_with_cars.shape[1] - 200, 30), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, 
+            cv2.putText(frame_with_cars, "MODO NOCTURNO",
+                        (frame_with_cars.shape[1] - 200, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                         (0, 255, 255), 2)
-        
-        # Si el semáforo está en ROJO, buscar infracciones (lógica mejorada)
+
+        # 4. Si el semáforo está en ROJO, buscar infracciones (lógica mejorada)
+        current_state = self.semaforo.get_current_state()
         if current_state == "red" and not self.plate_queue.full():
-            # Verificar si hay vehículos dentro de la zona del polígono
             for car_detection in car_detections:
                 if self.polygon_points and len(self.polygon_points) >= 3:
-                    # Umbral más permisivo para detección nocturna
                     if is_night:
-                        # Verificar con criterios más flexibles para la noche
                         in_polygon = self.is_vehicle_in_polygon_night(car_detection, self.polygon_points)
                     else:
-                        # Verificación normal para día
                         in_polygon = self.is_vehicle_in_polygon(car_detection, self.polygon_points)
-                        
+
                     if in_polygon:
                         # 🎯 DETECCIÓN INTELIGENTE del mejor recorte de placa
                         x1, y1, x2, y2 = car_detection[:4]
                         best_plate_crop, confidence = self.enhanced_plate_detection(frame, car_detection)
-                        
+
+                        # 📊 Timestamp sincronizado (frame_index capturado al leer).
+                        # Se define AQUÍ: el bloque de infractores de abajo lo usa
+                        # aunque no haya placa detectada (evita NameError).
+                        current_time = frame_index / self.video_fps
+
                         if best_plate_crop is not None and confidence > 0.3:
-                            # 🔍 SUPER-RESOLUCIÓN MEJORADA para placas de baja calidad
+                            # MODO DIRECTO MASTER: LPRNet prefiere la imagen natural
                             enhanced_plate = best_plate_crop
-                            # 🔍 MODO DIRECTO MASTER: No aplicar super-resolución destructiva
-                            # LPRNet prefiere la imagen natural para extraer características CNN
-                            enhanced_plate = best_plate_crop
-                            # Solo redimensionamos si la imagen es excesivamente pequeña, pero sin filtros
                             if best_plate_crop.shape[0] < 30:
                                 enhanced_plate = cv2.resize(best_plate_crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-                            
+
                             # 🔤 EXTRAER TEXTO DE LA PLACA CON OCR
                             plate_text = ""
-                            siiv_confidence = confidence  # Inicializar con confianza base
+                            siiv_confidence = confidence
                             try:
                                 from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
-                                
-                                # Reconocer texto de la placa
                                 plate_text = recognize_plate(enhanced_plate, is_night=is_night)
-                                
                                 if plate_text:
-                                    # Calcular confianza SIIV
                                     siiv_confidence, siiv_details = calculate_siiv_confidence(plate_text, confidence)
-                                    
                                     print(f"📝 PLACA DETECTADA: '{plate_text}'")
                                     print(f"   Confianza OCR: {confidence:.2f}")
                                     print(f"   Confianza SIIV: {siiv_confidence:.2f}")
-                                    
                                     if siiv_details['valid_regional']:
                                         region = siiv_details['region']
                                         priority = siiv_details['priority']
@@ -1804,55 +1824,48 @@ class VideoPlayerOpenCV:
                                             print(f"   ⭐ TRUJILLO - Prioridad MÁXIMA")
                                         else:
                                             print(f"   🌍 Región: {region}")
-                                    
                                     if siiv_details['vehicle_type']:
                                         print(f"   🚗 Tipo: {siiv_details['vehicle_type']}")
                                 else:
                                     print(f"⚠️ No se pudo extraer texto de la placa")
-                                    
                             except Exception as ocr_error:
                                 print(f"❌ Error en OCR: {ocr_error}")
                                 plate_text = ""
-                            
-                            # 📊 Obtener timestamp sincronizado
-                            current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
-                            current_time = current_frame / self.video_fps
+
+                            # 📊 Timestamp sincronizado (frame_index capturado al leer)
                             synchronized_timestamp = self._calculate_timestamp_with_time_range(current_time)
-                            
-                            # Actualizar timestamp_label
+
+                            # Actualizar timestamp_label de forma diferida (solo Tk)
                             if isinstance(synchronized_timestamp, str):
-                                self.timestamp_label.config(text=synchronized_timestamp)
-                            
-                            # 📤 Poner en cola para OCR con imagen mejorada y CONFIANZA SIIV
+                                self._pending_timestamp = synchronized_timestamp
+
+                            # 📤 Cola para OCR (consumida por plate_loop)
                             if not self.plate_queue.full():
-                                # CRÍTICO: Incluir siiv_confidence en la cola
                                 self.plate_queue.put((frame.copy(), enhanced_plate, is_night, current_time, plate_text, siiv_confidence))
                                 print(f"🚨 Infracción detectada - Placa: '{plate_text}' - Confianza SIIV: {siiv_confidence:.3f}")
-                        
-                        # � REGISTRAR VEHÍCULO INFRACTOR (tracking persistente)
+
+                        # REGISTRAR VEHÍCULO INFRACTOR (tracking persistente)
                         vehicle_center = (int((x1 + x2) / 2), int((y1 + y2) / 2))
                         vehicle_area = (x2 - x1) * (y2 - y1)
-                        
-                        # Inicializar tracking de infractores
+
                         if not hasattr(self, '_active_infractors'):
                             self._active_infractors = {}
                         if not hasattr(self, '_infractor_beeps'):
                             self._infractor_beeps = set()
-                        
+
                         # Buscar si ya existe un infractor cercano
                         infractor_id = None
                         for existing_id, existing_data in self._active_infractors.items():
                             existing_center = existing_data['center']
-                            distance = ((vehicle_center[0] - existing_center[0])**2 + 
+                            distance = ((vehicle_center[0] - existing_center[0])**2 +
                                        (vehicle_center[1] - existing_center[1])**2)**0.5
-                            
                             # Si está cerca (mismo vehículo), actualizar posición
                             if distance < 100:  # Tolerancia de 100 píxeles
                                 infractor_id = existing_id
                                 self._active_infractors[existing_id]['center'] = vehicle_center
                                 self._active_infractors[existing_id]['bbox'] = (x1, y1, x2, y2)
                                 break
-                        
+
                         # Si no existe, crear nuevo infractor
                         if infractor_id is None:
                             infractor_id = f"inf_{len(self._active_infractors)}_{int(current_time)}"
@@ -1862,54 +1875,117 @@ class VideoPlayerOpenCV:
                                 'first_seen': current_time,
                                 'plate_detected': best_plate_crop is not None
                             }
-                            
-                            # 🔊 BEEP SOLO PARA NUEVOS INFRACTORES
+
+                            # 🔊 BEEP SOLO PARA NUEVOS INFRACTORES (diferido a Tk)
                             if infractor_id not in self._infractor_beeps:
                                 self._infractor_beeps.add(infractor_id)
-                                self.play_infraction_beep()
+                                self._pending_beeps.append(infractor_id)
                                 print(f"🔊 Nuevo infractor detectado: {infractor_id}")
-                        
-                        # 🔴 Dibujar cuadro rojo para infractor registrado
+
+                        # 🔴 Cuadro rojo para infractor registrado
                         cv2.rectangle(frame_with_cars, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 3)
                         cv2.putText(frame_with_cars, f"INFRACCION #{infractor_id[-1]}", (int(x1), int(y1)-10),
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                        
+
                         # Mostrar nivel de confianza si hay detección válida
                         if best_plate_crop is not None:
                             conf_text = f"Conf: {confidence:.2f}"
                             cv2.putText(frame_with_cars, conf_text, (int(x1), int(y2)+20),
                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-        
-        # Mostrar el frame anotado
-        bgr_img = self.resize_and_letterbox(frame_with_cars)
-        rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
-        imgtk = ImageTk.PhotoImage(Image.fromarray(rgb_img))
-        self.video_label.config(image=imgtk)
-        self.video_label.image = imgtk
-        
-        # Métricas y siguiente frame
-        dt = time.time() - self.last_time
-        self.last_time = time.time()
-        if dt > 0:
-            alpha = 0.9
-            inst_fps = 1.0 / dt
-            self.fps_calc = alpha * self.fps_calc + (1 - alpha) * inst_fps
 
-        process = psutil.Process(os.getpid())
-        mem_mb = process.memory_info().rss / (1024 * 1024)
-        dev = "GPU" if self.using_gpu else "CPU"
-        mode = "NOCHE" if is_night else "DÍA"
-        info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | {mode}"
-        self.info_label.config(text=info_text)
-        
-        # Asegurarse que las etiquetas estén visibles
-        self.timestamp_label.lift()
-        self.avenue_label.lift()
-        self.lighting_indicator_label.lift()
-        self.current_video_label.lift()
-        self.system_info_label.lift()
-        self.info_label.lift()
-        
+        return frame_with_cars, is_night
+
+    def update_frames(self):
+        """
+        Actualiza los frames del video y detecta infracciones con soporte mejorado para noche.
+        MODIFICADO: Respeta el estado de pausa.
+        E3: la inferencia (YOLO/OCR) corre en un worker; Tk solo lee frames y
+        muestra el último resultado anotado sin bloquearse nunca en inferencia.
+        """
+        # VERIFICACIÓN ADICIONAL: solo continuar si no está pausado
+        if not self.running or not self.cap or self.is_paused:
+            return
+
+        ret, frame = self.cap.read()
+        if not ret:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            self._after_id = self.parent.after(int(1000/30), self.update_frames)
+            return
+
+        frame_index = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+
+        # Enviar frame al worker de detección (nunca bloquea: si está ocupado
+        # se descarta y el frame se muestra con el análisis anterior)
+        self._start_detect_worker()
+        try:
+            self._detect_in.put_nowait((frame, frame_index))
+        except queue.Full:
+            pass
+
+        # Consumir el último resultado anotado (solo si hay uno nuevo)
+        new_result = None
+        try:
+            new_result = self._detect_out.get_nowait()
+            while True:
+                try:
+                    newer = self._detect_out.get_nowait()
+                    new_result = newer
+                except queue.Empty:
+                    break
+        except queue.Empty:
+            pass
+
+        render_frame = None
+        is_night = False
+        if new_result is not None:
+            self._last_annotated_frame, self._last_is_night = new_result
+        if self._last_annotated_frame is not None:
+            render_frame = self._last_annotated_frame
+            is_night = self._last_is_night
+        elif new_result is None:
+            # Primeros frames: mostrar el frame crudo hasta que llegue el
+            # primer análisis (sin pantalla negra, mismo retardo que antes)
+            render_frame = frame
+
+        if render_frame is not None:
+            # Efectos diferidos producidos por el worker (solo Tk los aplica)
+            if self._pending_timestamp is not None:
+                self.timestamp_label.config(text=self._pending_timestamp)
+                self._pending_timestamp = None
+            if self._pending_beeps:
+                # Beep fuera del hilo de Tk: play_beep usa os.system/winsound y
+                # puede bloquear ~1s (audio del sistema), nunca en la UI.
+                for _ in self._pending_beeps:
+                    threading.Thread(target=self.play_infraction_beep, daemon=True).start()
+                self._pending_beeps = []
+
+            # Mostrar el frame anotado
+            bgr_img = self.resize_and_letterbox(render_frame)
+            rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+            imgtk = ImageTk.PhotoImage(Image.fromarray(rgb_img))
+            self.video_label.config(image=imgtk)
+            self.video_label.image = imgtk
+
+            # Métricas y siguiente frame
+            dt = time.time() - self.last_time
+            self.last_time = time.time()
+            if dt > 0:
+                alpha = 0.9
+                inst_fps = 1.0 / dt
+                self.fps_calc = alpha * self.fps_calc + (1 - alpha) * inst_fps
+
+            mem_mb = self._get_mem_mb()
+            dev = "GPU" if self.using_gpu else "CPU"
+            mode = "NOCHE" if is_night else "DÍA"
+            info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | {mode}"
+            self.info_label.config(text=info_text)
+            self.timestamp_label.lift()
+            self.avenue_label.lift()
+            self.lighting_indicator_label.lift()
+            self.current_video_label.lift()
+            self.system_info_label.lift()
+            self.info_label.lift()
+
         self._after_id = self.parent.after(10, self.update_frames)
 
     class PlateCard:
@@ -3462,11 +3538,9 @@ class VideoPlayerOpenCV:
         if not os.path.exists(AVENUE_CONFIG_FILE):
             return
         try:
-            with open(AVENUE_CONFIG_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            data.pop(video_path, None)
-            with open(AVENUE_CONFIG_FILE, "w", encoding="utf-8") as fw:
-                json.dump(data, fw, indent=2)
+            data = _json_load(AVENUE_CONFIG_FILE)
+            data.pop(self.get_video_key(video_path), None)
+            _json_save(AVENUE_CONFIG_FILE, data)
         except:
             pass
 
@@ -3474,11 +3548,9 @@ class VideoPlayerOpenCV:
         if not os.path.exists(PRESETS_FILE):
             return
         try:
-            with open(PRESETS_FILE, "r", encoding="utf-8") as f:
-                presets = json.load(f)
+            presets = _json_load(PRESETS_FILE)
             presets.pop(self.get_video_key(video_path), None)
-            with open(PRESETS_FILE, "w", encoding="utf-8") as fw:
-                json.dump(presets, fw, indent=2)
+            _json_save(PRESETS_FILE, presets)
         except:
             pass
 
@@ -3486,13 +3558,21 @@ class VideoPlayerOpenCV:
         if not os.path.exists(POLYGON_CONFIG_FILE):
             return
         try:
-            with open(POLYGON_CONFIG_FILE, "r", encoding="utf-8") as f:
-                polygons = json.load(f)
+            polygons = _json_load(POLYGON_CONFIG_FILE)
             polygons.pop(self.get_video_key(video_path), None)
-            with open(POLYGON_CONFIG_FILE, "w", encoding="utf-8") as fw:
-                json.dump(polygons, fw, indent=2)
+            _json_save(POLYGON_CONFIG_FILE, polygons)
         except:
             pass
+
+    def _get_mem_mb(self):
+        """RAM del proceso, muestreada como máximo cada 0.5s (no por frame)."""
+        now = time.time()
+        if now - getattr(self, "_mem_sample_time", 0.0) >= 0.5:
+            if not hasattr(self, "_ps_proc"):
+                self._ps_proc = psutil.Process(os.getpid())
+            self._mem_sample_time = now
+            self._mem_mb = self._ps_proc.memory_info().rss / (1024 * 1024)
+        return getattr(self, "_mem_mb", 0.0)
 
     def resize_and_letterbox(self, frame_bgr):
         wlbl = self.video_label.winfo_width()
@@ -4012,30 +4092,24 @@ class VideoPlayerOpenCV:
             
             # Limpiar polígono
             if os.path.exists(POLYGON_CONFIG_FILE):
-                with open(POLYGON_CONFIG_FILE, "r", encoding="utf-8") as f:
-                    presets = json.load(f)
+                presets = _json_load(POLYGON_CONFIG_FILE)
                 if video_key in presets:
                     del presets[video_key]
-                    with open(POLYGON_CONFIG_FILE, "w", encoding="utf-8") as f:
-                        json.dump(presets, f, indent=2)
+                    _json_save(POLYGON_CONFIG_FILE, presets)
             
             # Limpiar avenida
             if os.path.exists(AVENUE_CONFIG_FILE):
-                with open(AVENUE_CONFIG_FILE, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
+                cfg = _json_load(AVENUE_CONFIG_FILE)
                 if video_key in cfg:
                     del cfg[video_key]
-                    with open(AVENUE_CONFIG_FILE, "w", encoding="utf-8") as f:
-                        json.dump(cfg, f, indent=2)
+                    _json_save(AVENUE_CONFIG_FILE, cfg)
             
             # Limpiar tiempos
             if os.path.exists(PRESETS_FILE):
-                with open(PRESETS_FILE, "r") as f:
-                    presets = json.load(f)
+                presets = _json_load(PRESETS_FILE)
                 if video_key in presets:
                     del presets[video_key]
-                    with open(PRESETS_FILE, "w") as f:
-                        json.dump(presets, f, indent=2)
+                    _json_save(PRESETS_FILE, presets)
             
             # Resetear estado interno
             self.have_polygon = False
@@ -4065,10 +4139,11 @@ class VideoPlayerOpenCV:
             self.using_gpu = self.vehicle_detector.using_gpu
             gi = getattr(self.vehicle_detector, 'hardware_info', {}).get('gpu', {})
         else:
+            import torch
             self.using_gpu = torch.cuda.is_available()
-            gi = {}
+            gi = {'name': torch.cuda.get_device_name(0)} if self.using_gpu else {}
         self.gpu_info = {
-            'name': gi.get('name') or (torch.cuda.get_device_name(0) if self.using_gpu else ''),
+            'name': gi.get('name', ''),
             'available': self.using_gpu,
             'cuda_available': self.using_gpu,
             'memory': gi.get('memory', 0.0),

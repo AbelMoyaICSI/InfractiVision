@@ -21,8 +21,9 @@ class AsyncPlateProcessor:
     """
     
     def __init__(self):
-        # Cola de infracciones pendientes de procesar
-        self.pending_queue = queue.Queue()
+        # Cola de infracciones pendientes de procesar (con backpressure:
+        # si el worker va más lento que el productor, la cola no crece sin límite)
+        self.pending_queue = queue.Queue(maxsize=100)
         
         # Resultados ya procesados (listos para OCR)
         self.processed_results = {}  # track_id -> {'plate_crop': img, 'vehicle_img': img, 'sr_applied': bool}
@@ -93,13 +94,16 @@ class AsyncPlateProcessor:
         
     def add_infraction(self, track_id, frame_img, bbox, frame_index):
         """Añade una infracción a la cola de procesamiento"""
-        self.pending_queue.put({
-            'track_id': track_id,
-            'frame_img': frame_img.copy(),
-            'bbox': bbox,
-            'frame_index': frame_index,
-            'added_time': time.time()
-        })
+        try:
+            self.pending_queue.put_nowait({
+                'track_id': track_id,
+                'frame_img': frame_img.copy(),
+                'bbox': bbox,
+                'frame_index': frame_index,
+                'added_time': time.time()
+            })
+        except queue.Full:
+            print(f"⚠️ AsyncProcessor: cola llena, descartando infracción del track {track_id}")
         
     def _worker_loop(self):
         """Loop principal del worker - procesa durante VERDE/AMARILLO"""
@@ -111,17 +115,18 @@ class AsyncPlateProcessor:
                     self.current_semaphore_state in ["green", "yellow"] or
                     self.pending_queue.qsize() > 5  # Emergencia: cola muy llena
                 )
-                
-                if can_process and not self.pending_queue.empty():
-                    # Procesar una infracción
-                    item = self.pending_queue.get(timeout=0.1)
-                    self._process_item(item)
-                else:
-                    # Esperar un poco antes de revisar de nuevo
+
+                if not can_process:
                     time.sleep(0.05)
-                    
+                    continue
+
+                # get() bloqueante: sin busy-polling cuando hay trabajo.
+                # El timeout corto (0.2s) permite salir al detener el worker.
+                item = self.pending_queue.get(timeout=0.2)
+                self._process_item(item)
+
             except queue.Empty:
-                time.sleep(0.05)
+                continue
             except Exception as e:
                 print(f"⚠️ AsyncProcessor error: {e}")
                 time.sleep(0.1)

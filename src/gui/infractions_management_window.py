@@ -5,7 +5,6 @@ from tkcalendar import DateEntry
 from datetime import datetime
 import shutil
 import csv
-import pandas as pd  # Para exportación a Excel (requiere openpyxl)
 import requests
 import queue
 import threading
@@ -771,11 +770,14 @@ def generate_performance_indicators_json(software_infractions, software_processi
         },
     }
 
-    # Guardar localmente
+    # Guardar localmente (conservando metricas_tesis de la sesión si existían)
     out_path = resource_path("data/indicadores_rendimiento.json")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2, ensure_ascii=False)
+    from src.core.utils.json_store import read_json, write_json
+    _existing = read_json(out_path, {})
+    if isinstance(_existing, dict) and "metricas_tesis" in _existing:
+        report["metricas_tesis"] = _existing["metricas_tesis"]
+    write_json(out_path, report)
     
     print(f"✅ Indicadores guardados localmente en: {out_path}")
 
@@ -821,6 +823,27 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
     all_data = []
     ui_queue = queue.Queue()
     image_cache = {}
+    # Caché de fechas parseadas: evita strptime por registro en cada
+    # filtro/ordenamiento (el dataset crece como stack en cada procesamiento).
+    _fecha_cache: dict[str, datetime] = {}
+    _hora_cache: dict[str, int] = {}
+
+    def _parse_fecha(fecha_str):
+        dt = _fecha_cache.get(fecha_str)
+        if dt is None:
+            try:
+                dt = datetime.strptime(fecha_str, '%d/%m/%Y')
+            except ValueError:
+                dt = datetime(2000, 1, 1)
+            _fecha_cache[fecha_str] = dt
+        return dt
+
+    def _parse_hora(hora_str):
+        h = _hora_cache.get(hora_str)
+        if h is None:
+            h = int(hora_str.replace(':', '')) if hora_str else 0
+            _hora_cache[hora_str] = h
+        return h
 
     def load_data_async():
         try:
@@ -1043,12 +1066,15 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                 }
             }
             
-            # Guardar informe en JSON
+            # Guardar informe en JSON (conservando metricas_tesis de la sesión)
             report_file = resource_path("data/indicadores_rendimiento.json")
             os.makedirs(os.path.dirname(report_file), exist_ok=True)
             
-            with open(report_file, "w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2, ensure_ascii=False)
+            from src.core.utils.json_store import read_json, write_json
+            _existing = read_json(report_file, {})
+            if isinstance(_existing, dict) and "metricas_tesis" in _existing:
+                report["metricas_tesis"] = _existing["metricas_tesis"]
+            write_json(report_file, report)
             
             # Generar resumen para mostrar (SIN IR)
             resumen = f"""
@@ -1415,14 +1441,9 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             end = datetime.combine(end_picker.get_date(), datetime.max.time())
             filtered = []
             for inf in all_data:
-                fecha_str = inf.get('fecha','')
-                try:
-                    fecha = datetime.strptime(fecha_str, '%d/%m/%Y')
-                    if start <= fecha <= end:
-                        filtered.append(inf)
-                except ValueError:
-                    # Si hay error en el formato de fecha, no incluimos este registro
-                    pass
+                fecha = _parse_fecha(inf.get('fecha', ''))
+                if start <= fecha <= end:
+                    filtered.append(inf)
             populate_cards(filtered)
         except Exception as e:
             messagebox.showerror("Error", f"Error aplicando filtro: {e}")
@@ -1572,8 +1593,8 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                                 # Prioridad de clasificación: NID=0 (primero), NIE=1 (después)
                                 0 if x.get('clasificacion', 'NID') == 'NID' else 1,
                                 # Luego ordenar por fecha y hora dentro de cada clasificación
-                                -(datetime.strptime(x.get('fecha', '01/01/2000'), '%d/%m/%Y').timestamp()),
-                                -int(x.get('hora', '00:00:00').replace(':', ''))
+                                -_parse_fecha(x.get('fecha', '01/01/2000')).timestamp(),
+                                -_parse_hora(x.get('hora', '00:00:00'))
                             ))
         except Exception as e:
             print(f"Error al ordenar infracciones: {e}")

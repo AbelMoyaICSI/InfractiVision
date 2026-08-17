@@ -1,7 +1,6 @@
 import os
 import cv2
 import numpy as np
-from ultralytics import YOLO
 from datetime import datetime
 
 class PlateDetector:
@@ -35,6 +34,9 @@ class PlateDetector:
                 if path is not None and os.path.exists(path):  # FIXED: Check for None
                     print(f"PlateDetector: Cargando modelo desde {path}")
                     try:
+                        from src.core.detection.torch_compat import ensure_torch_compat
+                        ensure_torch_compat()
+                        from ultralytics import YOLO
                         self.model = YOLO(path)
                         model_loaded = True
                         print("PlateDetector: Modelo cargado correctamente")

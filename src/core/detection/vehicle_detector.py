@@ -1,21 +1,15 @@
 import cv2
 import os
-import torch
 import psutil
 import numpy as np
 
-# PyTorch 2.6+ changed torch.load default to weights_only=True
-# ultralytics 8.x still needs weights_only=False for DetectionModel unpickling
-_original_torch_load = torch.load
-def _patched_torch_load(*args, **kwargs):
-    kwargs.setdefault("weights_only", False)
-    return _original_torch_load(*args, **kwargs)
-torch.load = _patched_torch_load
-
-from ultralytics import YOLO
-
 class VehicleDetector:
     def __init__(self, model_path="yolov8n.pt"):
+        from src.core.detection.torch_compat import ensure_torch_compat
+        ensure_torch_compat()
+        import torch
+        from ultralytics import YOLO
+
         # Cargar modelo con configuración optimizada
         self.model = YOLO(model_path)
         
@@ -53,6 +47,7 @@ class VehicleDetector:
     def _detect_hardware_capabilities(self):
         """Detecta capacidades avanzadas del hardware para configuración óptima"""
         import time
+        import torch
         start_time = time.time()
         
         # Información de GPU

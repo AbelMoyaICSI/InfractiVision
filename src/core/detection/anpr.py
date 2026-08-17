@@ -6,7 +6,6 @@ import os
 import threading
 import re
 from pathlib import Path
-from ultralytics import YOLO
 from src.path_helper import resource_path
 from src.core.ocr.recognizer import calculate_siiv_confidence, recognize_plate, get_lprnet_predictor
 from src.core.processing.plate_processing import process_plate
@@ -45,6 +44,9 @@ class ANPR:
         
         # Initialize plate detector (YOLO)
         try:
+            from src.core.detection.torch_compat import ensure_torch_compat
+            ensure_torch_compat()
+            from ultralytics import YOLO
             if os.path.exists(model_path):
                 self.model = YOLO(model_path)
             else:

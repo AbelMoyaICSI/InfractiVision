@@ -1,6 +1,5 @@
 import os
 import time
-import sys
 import cv2
 import numpy as np
 from src.core.processing.resolution_process import enhance_plate_image
@@ -12,13 +11,7 @@ from src.path_helper import resource_path
 
 # ── Homografía v6.3 (correccion de perspectiva) ──────────────────────
 try:
-    _RECTIFIER_DIR = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "..", "..", "..",
-        "tests", "perspective_experiment"
-    )
-    sys.path.insert(0, os.path.normpath(_RECTIFIER_DIR))
-    from auto_rectifier import encontrar_esquinas, aplicar_homografia
+    from src.core.processing.auto_rectifier import encontrar_esquinas, aplicar_homografia
     _HOMOGRAFIA_OK = True
 except Exception as _e:
     _HOMOGRAFIA_OK = False

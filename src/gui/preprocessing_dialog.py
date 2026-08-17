@@ -15,7 +15,6 @@ from tkinter import ttk, messagebox
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
-from sklearn.preprocessing import StandardScaler
 
 from src.automations.cloud_migrator import upload_infracciones_automatically
 from src.gui.infractions_management_window import generate_performance_indicators_json
@@ -1217,177 +1216,6 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         except Exception as e:
             print(f"⚠️ Error sincronizando validación en panel lateral: {e}")
 
-    def _process_video_legacy(self):
-        """Legacy implementation retained below during migration."""
-        try:
-            # Verificaciones iniciales
-            if not self.polygon_points or not self.cycle_durations:
-                # Fix: Llamar método directamente sin verificar dialog
-                try:
-                    self._show_error("Este video no está configurado correctamente. Configure primero el área restrictiva y los tiempos de semáforo.")
-                except Exception as e:
-                    print(f"⚠️ Error mostrando ventana de configuración: {e}")
-                return
-                    
-            # Abrir el video
-            cap = cv2.VideoCapture(self.video_path)
-            if not cap.isOpened():
-                # Fix: Llamar método directamente sin verificar dialog
-                try:
-                    self._show_error("No se pudo abrir el video")
-                except Exception as e:
-                    print(f"⚠️ Error mostrando ventana de video: {e}")
-                return
-            
-            # Inicialización
-            self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.fps = cap.get(cv2.CAP_PROP_FPS)
-            
-            # Verificaciones adicionales
-            if self.total_frames <= 0:
-                # Fix: Llamar método directamente sin verificar dialog
-                try:
-                    self._show_error("No se pudo determinar la duración del video")
-                except Exception as e:
-                    print(f"⚠️ Error mostrando ventana de duración: {e}")
-                return
-            
-            # NUEVA VALIDACIÓN: Verificar que los tiempos del semáforo no excedan la duración del video
-            video_duration_seconds = self.total_frames / self.fps if self.fps > 0 else 0
-            total_cycle_time = sum([
-                self.cycle_durations.get('green', 0),
-                self.cycle_durations.get('yellow', 0), 
-                self.cycle_durations.get('red', 0)
-            ])
-            
-            # TEMPORALMENTE DESHABILITADO PARA PROBAR VENTANAS NOCTURNAS
-            if False and total_cycle_time > video_duration_seconds:  # TEMPORAL: Forzar False para saltear validación
-                cap.release()
-                # Fix: Ejecutar método directamente sin verificar dialog - siempre mostrar error
-                try:
-                    self._show_duration_error(video_duration_seconds, total_cycle_time)
-                except Exception as e:
-                    print(f"⚠️ Error mostrando ventana de duración: {e}")
-                    print(f"⚠️ CONFIGURACIÓN INCOMPATIBLE: Video {video_duration_seconds:.1f}s < Ciclo {total_cycle_time:.1f}s")
-                return
-            
-            # Para videos cortos, mostrar advertencia pero continuar
-            if total_cycle_time > video_duration_seconds:
-                print(f"⚠️ ADVERTENCIA: Video {video_duration_seconds:.1f}s < Ciclo {total_cycle_time:.1f}s - CONTINUANDO PARA PRUEBAS")
-            
-            # Crear directorios para resultados
-            output_dir = resource_path("data/output")
-            os.makedirs(output_dir, exist_ok=True)
-            
-            # Fase 1: Inicialización rápida
-            self.phase_label.config(text="Fase 1: Inicializando análisis")
-            
-            # DETECTAR AUTOMÁTICAMENTE SI ES UNA ESCENA NOCTURNA
-            ret, first_frame = cap.read()
-            if not ret:
-                if hasattr(self, 'dialog') and self.dialog.winfo_exists():
-                    self._safe_after(0, lambda: self._show_error("No se pudo leer el primer frame del video"))
-                return
-            
-            # ANÁLISIS NOCTURNO CON VENTANAS EMERGENTES
-            print("🔍 INICIANDO ANÁLISIS NOCTURNO...")
-            night_result = self._is_night_scene(first_frame)
-            print(f"🔍 Resultado del análisis: {night_result}")
-            
-            if isinstance(night_result, tuple):
-                self.is_night, avg_brightness, dark_threshold = night_result
-                print(f"✅ Tupla detectada - Es nocturno: {self.is_night}, Brillo: {avg_brightness}")
-            else:
-                self.is_night = night_result
-                avg_brightness, dark_threshold = 0, 80
-                print(f"⚠️ Solo boolean detectado - Es nocturno: {self.is_night}")
-                
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Volver al principio del video
-            
-            # MOSTRAR VENTANA NOCTURNA SI SE DETECTA
-            print(f"🔍 Verificando condiciones: is_night={self.is_night}, popup_active={PreprocessingDialog._night_popup_active}")
-            if self.is_night and not PreprocessingDialog._night_popup_active:
-                print("🌙 CONDICIONES NOCTURNAS DETECTADAS - MOSTRANDO VENTANA")
-                self._show_night_analysis_popup(avg_brightness, dark_threshold)
-                
-                # ESPERAR A QUE SE CIERRE LA VENTANA ANTES DE CONTINUAR
-                while PreprocessingDialog._night_popup_active or self.processing_paused:
-                    if self.canceled: break
-                    time.sleep(0.1)
-                    try:
-                        self.dialog.update()
-                    except:
-                        break
-                
-                print("✅ Ventana nocturna cerrada o diálogo inválido - CONTINUANDO PROCESAMIENTO")
-            else:
-                if not self.is_night:
-                    print("☀️ CONDICIONES DIURNAS DETECTADAS - NO MOSTRAR VENTANAS NOCTURNAS")
-                elif PreprocessingDialog._night_popup_active:
-                    print("⚠️ VENTANA NOCTURNA YA ACTIVA - OMITIR")
-            
-            # Actualizar UI con información del modo nocturno
-            if self.is_night:
-                self.details_label.config(text=f"Franja horaria: {self.cycle_durations.get('time_slot', 'No especificada')} - MODO NOCTURNO ACTIVADO")
-                print("🌙 Modo nocturno activado para el procesamiento")
-            
-            # Calcular duración de cada estado - VALIDACIÓN DEFENSIVA
-            frames_per_state = {}
-            default_durations = {'green': 12, 'yellow': 2, 'red': 10}
-            
-            for state in ['green', 'yellow', 'red']:
-                try:
-                    duration = self.cycle_durations[state]
-                    if isinstance(duration, (list, tuple)):
-                        duration_value = float(duration[0]) if len(duration) > 0 else default_durations[state]
-                    elif isinstance(duration, (int, float)):
-                        duration_value = float(duration)
-                    else:
-                        duration_value = float(duration)
-                    
-                    frames_per_state[state] = int(duration_value * self.fps)
-                    
-                except (ValueError, TypeError, IndexError, KeyError) as e:
-                    print(f"⚠️  Error procesando duración para {state}: usando valor por defecto")
-                    frames_per_state[state] = int(default_durations[state] * self.fps)
-            
-            # ============================================================
-            # 🎬 PROCESAMIENTO FLUIDO COMO update_frames (Timer-based)
-            # ============================================================
-            # Usa dialog.after() para reproducir el video a velocidad nativa
-            # mientras detecta infracciones. Igual que el modo de reproducción.
-            
-            self.phase_label.config(text="Escaneando video...")
-            
-            # Variables de estado para el procesamiento fluido
-            self._prep_cap = cv2.VideoCapture(self.video_path)
-            self._prep_frame_index = 0
-            self._prep_detected_plates = set()
-            self._prep_infraction_count = 0
-            self._prep_running = True
-            
-            # 🚦 INICIAR SEMÁFORO (igual que play_video)
-            if hasattr(self.player.semaforo, 'resume_semaphore'):
-                self.player.semaforo.resume_semaphore()
-                print("🚦 Semáforo REANUDADO")
-            else:
-                self.player.semaforo.activate_semaphore()
-                print("🚦 Semáforo ACTIVADO")
-            
-            # Delay entre frames para velocidad nativa (basado en FPS del video)
-            self._frame_delay = max(10, int(1000 / self.fps))  # ms entre frames
-            
-            print(f"🎬 Iniciando escaneo fluido: {self.total_frames} frames @ {self.fps:.1f}fps (delay: {self._frame_delay}ms)")
-            
-            # Iniciar el loop de actualización basado en timer
-            self._process_next_frame()
-            
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            if hasattr(self, 'dialog') and self.dialog.winfo_exists():
-                self._safe_after(0, lambda msg=str(e): self._show_error(msg))
-    
     def _process_next_frame(self):
         """
         Procesa UN frame y programa el siguiente.
@@ -4148,7 +3976,6 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         import traceback
         import threading
         from src.automations.cloud_migrator import upload_infracciones_automatically
-        from src.gui.infractions_management_window import generate_performance_indicators_json
 
         try:
             # PASO 1: Deduplicar placas
@@ -4442,24 +4269,18 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         os.makedirs(data_dir, exist_ok=True)
         infractions_file = os.path.join(data_dir, "infracciones.json")
 
-        # PASO 1: Cargar infracciones existentes (si las hay)
+        # PASO 1: Cargar infracciones existentes (si las hay) con lock+caché
+        from src.core.utils.json_store import read_json
+        data = read_json(infractions_file, [])
         existing_infractions = []
-        if os.path.exists(infractions_file):
-            try:
-                with open(infractions_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    # CORREGIR: Manejar diferentes estructuras JSON
-                    if isinstance(data, dict) and 'infracciones' in data:
-                        existing_infractions = data['infracciones']
-                    elif isinstance(data, list):
-                        existing_infractions = data
-                    else:
-                        print(f"⚠️ Estructura JSON inesperada: {type(data)}")
-                        existing_infractions = []
-                print(f"📋 Cargadas {len(existing_infractions)} infracciones existentes")
-            except Exception as e:
-                print(f"⚠️ Error cargando infracciones existentes: {e}, iniciando lista vacía")
-                existing_infractions = []
+        if isinstance(data, dict) and 'infracciones' in data:
+            existing_infractions = data['infracciones']
+        elif isinstance(data, list):
+            existing_infractions = data
+        else:
+            print(f"⚠️ Estructura JSON inesperada: {type(data)}")
+            existing_infractions = []
+        print(f"📋 Cargadas {len(existing_infractions)} infracciones existentes")
 
         # Nombre de la avenida y franja horaria
         avenue_name = getattr(self.player, "current_avenue", "Desconocida")
@@ -4603,8 +4424,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         output_data = {"infracciones": infracciones_finales}
         
         try:
-            with open(infractions_file, "w", encoding="utf-8") as f:
-                json.dump(output_data, f, indent=2, ensure_ascii=False)
+            from src.core.utils.json_store import write_json
+            write_json(infractions_file, output_data)
             print(f"📝 ACUMULADAS: {len(nuevas_infracciones)} nuevas + {len(existing_infractions)} anteriores = {len(infracciones_finales)} totales")
             print(f"💾 Stack actualizado en '{infractions_file}'")
         except Exception as e:
@@ -4626,20 +4447,15 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         os.makedirs(data_dir, exist_ok=True)
         nie_file = os.path.join(data_dir, "nie_infracciones.json")
 
-        # PASO 1: Cargar NIE existentes (si las hay)
+        # PASO 1: Cargar NIE existentes (si las hay) con lock+caché
+        from src.core.utils.json_store import read_json
+        data = read_json(nie_file, [])
         existing_nie = []
-        if os.path.exists(nie_file):
-            try:
-                with open(nie_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, dict) and 'infracciones' in data:
-                        existing_nie = data['infracciones']
-                    elif isinstance(data, list):
-                        existing_nie = data
-                print(f"📋 Cargadas {len(existing_nie)} NIE existentes")
-            except Exception as e:
-                print(f"⚠️ Error cargando NIE existentes: {e}, iniciando lista vacía")
-                existing_nie = []
+        if isinstance(data, dict) and 'infracciones' in data:
+            existing_nie = data['infracciones']
+        elif isinstance(data, list):
+            existing_nie = data
+        print(f"📋 Cargadas {len(existing_nie)} NIE existentes")
 
         # Nombre de la avenida y franja horaria
         avenue_name = getattr(self.player, "current_avenue", "Desconocida")
@@ -4752,8 +4568,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         output_data = {"infracciones": nie_finales}
         
         try:
-            with open(nie_file, "w", encoding="utf-8") as f:
-                json.dump(output_data, f, indent=2, ensure_ascii=False)
+            from src.core.utils.json_store import write_json
+            write_json(nie_file, output_data)
             print(f"📝 NIE ACUMULADAS: {len(nuevas_nie)} nuevas + {len(existing_nie)} anteriores = {len(nie_finales)} totales")
             print(f"💾 Stack NIE actualizado en '{nie_file}'")
         except Exception as e:
