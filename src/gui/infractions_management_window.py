@@ -7,6 +7,8 @@ import shutil
 import csv
 import pandas as pd  # Para exportación a Excel (requiere openpyxl)
 import requests
+import queue
+import threading
 from src.path_helper import resource_path
 
 
@@ -815,8 +817,32 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
     # El usuario puede maximizar manualmente si lo desea.
     pass
 
-    # 1) Cargar todas las infracciones al inicio
-    all_data = load_infractions_data()
+    # 1) Cargar todas las infracciones en segundo plano para no bloquear la UI
+    all_data = []
+    ui_queue = queue.Queue()
+    image_cache = {}
+
+    def load_data_async():
+        try:
+            data = load_infractions_data()
+        except Exception as e:
+            print(f"Error cargando infracciones: {e}")
+            data = []
+        ui_queue.put(data)
+
+    def poll_ui_queue():
+        try:
+            while True:
+                data = ui_queue.get_nowait()
+                nonlocal all_data
+                all_data = data
+                populate_cards(all_data)
+        except queue.Empty:
+            pass
+        try:
+            window.after(50, poll_ui_queue)
+        except tk.TclError:
+            pass
 
     # (El resto del código de la interfaz se mantiene exactamente igual...)
     # 3) Cabecera
@@ -839,22 +865,10 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
     # NUEVO: Función para mostrar indicadores de rendimiento
     def show_performance_indicators():
         try:
-            # Importar la clase VideoPlayerOpenCV
-            from src.core.video.videoplayer_opencv import VideoPlayerOpenCV
             import tkinter as tk
             from datetime import datetime
             import json
             import os
-            
-            # Crear una instancia temporal para calcular los indicadores
-            dummy_frame = tk.Frame()
-            dummy_updater = type('obj', (object,), {'running': False})
-            dummy_label = tk.Label()
-            dummy_semaforo = type('obj', (object,), {
-                'deactivate_semaphore': lambda: None,
-                'get_current_state': lambda: 'red',
-                'activate_semaphore': lambda: None
-            })
             
             # ===== 1. RECOPILACIÓN DE DATOS DEL SISTEMA ACTUAL =====
             # Obtener datos de infracciones detectadas con software
@@ -1574,19 +1588,6 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                          bd=1, relief=tk.RAISED)
             card.pack(fill="x", padx=15, pady=10, expand=True)  # Añadido padding horizontal para separar del borde
             
-            # MEJORADO: Agregar scroll a esta card específica y todos sus componentes
-            def add_scroll_to_card_and_children(widget):
-                """Agrega scroll a un widget y todos sus hijos recursivamente"""
-                try:
-                    widget.bind("<MouseWheel>", on_mousewheel)
-                    widget.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
-                    widget.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
-                except:
-                    pass
-                # Recursivamente a todos los hijos
-                for child in widget.winfo_children():
-                    add_scroll_to_card_and_children(child)
-            
             # Parte superior: información principal
             top_frame = tk.Frame(card, bg="#F2F2F2")
             top_frame.pack(fill="x", padx=15, pady=(10, 5), expand=True)  # Aumentado el padding interno
@@ -1604,10 +1605,13 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             if vehicle_path and os.path.exists(vehicle_path):
                 try:
                     from PIL import Image, ImageTk
-                    # Cargar y redimensionar la imagen
-                    img = Image.open(vehicle_path)
-                    img = img.resize((150, 100), Image.LANCZOS)  # Ajustado al nuevo tamaño
-                    photo = ImageTk.PhotoImage(img)
+                    # Caché por ruta: evita re-decodificar el mismo JPEG en cada redibujado
+                    photo = image_cache.get(vehicle_path)
+                    if photo is None:
+                        img = Image.open(vehicle_path)
+                        img = img.resize((150, 100), Image.LANCZOS)  # Ajustado al nuevo tamaño
+                        photo = ImageTk.PhotoImage(img)
+                        image_cache[vehicle_path] = photo
                     vehicle_img_label = tk.Label(img_frame, image=photo, bg="#DDDDDD")
                     vehicle_img_label.image = photo  # Guardar referencia
                     vehicle_img_label.pack(fill="both", expand=True)
@@ -1978,12 +1982,14 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                 bg="#5D6D7E", fg="white",
                 cursor="hand2"
             ).pack(side="right", padx=5)
-            
-            # APLICAR SCROLL AL FINAL: Después de crear todos los elementos de la card
-            add_scroll_to_card_and_children(card)
 
-    # Inicializar la vista con todos los datos
-    populate_cards(all_data)
+    # Inicializar la vista cargando los datos en segundo plano (no bloquea la UI)
+    tk.Label(
+        scrollable_frame, text="Cargando infracciones...",
+        font=("Arial", 16), bg="gray", fg="white"
+    ).pack(pady=80, padx=80)
+    threading.Thread(target=load_data_async, daemon=True).start()
+    window.after(50, poll_ui_queue)
     
     # Botones de acción adicionales al final
     bottom_actions = tk.Frame(window, bg="#ffffff")
