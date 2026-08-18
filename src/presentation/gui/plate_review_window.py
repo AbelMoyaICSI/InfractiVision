@@ -134,12 +134,13 @@ class PlateReviewWindow:
         self.status.config(text=f"Reconociendo {self.current_index + 1}/{len(self.rows)} (espera anti-límite activa)...")
 
         def work():
+            idx = self.current_index
             try:
                 text, confidence = self.reader.read(evidence.crop_path)
                 error = ""
             except Exception as exc:
                 text, confidence, error = "", 0.0, str(exc)
-            self.window.after(0, lambda: self._show_result(self.current_index, text, confidence, error))
+            self.window.after(0, lambda: self._show_result(idx, text, confidence, error))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -163,10 +164,9 @@ class PlateReviewWindow:
         self.window.after(50, self._process_next)
 
     def _retry_current(self):
-        if not self.rows:
+        if not self.rows or self.processing:
             return
         self.current_index = min(self.current_index, len(self.rows) - 1)
-        self.processing = False
         self._process_next()
 
     def _apply_review_values(self):

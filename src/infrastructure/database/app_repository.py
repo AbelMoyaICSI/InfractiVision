@@ -17,6 +17,7 @@ duplicates rows. The JSON files are only read, never modified.
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -25,11 +26,15 @@ from pathlib import Path
 from typing import Any
 
 from src.core.logger import get_logger
+from src.core.utils import resource_path
 
 log = get_logger("infra.db.app")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "infractions.sqlite"
+# Preset (seed) versionable: schema + video_configs con los presets actuales.
+# Se usa como bootstrap: si la DB local no existe, se restaura una copia.
+PRESET_DB = resource_path("presets/infractions_preset.db")
 
 _SCHEMA_VERSION = "1"
 _DATA_MIGRATED_KEY = "data_migrated"
@@ -135,11 +140,32 @@ class AppRepository:
     def __init__(self, db_path: str | Path = DEFAULT_DB_PATH):
         self._db_path = str(db_path)
         self._lock = threading.Lock()
+        self._ensure_db_from_preset()
         self.ensure_schema()
 
     @property
     def db_path(self) -> str:
         return self._db_path
+
+    def _ensure_db_from_preset(self) -> None:
+        """Restaura una copia del preset si la DB no existe.
+
+        El preset es un seed versionable (schema + `video_configs`); solo se
+        copia cuando la base local no existe. Si no hay preset, se continúa y
+        `ensure_schema()` creará la DB vacía.
+        """
+        db = Path(self._db_path)
+        if db.exists():
+            return
+        preset = Path(PRESET_DB)
+        if not preset.exists():
+            return
+        try:
+            db.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(preset, db)
+            log.info("DB restaurada desde preset: %s → %s", preset, db)
+        except OSError as e:
+            log.warning("No se pudo restaurar la DB desde preset: %s", e)
 
     @contextmanager
     def _connect(self):
@@ -422,3 +448,65 @@ def migrate_legacy_data(
     """Conveniencia: migra los datos legacy al sqlite local y devuelve el resumen."""
     repo = AppRepository(db_path or DEFAULT_DB_PATH)
     return repo.migrate_legacy_data(project_root=project_root, force=force)
+
+
+def create_preset(preset_path: str | Path | None = None) -> Path:
+    """Genera el preset (seed) de la BD desde los JSON de `config/`.
+
+    El preset contiene el schema completo y `video_configs` con los presets
+    actuales (avenue/times/polygon); las tablas de datos de usuario quedan
+    vacías. Es idempotente y regenerable. No toca la DB de producción.
+    """
+    preset = Path(preset_path) if preset_path else Path(PRESET_DB)
+    preset.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now().isoformat()
+
+    avenue_cfg = AppRepository._read_json(
+        PROJECT_ROOT / "config" / "avenue_config.json", {}
+    )
+    preset_cfg = AppRepository._read_json(
+        PROJECT_ROOT / "config" / "time_presets.json", {}
+    )
+    polygon_cfg = AppRepository._read_json(
+        PROJECT_ROOT / "config" / "polygon_config.json", {}
+    )
+    names = set(avenue_cfg) | set(preset_cfg) | set(polygon_cfg)
+
+    with sqlite3.connect(preset) as conn:
+        conn.execute("PRAGMA journal_mode=OFF;")
+        for stmt in _DDL:
+            conn.execute(stmt)
+        for name in names:
+            p = preset_cfg.get(name) or {}
+            if not isinstance(p, dict):
+                p = {}
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO video_configs
+                    (video_name, avenue, green, yellow, red, time_slot,
+                     polygon_json, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    str(avenue_cfg.get(name, "") or ""),
+                    p.get("green"),
+                    p.get("yellow"),
+                    p.get("red"),
+                    p.get("time_slot", ""),
+                    json.dumps(polygon_cfg.get(name, []), ensure_ascii=False),
+                    now,
+                ),
+            )
+        conn.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+            ("schema_version", _SCHEMA_VERSION),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+            (_DATA_MIGRATED_KEY, "1"),
+        )
+        conn.commit()
+
+    log.info("Preset generado: %s (%d configs)", preset, len(names))
+    return preset

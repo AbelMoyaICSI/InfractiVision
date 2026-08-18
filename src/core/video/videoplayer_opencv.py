@@ -398,6 +398,11 @@ class VideoPlayerOpenCV:
         self._pending_timestamp = None   # último timestamp diferido (Tk lo aplica)
         self._pending_beeps = []         # infractores nuevos (append atómico)
 
+        # Apagado limpio al destruir el widget (une hilos daemon para que no
+        # mueran en medio de código CUDA nativo → evita SIGSEGV/Abort).
+        self._shutdown_done = False
+        self.frame.bind("<Destroy>", self._on_frame_destroy)
+
         # Métricas
         self.last_time = time.time()
         self.fps_calc  = 0.0
@@ -1543,10 +1548,8 @@ class VideoPlayerOpenCV:
         car_detections = []
         
         try:
-            # 1. Inicializar detector de vehículos si no existe
-            if not hasattr(self, 'vehicle_detector'):
-                self.vehicle_detector = VehicleDetector(model_path=resource_path("models/yolov8n.pt"))
-                self._sync_hardware_state()
+            # 1. Inicializar detector de vehículos si no existe (doble-check)
+            self.vehicle_detector = self._get_vehicle_detector()
             
             # 2. Ajustar umbral de confianza según condiciones de luz
             confidence_threshold = 0.25 if is_night else 0.4  # Más permisivo en la noche
@@ -1726,6 +1729,49 @@ class VideoPlayerOpenCV:
 
     # ─── E3: Worker de detección (YOLO/OCR fuera del hilo de Tk) ──────────
 
+    def _get_vehicle_detector(self):
+        """Detector de vehículos compartido, con doble-check bajo el lock de
+        carga de modelos. Evita crear instancias duplicadas en paralelo con
+        `_preload_models` del diálogo de procesamiento (riesgo de SIGSEGV)."""
+        det = getattr(self, 'vehicle_detector', None)
+        if det is None:
+            from src.core.detection.model_guard import MODEL_LOAD_LOCK
+            with MODEL_LOAD_LOCK:
+                if not hasattr(self, 'vehicle_detector') or self.vehicle_detector is None:
+                    from src.core.detection.vehicle_detector import VehicleDetector
+                    self.vehicle_detector = VehicleDetector(model_path=resource_path("models/yolov8n.pt"))
+                    self._sync_hardware_state()
+        return self.vehicle_detector
+
+    def shutdown(self):
+        """Detiene y une los hilos de fondo (worker de detección + plate_loop)
+        para que ningún hilo daemon muera en medio de código CUDA nativo al
+        cerrar la app (evita SIGSEGV/'terminate called without an active
+        exception'). Es idempotente."""
+        if getattr(self, '_shutdown_done', False):
+            return
+        self._shutdown_done = True
+        self.running = False
+        self.plate_running = False
+        worker = self._detect_worker_thread
+        if worker is not None and worker.is_alive():
+            worker.join(timeout=2.0)
+        if self.plate_thread is not None and self.plate_thread.is_alive():
+            self.plate_thread.join(timeout=1.0)
+        if self.cap is not None:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+
+    def _on_frame_destroy(self, event=None):
+        if event is not None and event.widget is not self.frame:
+            return
+        try:
+            self.shutdown()
+        except Exception as e:
+            print(f"Error en shutdown del player: {e}")
+
     def _start_detect_worker(self):
         """Arranca (o reinicia) el worker de detección en segundo plano."""
         if self._detect_worker_thread is not None and self._detect_worker_thread.is_alive():
@@ -1811,7 +1857,7 @@ class VideoPlayerOpenCV:
                             siiv_confidence = confidence
                             try:
                                 from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
-                                plate_text = recognize_plate(enhanced_plate, is_night=is_night)
+                                plate_text, _ = recognize_plate(enhanced_plate, is_night=is_night)
                                 if plate_text:
                                     siiv_confidence, siiv_details = calculate_siiv_confidence(plate_text, confidence)
                                     print(f"📝 PLACA DETECTADA: '{plate_text}'")
@@ -3699,12 +3745,9 @@ class VideoPlayerOpenCV:
             small_w, small_h = w // 3, h // 3  # Reducir resolución para velocidad
             small_frame = cv2.resize(frame, (small_w, small_h))
             
-            # 🚀 Inicializar detector si no existe
-            if not hasattr(self, 'vehicle_detector'):
-                from src.core.detection.vehicle_detector import VehicleDetector
-                self.vehicle_detector = VehicleDetector(model_path=resource_path("models/yolov8n.pt"))
-                self._sync_hardware_state()
-                print("🚗 VehicleDetector inicializado para modo reproducción")
+            # 🚀 Inicializar detector si no existe (doble-check)
+            self.vehicle_detector = self._get_vehicle_detector()
+            print("🚗 VehicleDetector inicializado para modo reproducción")
             
             # Detectar vehículos y actualizar tracking
             if hasattr(self, 'vehicle_detector'):

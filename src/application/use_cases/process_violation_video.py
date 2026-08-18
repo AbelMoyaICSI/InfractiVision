@@ -28,6 +28,9 @@ class OfficialVideoProcessor:
         self.vehicle_detector = vehicle_detector
         self.plate_detector = plate_detector
         self.reports = report_repository or ReportRepository()
+        self.min_plate_crop_w = 40
+        self.min_plate_crop_h = 20
+        self.plate_crop_margin = 0.5
         # Si es False, no se pinta el cartel "SEMAFORO: X" sobre el video
         # (el estado se muestra en el widget Semaforo de la GUI).
         self.draw_state_banner = draw_state_banner
@@ -60,6 +63,20 @@ class OfficialVideoProcessor:
         inside = cv2.pointPolygonTest(polygon, point, False) >= 0
         distance = abs(cv2.pointPolygonTest(polygon, point, True))
         return inside, inside or distance <= margin
+
+    def _viable_plate_crop(self, crop: np.ndarray) -> bool:
+        if crop is None or crop.size == 0:
+            return False
+        h, w = crop.shape[:2]
+        return w >= self.min_plate_crop_w and h >= self.min_plate_crop_h
+
+    def _plate_crop_with_margin(self, vehicle: np.ndarray, local: tuple[int, int, int, int]) -> np.ndarray:
+        pad_x = int((local[2] - local[0]) * self.plate_crop_margin)
+        pad_y = int((local[3] - local[1]) * self.plate_crop_margin)
+        return vehicle[
+            max(0, local[1] - pad_y):min(vehicle.shape[0], local[3] + pad_y),
+            max(0, local[0] - pad_x):min(vehicle.shape[1], local[2] + pad_x),
+        ]
 
     @staticmethod
     def _quadrant(vehicle: np.ndarray, direction: str = "unknown") -> tuple[np.ndarray, tuple[int, int]]:
@@ -195,6 +212,8 @@ class OfficialVideoProcessor:
                         crop = vehicle[max(0, local[1]):min(vehicle.shape[0], local[3]), max(0, local[0]):min(vehicle.shape[1], local[2])]
                         if crop.size == 0:
                             continue
+                        if not self._viable_plate_crop(crop):
+                            continue
                         plate_found = True
                         mapped.append((x1 + local[0], y1 + local[1], x1 + local[2], y1 + local[3]))
                         quality = self._quality(crop)
@@ -220,7 +239,8 @@ class OfficialVideoProcessor:
                         if is_valid_candidate and quality >= best.get(track_id, PlateEvidence("", 0, 0, 0, "", -1)).quality_score:
                             crop_path = output_dir / "crops" / f"{video_path.stem}_v{track_id}_best.jpg"
                             crop_path.parent.mkdir(parents=True, exist_ok=True)
-                            cv2.imwrite(str(crop_path), crop)
+                            crop_with_margin = self._plate_crop_with_margin(vehicle, local)
+                            cv2.imwrite(str(crop_path), crop_with_margin if crop_with_margin.size else crop)
                             best[track_id] = PlateEvidence(config.video_name, track_id, frame_index, frame_index / fps, track["class_name"], quality, str(crop_path))
                     if mapped and plate_found:
                         plate_boxes[track_id] = mapped

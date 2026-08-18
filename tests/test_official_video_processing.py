@@ -85,3 +85,28 @@ def test_report_excludes_evidence_without_plate_text(tmp_path):
     assert "ABC123" in content
     assert '"vehicle_id": 1' not in content
     assert csv_path.exists()
+
+
+def test_viable_plate_crop_rejects_tiny_crops():
+    processor = OfficialVideoProcessor(Path.cwd())
+    tiny = np.zeros((12, 26, 3), dtype=np.uint8)
+    ok = np.zeros((25, 50, 3), dtype=np.uint8)
+
+    assert processor._viable_plate_crop(tiny) is False
+    assert processor._viable_plate_crop(ok) is True
+    assert processor._viable_plate_crop(np.zeros((0, 0, 3), dtype=np.uint8)) is False
+
+
+def test_plate_crop_with_margin_pads_and_clamps_to_vehicle():
+    processor = OfficialVideoProcessor(Path.cwd())
+    vehicle = np.zeros((100, 120, 3), dtype=np.uint8)
+    local = (40, 30, 80, 50)
+
+    padded = processor._plate_crop_with_margin(vehicle, local)
+
+    assert padded.shape[:2] == (40, 80)
+    assert padded[10:30, 20:60].sum() == 0  # región original intacta
+
+    corner = processor._plate_crop_with_margin(vehicle, (0, 0, 40, 20))
+    assert corner.shape[:2] == (30, 60)
+    assert corner[0, 0, 0] == vehicle[0, 0, 0]

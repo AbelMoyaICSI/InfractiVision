@@ -3,12 +3,15 @@ import cv2
 import numpy as np
 from datetime import datetime
 
+from src.core.detection.model_guard import serialized
+
 class PlateDetector:
     """
     Clase optimizada para detectar placas de vehículos usando YOLO.
     Incluye mejoras de rendimiento, cache y estadísticas.
     """
     
+    @serialized
     def __init__(self, model_path=None):
         """
         Inicializa el detector de placas con búsqueda robusta del modelo.

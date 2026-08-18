@@ -5,6 +5,7 @@ import numpy as np
 import cv2
 import os
 from src.path_helper import resource_path
+from src.core.detection.model_guard import serialized
 
 # DICCIONARIO OFICIAL DEL ENTRENAMIENTO (Longitud 35)
 CHARS = [
@@ -81,6 +82,7 @@ class LPRNet(nn.Module):
         return torch.mean(x, dim=2)
 
 class LPRNetPredictor:
+    @serialized
     def __init__(self, model_path=None):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.class_num = len(CHARS)

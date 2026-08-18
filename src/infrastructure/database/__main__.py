@@ -10,11 +10,14 @@ refrescar ``video_configs`` desde los JSON actuales).
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import sys
 
 from src.infrastructure.database.app_repository import (
     DEFAULT_DB_PATH,
+    PRESET_DB,
     AppRepository,
+    create_preset,
     migrate_legacy_data,
 )
 
@@ -33,7 +36,25 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Re-ejecuta la migración refrescando configs desde los JSON actuales.",
     )
+    parser.add_argument(
+        "--create-preset",
+        action="store_true",
+        help="Regenera el preset (seed) en presets/ desde los JSON de config/.",
+    )
     args = parser.parse_args(argv)
+
+    if args.create_preset:
+        preset = create_preset()
+        print("=" * 60)
+        print("🗄️  Generación de preset (seed) de la base local")
+        print(f"📁 Preset: {preset}")
+        print("=" * 60)
+        with sqlite3.connect(preset) as conn:
+            n = conn.execute("SELECT COUNT(*) FROM video_configs").fetchone()[0]
+        print(f"\n✅ Preset generado con {n} configs de video.")
+        print("   Sin datos de usuario (infractions/indicators/migrations vacías).")
+        print("   Se usará como bootstrap si la DB local no existe.")
+        return 0
 
     print("=" * 60)
     print("🗄️  Migración de datos legacy → SQLite")

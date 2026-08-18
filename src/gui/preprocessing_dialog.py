@@ -158,6 +158,13 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             self.display_lock = threading.Lock()
             self.last_display_frame = None
             self.display_fps = 30  # FPS fluidos para visualización
+            # Cola thread-safe para pasar frames del hilo de visualización al
+            # hilo principal de Tk (Tk NO es thread-safe: llamarlo desde un
+            # hilo de fondo provoca SIGSEGV).
+            self._display_queue = queue.Queue(maxsize=1)
+            # Cola genérica de UI: los hilos de fondo encolan callables y el
+            # hilo principal los ejecuta (único que puede tocar Tk).
+            self._ui_queue = queue.Queue()
             self.frame_interpolation = True  # Activar interpolación suave
             self.display_enabled = True  # Flag para habilitar/deshabilitar sistema fluido
             
@@ -253,9 +260,14 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
 
             self.dialog.grab_set()  # Modal
             self.dialog.protocol("WM_DELETE_WINDOW", self.on_cancel)  # Manejar cierre
+            # Unir hilos de fondo al destruirse (evita Abort/SIGSEGV al salir)
+            self.dialog.bind("<Destroy>", self._on_dialog_destroy)
 
             # Configurar el layout
             self._setup_ui()
+
+        # Pump de UI: enruta callables de hilos de fondo al hilo principal de Tk
+        self._start_ui_pump()
 
         # Precargar modelos en un hilo separado para evitar bloquear la UI
         self.preload_thread = threading.Thread(target=self._preload_models, daemon=True)
@@ -268,14 +280,60 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         self._safe_after(1000, self._start_smooth_display_thread_safe)
 
     def _safe_after(self, ms, func, *args, **kwargs):
-        after_id = self.dialog.after(ms, func, *args, **kwargs)
-        self._after_ids.append(after_id)
-        return after_id
+        if threading.current_thread() is threading.main_thread():
+            try:
+                after_id = self.dialog.after(ms, func, *args, **kwargs)
+                self._after_ids.append(after_id)
+                return after_id
+            except tk.TclError:
+                return None
+        # Llamado desde un hilo de fondo: enrutar al pump de UI (hilo principal)
+        self._ui_call(self._safe_after, ms, func, *args, **kwargs)
+        return None
 
     def _safe_after_idle(self, func, *args, **kwargs):
-        after_id = self.dialog.after_idle(func, *args, **kwargs)
-        self._after_ids.append(after_id)
-        return after_id
+        if threading.current_thread() is threading.main_thread():
+            try:
+                after_id = self.dialog.after_idle(func, *args, **kwargs)
+                self._after_ids.append(after_id)
+                return after_id
+            except tk.TclError:
+                return None
+        self._ui_call(self._safe_after_idle, func, *args, **kwargs)
+        return None
+
+    # ─── Pump de UI: ejecuta en el hilo principal los callables encolados ──
+
+    def _start_ui_pump(self):
+        try:
+            self.dialog.after(50, self._pump_ui_queue)
+        except tk.TclError:
+            pass
+
+    def _ui_call(self, fn, *args, **kwargs):
+        """Encola un callable para el hilo principal de Tk. Seguro desde
+        cualquier hilo; nunca toca Tk aquí."""
+        try:
+            self._ui_queue.put_nowait((fn, args, kwargs))
+        except Exception:
+            pass
+
+    def _pump_ui_queue(self):
+        """[HILO PRINCIPAL] Ejecuta los callables de UI encolados por hilos."""
+        try:
+            while True:
+                fn, args, kwargs = self._ui_queue.get_nowait()
+                try:
+                    fn(*args, **kwargs)
+                except Exception as e:
+                    print(f"Error en UI encolado: {e}")
+        except queue.Empty:
+            pass
+        if getattr(self, 'display_active', False):
+            try:
+                self.dialog.after(50, self._pump_ui_queue)
+            except tk.TclError:
+                pass
 
     def _cancel_all_after(self):
         for after_id in self._after_ids:
@@ -288,8 +346,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
     def _preload_models(self):
         """Precarga los modelos de IA antes de procesar el video"""
         try:
-            self.phase_label.config(text="Preparando modelos de IA...")
-            self.details_label.config(text="Inicializando detectores...")
+            self._ui_call(self.phase_label.config, text="Preparando modelos de IA...")
+            self._ui_call(self.details_label.config, text="Inicializando detectores...")
             
             # Inicializar detectores si son necesarios
             if not hasattr(self.player, 'vehicle_detector'):
@@ -310,8 +368,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             self.process_thread = threading.Thread(target=self._process_video, daemon=True)
             self.process_thread.start()
         except Exception as e:
-            if hasattr(self, 'dialog') and self.dialog.winfo_exists():
-                self._safe_after(0, lambda msg=str(e): self._show_error(f"Error cargando modelos: {msg}"))
+            self._safe_after(0, lambda msg=str(e): self._show_error(f"Error cargando modelos: {msg}"))
     
     def load_video_config(self):
         """Carga la configuración del video (polígono, semáforo, etc.)"""
@@ -851,13 +908,9 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         def smooth_display_loop():
             base_frame_time = 1.0 / self.display_fps  # 33ms para 30 FPS base
             
-            while self.display_active and hasattr(self, 'dialog'):
+            while getattr(self, 'display_active', False) and hasattr(self, 'dialog'):
                 try:
                     start_time = time.time()
-                    
-                    # Verificar que la UI sigue existiendo
-                    if not hasattr(self, 'dialog') or not self.dialog.winfo_exists():
-                        break
                     
                     # Obtener frame más reciente del buffer
                     with self.display_lock:
@@ -866,14 +919,19 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                         else:
                             current_frame = self.last_display_frame
                     
-                    # Si tenemos frame, mostrarlo
+                    # Encolar para el hilo principal de Tk. Este hilo de fondo
+                    # NO debe tocar Tk (winfo_exists/after/config): Tkinter no
+                    # es thread-safe y provoca SIGSEGV.
                     if current_frame is not None and hasattr(self, 'video_label'):
-                        # Programar actualización en el hilo principal de UI
                         try:
-                            self.dialog.after_idle(self._display_frame_immediate, current_frame)
-                        except tk.TclError:
-                            # La ventana fue destruida
-                            break
+                            self._display_queue.put_nowait(current_frame)
+                        except queue.Full:
+                            # Descartar el frame viejo y publicar el más reciente
+                            try:
+                                self._display_queue.get_nowait()
+                            except queue.Empty:
+                                pass
+                            self._display_queue.put_nowait(current_frame)
                     
                     # 🚀 Control de FPS fluido CON ACELERACIÓN VISUAL
                     # Aplicar factor de aceleración visual: mayor velocidad = menor tiempo entre frames
@@ -895,6 +953,44 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         except Exception as e:
             print(f"⚠️ Error creando thread de visualización: {e}")
             print("📹 Continuando sin visualización fluida")
+
+        # Poller en el hilo principal: drena la cola y actualiza el label.
+        # Se programa con `after` DESDE el hilo principal (seguro para Tk).
+        self._schedule_display_poller()
+
+    def _schedule_display_poller(self):
+        """Programa el poller de la cola de visualización en el hilo principal."""
+        try:
+            self.dialog.after(16, self._poll_display_queue)
+        except tk.TclError:
+            pass
+
+    def _poll_display_queue(self):
+        """[HILO PRINCIPAL] Drena `_display_queue` y muestra el frame más reciente."""
+        if not getattr(self, 'display_active', False):
+            return
+        try:
+            if not hasattr(self, 'dialog') or not self.dialog.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        frame = None
+        try:
+            frame = self._display_queue.get_nowait()
+            while True:
+                try:
+                    candidate = self._display_queue.get_nowait()
+                    frame = candidate
+                except queue.Empty:
+                    break
+        except queue.Empty:
+            pass
+        if frame is not None and hasattr(self, 'video_label'):
+            try:
+                self._display_frame_immediate(frame)
+            except tk.TclError:
+                return
+        self._schedule_display_poller()
     
     def _display_frame_immediate(self, frame):
         """🎬 Muestra frame inmediatamente sin procesamiento pesado"""
@@ -1138,8 +1234,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         except Exception as e:
             import traceback
             traceback.print_exc()
-            if hasattr(self, 'dialog') and self.dialog.winfo_exists():
-                self._safe_after(0, lambda msg=str(e): self._show_error(msg))
+            self._safe_after(0, lambda msg=str(e): self._show_error(msg))
 
     def _process_video_official(self):
         """Run the shared core use case and feed Tk through the result queue."""
@@ -1152,7 +1247,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         project_root = Path(__file__).resolve().parents[2]
         config = VideoConfigRepository(project_root).require(Path(self.video_path).name)
         output_dir = Path(resource_path("data/output/official"))
-        self.phase_label.config(text="Procesando con el pipeline oficial...")
+        self._ui_call(self.phase_label.config, text="Procesando con el pipeline oficial...")
 
         processor = OfficialVideoProcessor(
             project_root,
@@ -1210,11 +1305,22 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
 
         NID = evidence.validated (✓) con placa reconocida -> verde.
         NIE = el resto, incluidos los pendientes sin placa -> rojo.
+
+        Además, guarda las infracciones validadas en Gestión de Infracciones
+        (infracciones.json / nie_infracciones.json).
         """
         try:
             self.player.apply_official_validation(evidences, getattr(self, "_pending_infractions", []))
         except Exception as e:
             print(f"⚠️ Error sincronizando validación en panel lateral: {e}")
+
+        # 💾 Guardar infracciones validadas en Gestión de Infracciones
+        try:
+            self._save_official_infractions_to_json(evidences, getattr(self, "_pending_infractions", []))
+        except Exception as e:
+            print(f"⚠️ Error guardando infracciones oficiales en JSON: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _process_next_frame(self):
         """
@@ -2324,7 +2430,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             src_img = enhanced if enhanced is not None else plate_img
 
             # ── PASO 2: OCR — sin autocrop si la homo tuvo éxito ──
-            plate_text = recognize_plate(src_img, autocrop=use_autocrop)
+            plate_text, _ = recognize_plate(src_img, autocrop=use_autocrop)
 
             if not plate_text:
                 return "No legible", 0.0
@@ -2691,7 +2797,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 plate_img = exact_crop # Usar siempre el recorte fino como imagen de salida
                 
                 # 2. Reconocer texto (usando la zona de la lupa para máxima atención)
-                plate_text = recognize_plate(lupa_roi)
+                plate_text, _ = recognize_plate(lupa_roi)
                 
                 if plate_text and len(plate_text) >= 4:
                     siiv_conf, _ = calculate_siiv_confidence(plate_text, 0.90)
@@ -4575,6 +4681,141 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         except Exception as e:
             print(f"Error guardando NIE en JSON: {e}")
 
+    def _save_official_infractions_to_json(self, evidences, pending_infractions=None):
+        """
+        Guarda las infracciones validadas del PIPELINE OFICIAL en los JSON de gestión.
+        NID (evidencia validada con placa) -> data/infracciones.json
+        NIE (no validada / sin placa / pendientes) -> data/nie_infracciones.json
+        """
+        import os
+        import getpass
+        import socket
+        from datetime import datetime
+        from src.core.utils.json_store import read_json, write_json
+
+        avenue_name = getattr(self.player, "current_avenue", "Desconocida")
+        time_slot = self.cycle_durations.get("time_slot", "No especificada") if self.cycle_durations else "No especificada"
+        nombre_video = os.path.basename(self.video_path) if getattr(self, 'video_path', None) else "desconocido.mp4"
+        config_semaforo = self.generar_config_id(
+            semaforo=getattr(self.player, 'semaforo', None),
+            cycle_durations=getattr(self, 'cycle_durations', None)
+        )
+
+        # Duración total del video
+        total_duration = "N/A"
+        if hasattr(self.player, 'video_metadata') and self.player.video_metadata:
+            total_duration = self.player.video_metadata.get('duration', 'N/A')
+        elif hasattr(self.player, 'cap') and self.player.cap is not None:
+            try:
+                import cv2
+                frame_count = int(self.player.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                fps = self.player.cap.get(cv2.CAP_PROP_FPS) or 30
+                total_seconds_video = int(frame_count / fps)
+                mins_total, secs_total = divmod(total_seconds_video, 60)
+                total_duration = f"{mins_total:02d}:{secs_total:02d}"
+            except Exception:
+                total_duration = "N/A"
+
+        def _build_entry(placa, confianza, clasificacion, plate_path, vehicle_path,
+                         timestamp_seconds, metadata):
+            now = datetime.now()
+            total_seconds = int(timestamp_seconds or 0)
+            mins, secs = divmod(total_seconds, 60)
+            timestamp = f"{mins:02d}:{secs:02d}"
+            return {
+                "placa":           placa,
+                "fecha":           now.strftime("%d/%m/%Y"),
+                "hora":            now.strftime("%H:%M:%S"),
+                "video_timestamp": timestamp,
+                "tiempo_video":    total_duration,
+                "ubicacion":       avenue_name,
+                "franja_horaria":  time_slot,
+                "tipo":            "Semáforo en rojo",
+                "estado":          "Pendiente" if clasificacion == "NID" else "Rechazada",
+                "plate_path":      plate_path,
+                "vehicle_path":    vehicle_path,
+                "nombre_video":    nombre_video,
+                "config_semaforo": config_semaforo,
+                "clasificacion":   clasificacion,
+                "confianza":       round(max(0.0, min(1.0, confianza)), 3),
+                "tiempo_procesamiento": round(timestamp_seconds or 0, 2),
+                "metadata_clasificacion": metadata,
+                "sistema_version": "InfractiVision_v2.0",
+                "hostname":        socket.gethostname(),
+                "username":        getpass.getuser()
+            }
+
+        nid_entries = []
+        nie_entries = []
+
+        # Evidencias del pipeline oficial
+        for ev in (evidences or []):
+            confianza = ev.ocr_confidence if ev.ocr_confidence else ev.quality_score
+            crop = str(ev.crop_path or "")
+            plate_path = crop if os.path.exists(crop) else ""
+            if ev.validated and ev.plate_text:
+                metadata = {
+                    "placa_final": ev.plate_text,
+                    "confianza": round(confianza, 3),
+                    "calidad_deteccion": "alta" if confianza >= 0.7 else "media" if confianza >= 0.5 else "baja",
+                    "justificacion": "Validada en revisión oficial (OCR)"
+                }
+                nid_entries.append(_build_entry(
+                    ev.plate_text, confianza, "NID",
+                    plate_path, "", ev.timestamp_seconds, metadata
+                ))
+            else:
+                metadata = {
+                    "placa_final": ev.plate_text or "",
+                    "confianza": round(confianza, 3),
+                    "calidad_deteccion": "baja",
+                    "justificacion": "No validada en revisión oficial - NIE"
+                }
+                placa_label = ev.plate_text or f"TRACK-{ev.track_id}"
+                nie_entries.append(_build_entry(
+                    placa_label, confianza, "NIE",
+                    plate_path, "", ev.timestamp_seconds, metadata
+                ))
+
+        # Pendientes sin placa (recuadros amarillos) -> NIE
+        for pend in (pending_infractions or []):
+            crop = str(pend.get("crop_path", "") or "")
+            plate_path = crop if crop and os.path.exists(crop) else ""
+            metadata = {
+                "placa_final": "",
+                "confianza": 0.0,
+                "calidad_deteccion": "baja",
+                "justificacion": "Infracción pendiente sin placa detectada - NIE"
+            }
+            nie_entries.append(_build_entry(
+                f"TRACK-{pend.get('vehicle_id', '?')}", 0.0, "NIE",
+                plate_path, "", pend.get("timestamp_seconds", 0), metadata
+            ))
+
+        data_dir = resource_path("data")
+        os.makedirs(data_dir, exist_ok=True)
+
+        # Guardar NID en infracciones.json
+        if nid_entries:
+            infractions_file = os.path.join(data_dir, "infracciones.json")
+            data = read_json(infractions_file, [])
+            existing = data['infracciones'] if isinstance(data, dict) and 'infracciones' in data else (data if isinstance(data, list) else [])
+            final = nid_entries + existing
+            write_json(infractions_file, {"infracciones": final})
+            print(f"📝 [OFICIAL] NID guardadas: {len(nid_entries)} nuevas + {len(existing)} anteriores = {len(final)} en infracciones.json")
+
+        # Guardar NIE en nie_infracciones.json
+        if nie_entries:
+            nie_file = os.path.join(data_dir, "nie_infracciones.json")
+            data = read_json(nie_file, [])
+            existing = data['infracciones'] if isinstance(data, dict) and 'infracciones' in data else (data if isinstance(data, list) else [])
+            final = nie_entries + existing
+            write_json(nie_file, {"infracciones": final})
+            print(f"📝 [OFICIAL] NIE guardadas: {len(nie_entries)} nuevas + {len(existing)} anteriores = {len(final)} en nie_infracciones.json")
+
+        if not nid_entries and not nie_entries:
+            print("⚠️ [OFICIAL] No se guardaron infracciones (sin evidencias ni pendientes)")
+
     def _generate_thesis_metrics(self, infractions):
         """
         Genera y guarda métricas de tesis (TI, TR, NID, NIE) para análisis académico.
@@ -4680,6 +4921,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
 
             if getattr(self, 'inline', False):
                 # Modo inline: ocultar progreso, NO destruir la ventana principal.
+                self._cleanup_threads()
                 self._inline_progress_show(False)
                 if self.on_complete and success:
                     self.on_complete(success, self.detected_infractions)
@@ -4689,10 +4931,37 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 self.dialog.grab_release()
                 self.dialog.destroy()
 
+            self._cleanup_threads()
+
             if self.on_complete and success:
                 self.on_complete(success, self.detected_infractions)
         except Exception as e:
             print(f"Error cerrando diálogo de procesamiento: {e}")
+
+    def _cleanup_threads(self):
+        """Detiene y une los hilos de fondo del diálogo para que ningún hilo
+        daemon muera en medio de código CUDA nativo al cerrar (evita
+        SIGSEGV/'terminate called without an active exception')."""
+        self.display_active = False
+        for attr in ("display_thread", "process_thread", "preload_thread",
+                     "analysis_worker_thread"):
+            t = getattr(self, attr, None)
+            if t is not None and t.is_alive():
+                t.join(timeout=2.0)
+        ap = getattr(self, "async_processor", None)
+        if ap is not None:
+            try:
+                ap.stop()
+            except Exception as e:
+                print(f"Error deteniendo async_processor: {e}")
+
+    def _on_dialog_destroy(self, event):
+        if event is not None and getattr(event, "widget", None) is not self.dialog:
+            return
+        try:
+            self._cleanup_threads()
+        except Exception as e:
+            print(f"Error en cleanup del diálogo: {e}")
             
     def on_cancel(self):
         if not self.canceled:

@@ -1,7 +1,6 @@
 import time
 import cv2
 import numpy as np
-import imutils
 import os
 import threading
 import re

@@ -3,7 +3,10 @@ import os
 import psutil
 import numpy as np
 
+from src.core.detection.model_guard import serialized
+
 class VehicleDetector:
+    @serialized
     def __init__(self, model_path="yolov8n.pt"):
         from src.core.detection.torch_compat import ensure_torch_compat
         ensure_torch_compat()

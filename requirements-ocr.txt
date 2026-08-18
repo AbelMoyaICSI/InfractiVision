@@ -1,0 +1,24 @@
+# InfractiVision — OCR alternativos (OPCIONALES)
+# El motor por defecto es LPRNet (incluido en requirements.txt).
+# Instala estos extras SOLO si vas a usar EasyOCR o PaddleOCR vía DI
+# (config/settings.py → OCRSettings.backend).
+#
+#   pip install -r requirements-ocr.txt
+
+# === EASYOCR ===
+# ⚠️  EasyOCR arrastra `opencv-python-headless` como dependencia, que
+#   entra en conflicto con `opencv-python` (ambos proveen cv2). Si lo usas,
+#   instala easyocr PRIMERO y después reinstala opencv-python para que su
+#   cv2 (con GUI/contrib) gane:
+#       pip install easyocr==1.7.2
+#       pip install --force-reinstall opencv-python==4.9.0.80
+easyocr==1.7.2
+# Transitivas de easyocr (no se importan directamente en el código):
+shapely==2.0.4
+pyclipper==1.3.0.post6
+python-bidi==0.6.11
+
+# === PADDLEOCR ===
+# Instalar manualmente (muy pesado, no hay wheels en PyPI para todas las
+# plataformas):
+#   pip install paddlepaddle paddleocr

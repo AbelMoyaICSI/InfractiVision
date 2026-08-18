@@ -1,77 +1,74 @@
 # InfractiVision — Dependencias
-# Compatible con Windows / Linux / macOS. Probado con Python 3.10–3.11.
-
-# Instalar torch con soporte CUDA desde el índice de PyTorch:
+# Stack compatible Windows / Linux / macOS. Python 3.10 (Windows y Linux) o 3.11.
+#
+# ⚠️  CONFLICTO CRÍTICO DE VERSIONES (no cambiar sin testear):
+#   torch 1.13.1 fue compilado contra NumPy 1.x → exige numpy<2.
+#   opencv-python >=5.0.0.93 exige numpy>=2 (en Python >=3.9).
+#   Por eso numpy se fija en 1.26.4 y opencv en 4.9.0.80.
+#   NO subir numpy a 2.x ni opencv a 5.x: rompe la inferencia (YOLO/OCR)
+#   con "RuntimeError: Numpy is not available".
+#
+# Instalar con soporte CUDA 11.7 (GPU NVIDIA, driver >= 450, GTX 1650 Ti OK):
 #   pip install -r requirements.txt
-# (el índice extra se define abajo). Sin él, pip baja el wheel CPU-only de PyPI
-# y la app nunca usa la GPU.
+# El índice extra resuelve torch/torchvision +cu117. Sin él, pip baja el
+# wheel CPU-only de PyPI y la app nunca usa la GPU.
 #
 # Notas multiplataforma:
 #   - Tkinter viene incluido con el instalador de Python en Windows y macOS.
-#     En Linux instálalo via gestor del sistema:
+#     En Linux instálalo vía gestor del sistema:
 #         Debian/Ubuntu:  sudo apt install python3-tk
 #         Fedora:         sudo dnf install python3-tkinter
 #         Arch:           sudo pacman -S tk
-#   - Audio (beeps): se usa `winsound` solo en Windows; en Linux se intenta
-#     `paplay`/`aplay` y en macOS `afplay`. No se requiere paquete extra.
-#   - Iconos de ventana: `.ico` en Windows, `.png` en Linux/macOS — el helper
-#     `src.core.utils.icon.set_window_icon` lo gestiona.
+#   - Audio (beeps): `winsound` en Windows; en Linux `paplay`/`aplay`;
+#     en macOS `afplay`. No requiere paquete extra.
+#   - Iconos: `.ico` en Windows, `.png` en Linux/macOS (lo gestiona
+#     `src.core.utils.icon.set_window_icon`).
+#
+# Quién usa qué (imports reales del código):
+#   - core (src/core): numpy, opencv-python, torch, ultralytics, pillow,
+#     psutil, matplotlib (reporte de auto_rectifier).
+#   - gui/preprocessing_dialog: scipy, scikit-learn, scikit-image, pandas.
+#   - infraestructura: requests, deep-sort-realtime, google-cloud, firebase.
+#   - opcionales (NO en este archivo): easyocr/paddleocr (requirements-ocr.txt),
+#     mysql (instalar mysql-connector-python>=8.0 si se activa el repo MySQL).
 
-# === CORE DEPENDENCIES ===
-# Versiones específicas para COMPATIBILIDAD con PyInstaller
-# Extra index necesario para resolver torch/torchvision con CUDA (+cu117).
-# GTX 1650 Ti (compute 7.5): compatible con cu117; driver NVIDIA >= 450.
 --extra-index-url https://download.pytorch.org/whl/cu117
-numpy
-scipy
-torch
-torchvision==0.14.1+cu117
-scikit-learn
 
-# === COMPUTER VISION ===
-opencv-python
-# Si necesitas el módulo dnn_superres (FSRCNN), usa la variante "contrib":
-#   pip install opencv-contrib-python==4.9.0.80   # reemplaza opencv-python
-pillow
-shapely
-pyclipper
-pytesseract
-ultralytics
-imutils
+# === NÚCLEO (pins críticos de compatibilidad) ===
+numpy==1.26.4
+scipy==1.11.4
+torch==1.13.1+cu117
+torchvision==0.14.1+cu117
+scikit-learn==1.4.2
+scikit-image==0.23.2
+
+# === VISIÓN POR COMPUTADOR ===
+opencv-python==4.9.0.80       # NO 5.x (exige numpy>=2); NO headless (conflicto)
+pillow==10.4.0
+ultralytics==8.4.120
+matplotlib==3.9.4             # dep de ultralytics y usada en core/auto_rectifier
 
 # === TRACKING (infrastructure) ===
-# Opcional: si no está, src/infrastructure/tracking cae a centroide simple.
-deep-sort-realtime
-
-# === OCR ALTERNATIVOS (infrastructure adapters) ===
-# Opcionales: el motor por defecto es LPRNet (incluido). Solo instala si vas
-# a usar EasyOCR o PaddleOCR vía DI.
-easyocr
-# google-cloud-vision>=3.7.0: solo necesario para scripts/google_vision_ocr.py
-# paddleocr / paddlepaddle: instalar manualmente si se quiere usar:
-#   pip install paddlepaddle paddleocr
+# Si no está, src/infrastructure/tracking cae a centroide simple.
+deep-sort-realtime==1.3.2
 
 # === UI COMPONENTS ===
-tkcalendar
+tkcalendar==1.6.1
 
 # === DATA PROCESSING ===
-pandas
-openpyxl
-
-# === DATABASE (opcional, MySQL) ===
-# Solo necesario si se selecciona el repositorio MySQL en composition_root.
-# pip install mysql-connector-python>=8.0
+pandas==2.1.4
+openpyxl==3.1.5
 
 # === CLOUD & NETWORK ===
-requests
-python-dotenv
-firebase-admin
-google-cloud-storage
-google-cloud-firestore
-flask
+requests==2.32.3
+python-dotenv==1.0.1
+firebase-admin==7.5.0
+google-cloud-storage==3.13.1
+google-cloud-firestore==2.28.1
+flask==3.1.3
 
-# === UTILITIES ===
-psutil
+# === UTILIDADES ===
+psutil==5.9.8
 
 # === BUILD TOOLS ===
-pyinstaller
+pyinstaller==6.11.1
