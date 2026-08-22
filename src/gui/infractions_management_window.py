@@ -5,13 +5,9 @@ from tkcalendar import DateEntry
 from datetime import datetime
 import shutil
 import csv
-import requests
 import queue
 import threading
 from src.path_helper import resource_path
-
-
-CONFIG_PATH = resource_path("config/infractivision_config.json")
 
 
 # Ruta centralizada del archivo de infracciones
@@ -20,54 +16,20 @@ INF_FILE = resource_path("data/infracciones.json")
 # Ruta centralizada del archivo de infracciones NIE (incorrectamente registradas)
 NIE_FILE = resource_path("data/nie_infracciones.json")
 
-# Ruta del historial de migraciones (ACUMULATIVO)
-MIGRATIONS_HISTORY_FILE = resource_path("data/historial_migraciones.json")
-
-# === FUNCIONES PARA HISTORIAL ACUMULATIVO DE MIGRACIONES ===
-
-def load_migrations_history():
-    """Cargar historial completo de migraciones (acumulativo)"""
-    try:
-        if os.path.exists(MIGRATIONS_HISTORY_FILE):
-            with open(MIGRATIONS_HISTORY_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return []
-    except Exception as e:
-        print(f"Error cargando historial de migraciones: {e}")
-        return []
-
-def save_migrations_history(history):
-    """Guardar historial completo de migraciones"""
-    try:
-        # Asegurar que el directorio existe
-        os.makedirs(os.path.dirname(MIGRATIONS_HISTORY_FILE), exist_ok=True)
-        with open(MIGRATIONS_HISTORY_FILE, 'w', encoding='utf-8') as f:
-            json.dump(history, f, indent=2, ensure_ascii=False)
-        return True
-    except Exception as e:
-        print(f"Error guardando historial de migraciones: {e}")
-        return False
+# === HISTORIAL DE MIGRACIONES (BD SQLite) ===
 
 def add_migration_to_history(num_infractions, estado="Exitosa"):
-    """Agregar nueva migración al historial acumulativo (STACK/PILA)"""
+    """Agregar nueva migración a la tabla `migrations` de la BD local."""
     try:
-        # Cargar historial existente
-        history = load_migrations_history()
-        
-        # Crear nueva entrada con timestamp
-        new_migration = {
-            "fecha": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-            "timestamp": datetime.now().isoformat(),
-            "registros": num_infractions,
-            "estado": estado
-        }
-        
-        # Agregar al INICIO de la lista (como stack/pila - más reciente primero)
-        history.insert(0, new_migration)
-        
-        # Guardar historial actualizado
-        save_migrations_history(history)
-        print(f"📊 MIGRACIÓN AGREGADA AL HISTORIAL: {num_infractions} registros el {new_migration['fecha']}")
+        from src.infrastructure.database.app_repository import AppRepository
+        repo = AppRepository()
+        repo.add_migration(
+            fecha=datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            timestamp=datetime.now().isoformat(),
+            registros=int(num_infractions or 0),
+            estado=estado,
+        )
+        print(f"📊 MIGRACIÓN AGREGADA AL HISTORIAL: {num_infractions} registros ({estado})")
         return True
     except Exception as e:
         print(f"Error agregando migración al historial: {e}")
@@ -92,12 +54,18 @@ def _load_json_array(file_path):
         return []
 
 
-# Función para cargar datos de infracciones (movida al principio)
+# Función para cargar datos de infracciones (SQLite única fuente)
 def load_infractions_data():
-    """Carga las infracciones LOCALES fusionando NID (infracciones.json) y NIE (nie_infracciones.json)."""
-    nid = _load_json_array(INF_FILE)
-    nie = _load_json_array(NIE_FILE)
-    return nid + nie
+    """Carga infracciones locales desde SQLite (NID+NIE)."""
+    try:
+        from src.infrastructure.database.app_repository import AppRepository
+        repo = AppRepository()
+        return repo.list_infractions(limit=100000)
+    except Exception as e:
+        print(f"Error cargando desde SQLite, fallback JSON: {e}")
+        nid = _load_json_array(INF_FILE)
+        nie = _load_json_array(NIE_FILE)
+        return nid + nie
 
 
 def delete_infraction_files(infraction_data):
@@ -125,444 +93,118 @@ def delete_infraction_files(infraction_data):
     return deleted_files
 
 def delete_all_infractions():
-    """Elimina todas las infracciones y sus archivos"""
+    """Elimina todas las infracciones (SQLite) y sus imágenes."""
     try:
-        # Limpiar archivo de infracciones
-        infractions_file = resource_path("data/infracciones.json")
-        if os.path.exists(infractions_file):
-            with open(infractions_file, 'w', encoding='utf-8') as f:
-                json.dump([], f, indent=2)
-        
-        # Limpiar archivo de infracciones NIE
-        nie_file = resource_path("data/nie_infracciones.json")
-        if os.path.exists(nie_file):
-            with open(nie_file, 'w', encoding='utf-8') as f:
-                json.dump([], f, indent=2)
-        
+        from src.infrastructure.database.app_repository import AppRepository
+        repo = AppRepository()
+        repo.clear_infractions()
         # Limpiar directorios de imágenes
-        output_dirs = [
-            resource_path("data/output/placas"),
-            resource_path("data/output/autos")
-        ]
-        
+        output_dirs = [resource_path("data/output/placas"), resource_path("data/output/autos")]
         for output_dir in output_dirs:
             if os.path.exists(output_dir):
                 for file in os.listdir(output_dir):
                     file_path = os.path.join(output_dir, file)
                     if os.path.isfile(file_path):
-                        os.remove(file_path)
-        
+                        try:
+                            os.remove(file_path)
+                        except Exception:
+                            pass
         return True
     except Exception as e:
         print(f"Error eliminando todas las infracciones: {e}")
         return False
 
 def _filter_infractions_file(file_path, placa_to_remove):
-    """Elimina las entradas con la placa indicada del archivo JSON si existe."""
-    if not os.path.exists(file_path):
-        return True
+    """Legacy JSON (deprecated): ahora delega a SQLite."""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        is_dict = isinstance(data, dict) and 'infracciones' in data
-        infractions = data['infracciones'] if is_dict else (data if isinstance(data, list) else [])
-        updated = [inf for inf in infractions if inf.get('placa', '') != placa_to_remove]
-        output = {'infracciones': updated} if is_dict else updated
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(output, f, indent=2, ensure_ascii=False)
+        from src.infrastructure.database.app_repository import AppRepository
+        repo = AppRepository()
+        repo.delete_by_placa(placa_to_remove)
         return True
     except Exception as e:
-        print(f"Error eliminando infracción del JSON: {e}")
+        print(f"Error eliminando infracción de SQLite: {e}")
         return False
 
 
 def remove_infraction_from_json(placa_to_remove):
-    """Elimina una infracción específica de los archivos JSON (NID y NIE)"""
-    ok_nid = _filter_infractions_file(resource_path("data/infracciones.json"), placa_to_remove)
-    ok_nie = _filter_infractions_file(resource_path("data/nie_infracciones.json"), placa_to_remove)
-    return ok_nid and ok_nie
+    """Elimina infracción por placa (SQLite, única fuente)."""
+    try:
+        from src.infrastructure.database.app_repository import AppRepository
+        repo = AppRepository()
+        deleted = repo.delete_by_placa(placa_to_remove)
+        return deleted >= 0
+    except Exception as e:
+        print(f"Error eliminando infracción: {e}")
+        return False
 
-def show_migrations(refresh_callback=None, all_data_ref=None):
-    """Mostrar historial de migraciones exitosas"""
-    # Crear ventana de migraciones (MÁS GRANDE para historial acumulativo)
-    migrations_window = tk.Toplevel()
-    migrations_window.title("📊 Historial Acumulativo de Migraciones")
-    
-    # Tamaño más grande para mostrar más migraciones
-    screen_width = migrations_window.winfo_screenwidth()
-    screen_height = migrations_window.winfo_screenheight()
-    
-    if screen_width >= 1920:  # Pantalla grande
-        width, height = 800, 600
-    elif screen_width >= 1366:  # Pantalla mediana
-        width, height = 700, 550
-    else:  # Pantalla pequeña
-        width, height = 650, 500
-    
-    migrations_window.geometry(f"{width}x{height}")
-    migrations_window.configure(bg="#f8f9fa")
-    
-    # Centrar ventana
-    migrations_window.update_idletasks()
-    x = (screen_width - width) // 2
-    y = (screen_height - height) // 2
-    migrations_window.geometry(f"{width}x{height}+{x}+{y}")
-    
-    # Título
-    title_label = tk.Label(
-        migrations_window,
-        text="📊 Historial de Migraciones a la Nube",
-        font=("Arial", 16, "bold"),
-        bg="#f8f9fa",
-        fg="#2c3e50"
-    )
-    title_label.pack(pady=20)
-    
-    # CARGAR HISTORIAL COMPLETO DE MIGRACIONES (ACUMULATIVO)
-    migrations_data = load_migrations_history()
-    print(f"📊 CARGANDO HISTORIAL: {len(migrations_data)} migraciones en historial")
-    
-    # Frame para lista con scrollbar (para historial acumulativo)
-    main_list_frame = tk.Frame(migrations_window, bg="#f8f9fa")
-    main_list_frame.pack(fill="both", expand=True, padx=20, pady=10)
-    
-    # Canvas y scrollbar para manejar muchas migraciones
-    canvas = tk.Canvas(main_list_frame, bg="#f8f9fa")
-    scrollbar = tk.Scrollbar(main_list_frame, orient="vertical", command=canvas.yview)
-    scrollable_frame = tk.Frame(canvas, bg="#f8f9fa")
-    
-    scrollable_frame.bind(
-        "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-    )
-    
-    # CENTRAR contenido en el canvas
-    canvas.create_window((width//2, 0), window=scrollable_frame, anchor="n")
-    canvas.configure(yscrollcommand=scrollbar.set)
-    
-    # Headers
-    header_frame = tk.Frame(scrollable_frame, bg="#34495e")
-    header_frame.pack(fill="x", pady=(0, 5))
-    
-    tk.Label(header_frame, text="Fecha y Hora", font=("Arial", 12, "bold"),
-             bg="#34495e", fg="white", width=20).pack(side="left", padx=5, pady=5)
-    tk.Label(header_frame, text="Registros", font=("Arial", 12, "bold"),
-             bg="#34495e", fg="white", width=10).pack(side="left", padx=5, pady=5)
-    tk.Label(header_frame, text="Estado", font=("Arial", 12, "bold"),
-             bg="#34495e", fg="white", width=15).pack(side="left", padx=5, pady=5)
-    
-    # Datos o mensaje vacío  
-    if migrations_data:
-        for migration in migrations_data:
-            row_frame = tk.Frame(scrollable_frame, bg="white", relief="ridge", bd=1)
-            row_frame.pack(fill="x", pady=2)
-            
-            tk.Label(row_frame, text=migration["fecha"], font=("Arial", 10),
-                     bg="white", width=20).pack(side="left", padx=5, pady=5)
-            tk.Label(row_frame, text=migration["registros"], font=("Arial", 10),
-                     bg="white", width=10).pack(side="left", padx=5, pady=5)
-            tk.Label(row_frame, text=f"✅ {migration['estado']}", font=("Arial", 10),
-                     bg="white", fg="#27ae60", width=15).pack(side="left", padx=5, pady=5)
-    else:
-        # Mostrar mensaje cuando no hay historial de migraciones
-        empty_frame = tk.Frame(scrollable_frame, bg="#f8f9fa")
-        empty_frame.pack(fill="both", expand=True, pady=50)
-        
-        tk.Label(empty_frame, text="📝 Historial de migraciones vacío", 
-                font=("Arial", 14, "bold"), bg="#f8f9fa", fg="#7f8c8d").pack()
-        tk.Label(empty_frame, text="Las migraciones se acumularán aquí automáticamente cuando se procesen infracciones", 
-                font=("Arial", 10), bg="#f8f9fa", fg="#95a5a6").pack(pady=10)
-    
-    # MEJORA: Agregar scroll suave con rueda del mouse para historial
-    def on_mousewheel_migrations(event):
-        # Scroll suave: dividir delta por 3 para hacer más lento y suave
-        canvas.yview_scroll(int(-1 * (event.delta / 120 / 3)), "units")
-        
-    def bind_to_mousewheel_migrations(event):
-        canvas.bind_all("<MouseWheel>", on_mousewheel_migrations)
-        
-    def unbind_from_mousewheel_migrations(event):
-        canvas.unbind_all("<MouseWheel>")
-        
-    # Bindear eventos de entrada/salida del mouse
-    canvas.bind('<Enter>', bind_to_mousewheel_migrations)
-    canvas.bind('<Leave>', unbind_from_mousewheel_migrations)
-    scrollable_frame.bind('<Enter>', bind_to_mousewheel_migrations)
-    scrollable_frame.bind('<Leave>', unbind_from_mousewheel_migrations)
-    
-    # Configurar y mostrar canvas y scrollbar
-    canvas.pack(side="left", fill="both", expand=True)
-    scrollbar.pack(side="right", fill="y")
-    
-    # Frame para botones
-    button_frame = tk.Frame(migrations_window, bg="#f8f9fa")
-    button_frame.pack(pady=20)
-    
-    # Función para SOLO LIMPIAR LA LISTA LOCAL (NO BORRAR DATOS REALES)
-    def vaciar_lista_local():
-        result = messagebox.askyesno(
-            "Limpiar historial de migraciones",
-            "¿Está seguro de que desea LIMPIAR PERMANENTEMENTE el historial de migraciones?\n\n"
-            "Esta acción:\n"
-            "• Eliminará COMPLETAMENTE el historial de migraciones\n"
-            "• Limpiará el archivo historial_migraciones.json\n"
-            "• NO eliminará las infracciones reales del sistema\n\n"
-            "⚠️ Esta acción es PERMANENTE y no se puede deshacer.",
-            parent=migrations_window
-        )
-        
-        if result:
-            try:
-                # Limpiar el archivo historial persistente
-                save_migrations_history([])
-                
-                # Limpiar la vista
-                for widget in scrollable_frame.winfo_children():
-                    if widget != header_frame:  # Mantener header
-                        widget.destroy()
-                
-                # Mostrar mensaje de tabla vacía
-                empty_frame = tk.Frame(scrollable_frame, bg="#f8f9fa")
-                empty_frame.pack(fill="x", pady=20)
-                tk.Label(empty_frame, text="📭 Historial de migraciones limpiado completamente", 
-                        font=("Arial", 10), bg="#f8f9fa", fg="#95a5a6").pack(pady=10)
-                
-                messagebox.showinfo("Historial limpiado", 
-                    "✅ El historial de migraciones ha sido eliminado permanentemente.\n\n"
-                    "El sistema ahora iniciará desde cero.", 
-                    parent=migrations_window)
-                        
-            except Exception as e:
-                messagebox.showerror("Error", f"Error limpiando historial: {e}", parent=migrations_window)
-    
-    # Función para actualizar la lista de migraciones (HISTORIAL ACUMULATIVO)
-    def actualizar_migraciones():
-        print("🔄 ACTUALIZANDO VISTA DE MIGRACIONES...")
-        
-        # Limpiar datos anteriores (mantener header)
-        for widget in scrollable_frame.winfo_children():
-            if widget != header_frame:  # Mantener header
-                widget.destroy()
-        
-        # CARGAR HISTORIAL COMPLETO ACTUALIZADO
-        updated_migrations = load_migrations_history()
-        print(f"📊 HISTORIAL ACTUALIZADO: {len(updated_migrations)} migraciones")
-        
-        # Recrear las filas con historial completo o mensaje vacío
-        if updated_migrations:
-            for migration in updated_migrations:
-                row_frame = tk.Frame(scrollable_frame, bg="white", relief="ridge", bd=1)
-                row_frame.pack(fill="x", pady=2)
-                
-                tk.Label(row_frame, text=migration["fecha"], font=("Arial", 10),
-                         bg="white", width=20).pack(side="left", padx=5, pady=5)
-                tk.Label(row_frame, text=migration["registros"], font=("Arial", 10),
-                         bg="white", width=10).pack(side="left", padx=5, pady=5)
-                tk.Label(row_frame, text=f"✅ {migration['estado']}", font=("Arial", 10),
-                         bg="white", fg="#27ae60", width=15).pack(side="left", padx=5, pady=5)
-        else:
-            # Mostrar mensaje cuando no hay historial
-            empty_frame = tk.Frame(scrollable_frame, bg="#f8f9fa")
-            empty_frame.pack(fill="both", expand=True, pady=50)
-            
-            tk.Label(empty_frame, text="📝 Historial de migraciones vacío", 
-                    font=("Arial", 14, "bold"), bg="#f8f9fa", fg="#7f8c8d").pack()
-            tk.Label(empty_frame, text="Las migraciones se acumularán aquí automáticamente", 
-                    font=("Arial", 10), bg="#f8f9fa", fg="#95a5a6").pack(pady=10)
-        
-        # Actualizar canvas scroll region
-        canvas.update_idletasks()
-        canvas.configure(scrollregion=canvas.bbox("all"))
-        
-        messagebox.showinfo("Actualizado", "Lista de migraciones actualizada correctamente.", parent=migrations_window)
-    
-    # Botón actualizar
-    actualizar_btn = tk.Button(
-        button_frame,
-        text="🔄 Actualizar",
-        command=actualizar_migraciones,
-        bg="#3498db",
-        fg="white",
-        font=("Arial", 12),
-        padx=20,
-        pady=5
-    )
-    actualizar_btn.pack(side="left", padx=10)
-    
-    # Botón subir a Firestore (formato por-video)
-    def subir_firestore():
-        import threading as _threading
-        from src.automations.firestore_migrator import migrate_videos_to_firestore
-
-        def _run():
-            try:
-                result = migrate_videos_to_firestore(verbose=True)
-                migrados = result.get("migrados", 0)
-                errores = result.get("errores", [])
-                # Registrar en el historial acumulativo
-                add_migration_to_history(migrados, "Exitosa" if migrados else "Sin datos")
-                migrations_window.after(
-                    0,
-                    lambda: messagebox.showinfo(
-                        "Migración a Firestore",
-                        f"☁️ Documentos subidos: {migrados}\n\n"
-                        + (f"⚠️ Errores: {len(errores)}\n" if errores else "")
-                        + "✅ Migración completada (colección 'migraciones').",
-                        parent=migrations_window,
-                    ),
-                )
-            except Exception as ex:
-                migrations_window.after(
-                    0,
-                    lambda: messagebox.showerror(
-                        "Error al migrar",
-                        f"❌ {ex}",
-                        parent=migrations_window,
-                    ),
-                )
-
-        migrations_window.after(
-            0,
-            lambda: messagebox.showinfo(
-                "Migración a Firestore",
-                "☁️ Subiendo documentos por video a Firestore, espere...",
-                parent=migrations_window,
-            ),
-        )
-        _threading.Thread(target=_run, daemon=True).start()
-
-    subir_btn = tk.Button(
-        button_frame,
-        text="☁️ SUBIR A FIRESTORE",
-        command=subir_firestore,
-        bg="#27ae60",
-        fg="white",
-        font=("Arial", 12),
-        padx=20,
-        pady=5
-    )
-    subir_btn.pack(side="left", padx=10)
-
-    # Botón limpiar historial de migraciones
-    vaciar_btn = tk.Button(
-        button_frame,
-        text="🗑️ Limpiar Historial",
-        command=vaciar_lista_local,
-        bg="#e67e22",
-        fg="white",
-        font=("Arial", 12),
-        padx=20,
-        pady=5
-    )
-    vaciar_btn.pack(side="left", padx=10)
-    
-    # Función para borrar TODO permanentemente (CON CONFIRMACIÓN DOBLE)
-    def borrar_todo_permanentemente():
-        # Primera confirmación
-        result1 = messagebox.askyesno(
-            "⚠️ BORRAR TODO PERMANENTEMENTE",
-            "🚨 ATENCIÓN: Esta acción ELIMINARÁ TODOS LOS DATOS del sistema:\n\n"
-            "• Historial completo de migraciones\n"
-            "• Indicadores de rendimiento\n"
-            "• Configuraciones de videos\n"
-            "• Datos de infracciones procesadas\n\n"
-            "⚠️ Esta acción es IRREVERSIBLE\n\n"
-            "¿Está COMPLETAMENTE seguro de continuar?",
-            parent=migrations_window
-        )
-        
-        if result1:
-            # Segunda confirmación más fuerte
-            result2 = messagebox.askyesno(
-                "🚨 CONFIRMACIÓN FINAL",
-                "ÚLTIMA OPORTUNIDAD DE CANCELAR\n\n"
-                "Está a punto de ELIMINAR PERMANENTEMENTE:\n"
-                "✗ TODO el historial de migraciones\n"
-                "✗ TODOS los indicadores de rendimiento\n"
-                "✗ TODAS las configuraciones\n\n"
-                "💀 ESTA ACCIÓN NO SE PUEDE DESHACER 💀\n\n"
-                "Escriba 'SÍ' para confirmar la eliminación total:",
-                parent=migrations_window
-            )
-            
-            if result2:
-                try:
-                    # Limpiar historial de migraciones
-                    save_migrations_history([])
-                    
-                    # Limpiar indicadores de rendimiento
-                    import os
-                    indicadores_path = "data/indicadores_rendimiento.json"
-                    if os.path.exists(indicadores_path):
-                        with open(indicadores_path, 'w', encoding='utf-8') as f:
-                            f.write('{}')
-                    
-                    # Limpiar la vista
-                    for widget in scrollable_frame.winfo_children():
-                        if widget != header_frame:  # Mantener header
-                            widget.destroy()
-                    
-                    # Mostrar mensaje de tabla vacía
-                    empty_frame = tk.Frame(scrollable_frame, bg="#f8f9fa")
-                    empty_frame.pack(fill="x", pady=20)
-                    tk.Label(empty_frame, text="🆕 Sistema completamente limpio - Iniciando desde cero", 
-                            font=("Arial", 10), bg="#f8f9fa", fg="#95a5a6").pack(pady=10)
-                    
-                    messagebox.showinfo("Sistema reiniciado", 
-                        "🆕 SISTEMA COMPLETAMENTE LIMPIO\n\n"
-                        "✅ Todos los datos han sido eliminados\n"
-                        "✅ El sistema iniciará desde cero\n"
-                        "✅ Como si fuera la primera vez\n\n"
-                        "Puede cerrar esta ventana y reiniciar la aplicación.", 
-                        parent=migrations_window)
-                            
-                except Exception as e:
-                    messagebox.showerror("Error", f"Error eliminando datos: {e}", parent=migrations_window)
-    
-    # Botón borrar TODO permanentemente
-    borrar_todo_btn = tk.Button(
-        button_frame,
-        text="💀 BORRAR TODO",
-        command=borrar_todo_permanentemente,
-        bg="#c0392b",
-        fg="white",
-        font=("Arial", 12, "bold"),
-        padx=20,
-        pady=5
-    )
-    borrar_todo_btn.pack(side="left", padx=10)
-    
-    # Botón cerrar
-    close_btn = tk.Button(
-        button_frame,
-        text="Cerrar",
-        command=migrations_window.destroy,
-        bg="#e74c3c",
-        fg="white",
-        font=("Arial", 12),
-        padx=20,
-        pady=5
-    )
-    close_btn.pack(side="right", padx=10)
-
-
+def generate_performance_report(software_infractions, software_processing_times, nombre_video=None, config_semaforo=None):
+    """Genera dict de indicadores TI/TR/NID/NIE (puro, sin IO). Usado por SQLite."""
+    # Duplica lógica legacy pero sin escribir JSON — idéntica a AppRepository.compute_indicators_report
+    if not isinstance(software_infractions, (list, tuple)):
+        software_infractions = []
+    if not isinstance(software_processing_times, (list, tuple)):
+        software_processing_times = [software_processing_times] if isinstance(software_processing_times, (int, float)) else []
+    day_infractions = {}
+    nid_count = nie_count = 0
+    for inf in software_infractions:
+        fecha = inf.get("fecha", "Sin fecha")
+        clas = inf.get("clasificacion", "NID")
+        grp = day_infractions.setdefault(fecha, {"total": 0, "placas": {}, "nid": 0, "nie": 0})
+        grp["total"] += 1
+        if clas == "NID":
+            nid_count += 1
+            grp["nid"] += 1
+        elif clas == "NIE":
+            nie_count += 1
+            grp["nie"] += 1
+        placa = inf.get("placa", "")
+        if placa:
+            grp["placas"].setdefault(placa, 0)
+            grp["placas"][placa] += 1
+    pnp_data = {"Enero 2023": {"total": 125, "dias": 31}, "Febrero 2023": {"total": 117, "dias": 28}, "Marzo 2023": {"total": 137, "dias": 31}, "Abril 2023": {"total": 129, "dias": 30}}
+    police_times_min = [7, 6, 5, 10, 8]
+    pnp_total = sum(m["total"] for m in pnp_data.values())
+    pnp_days = sum(m["dias"] for m in pnp_data.values())
+    pnp_daily = pnp_total / pnp_days if pnp_days else 0
+    sw_days = len(day_infractions)
+    sw_inf = len(software_infractions)
+    sw_daily = sw_inf / sw_days if sw_days else 0
+    ti_percentage = (nid_count / (nid_count + nie_count) * 100) if (nid_count + nie_count) else 0.0
+    pnp_sec = (sum(police_times_min) / len(police_times_min) * 60) if police_times_min else 0
+    sw_times_min = [t / 60.0 for t in software_processing_times] if software_processing_times else []
+    sw_min = sum(sw_times_min) / len(sw_times_min) if sw_times_min else 0.0
+    pnp_min = pnp_sec / 60.0
+    tr_reduction_pct = ((pnp_min - sw_min) / pnp_min * 100) if pnp_min else 0
+    tr_speedup = pnp_min / sw_min if sw_min else 0
+    nid_today = nid_count
+    nie_today = nie_count
+    nid_daily_avg = nid_count / sw_days if sw_days > 0 else nid_count
+    avenida = software_infractions[0].get("ubicacion", "N/A") if software_infractions else "N/A"
+    video_name = nombre_video or (software_infractions[0].get("nombre_video", "desconocido.mp4") if software_infractions else "desconocido.mp4")
+    config_id = config_semaforo or (software_infractions[0].get("config_semaforo", "sin-configurar") if software_infractions else "sin-configurar")
+    from datetime import datetime as _dt
+    return {
+        "fecha_generacion": _dt.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "periodo_analisis": f"{min(day_infractions.keys(), default='N/A')} - {max(day_infractions.keys(), default='N/A')}",
+        "dias_analizados": sw_days, "ubicacion": avenida, "nombre_video": video_name, "config_semaforo": config_id,
+        "nota": "Datos de la sesión actual de procesamiento, no acumulados históricos",
+        "indicadores": {
+            "TI": {"descripcion": "Tasa de Infracciones Detectadas (Nivel Diario Agregado)", "unidad": "infracciones por día comparativo (%)", "sin_software": {"registros_campo_diarios": round(pnp_daily, 2), "fuente": "Registros PNP históricos"}, "con_software": {"detecciones_software_diarias": round(sw_daily, 2), "dias_analizados": sw_days}, "porcentaje_acierto": round(ti_percentage, 2)},
+            "TR": {"descripcion": "Tiempo de Registro por Infracción Individual", "unidad": "minutos por infracción (min)", "sin_software": {"tiempo_promedio_minutos": round(pnp_min, 2), "fuente": "Estimación basada en registros históricos de campo"}, "con_software": {"tiempo_promedio_minutos": round(sw_min, 2), "tiempos_individuales": [round(t, 2) for t in sw_times_min], "muestras_analizadas": len(software_processing_times)}, "reduccion_tiempo_porcentual": round(tr_reduction_pct, 2), "veces_mas_rapido": round(tr_speedup, 2)},
+            "NID": {"descripcion": "Número de Infracciones Detectadas Correctamente", "unidad": "cantidad válida por día", "infracciones_hoy": nid_today, "promedio_diario": round(nid_daily_avg, 0), "periodo_analizado": f"{sw_days} días", "total": nid_count},
+            "NIE": {"descripcion": "Número de Infracciones Incorrectamente Registradas", "unidad": "cantidad no válida por día", "infracciones_incorrectas": nie_count, "total": nie_count},
+        },
+        "resumen_global": {"ti_porcentaje_acierto": f"{ti_percentage:.1f}%", "tiempo_registro_minutos": f"{sw_min:.2f} min", "infracciones_detectadas_hoy": nid_today, "nid_total": nid_count, "nie_total": nie_count, "tir_total": nid_count + nie_count},
+    }
 
 
 def generate_performance_indicators_json(software_infractions, software_processing_times, nombre_video=None, config_semaforo=None):
     """
-    Genera y guarda en data/indicadores_rendimiento.json
-    los indicadores TI, TR y NID basados en las infracciones y tiempos.
-    IR ha sido eliminado completamente del sistema.
-    
-    Args:
-        software_infractions: Lista de infracciones detectadas
-        software_processing_times: Lista de tiempos de procesamiento
-        nombre_video: Nombre del video procesado (opcional)
-        config_semaforo: ID de configuración de semáforo (ej: "10-3-15") (opcional)
+    Compat: genera y persiste en SQLite (y JSON legacy para compatibilidad).
+    Los indicadores TI, TR y NID basados en las infracciones y tiempos.
     """
     import os
     import json
-    import requests
     from datetime import datetime
 
     # DEBUG: Imprimir datos recibidos
@@ -770,45 +412,27 @@ def generate_performance_indicators_json(software_infractions, software_processi
         },
     }
 
-    # Guardar localmente (conservando metricas_tesis de la sesión si existían)
-    out_path = resource_path("data/indicadores_rendimiento.json")
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    from src.core.utils.json_store import read_json, write_json
-    _existing = read_json(out_path, {})
-    if isinstance(_existing, dict) and "metricas_tesis" in _existing:
-        report["metricas_tesis"] = _existing["metricas_tesis"]
-    write_json(out_path, report)
-    
-    print(f"✅ Indicadores guardados localmente en: {out_path}")
-
-    # 5) Enviar automáticamente al backend / Firestore
+    # Persistir en SQLite (fuente única) + JSON legacy compat
+    report = generate_performance_report(software_infractions, software_processing_times, nombre_video=nombre_video, config_semaforo=config_semaforo)
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as cf:
-            config_data = json.load(cf)
-            user_id = config_data.get("user_id", "")
-        
-        if not user_id:
-            print("⚠️ No se encontró user_id en la configuración, saltando envío al backend")
-            return
-        
-        url = f"https://infracti-backend-627388491148.us-central1.run.app/indicadores/{user_id}"
-        print(f"📤 Enviando indicadores al backend: {url}")
-        print(f"   Datos: NID={nid_count}, NIE={nie_count}, TI={ti_percentage:.2f}%, TR={sw_min:.2f}min")
-        
-        resp = requests.post(url, json=report, timeout=15)
-        resp.raise_for_status()
-        print("✅ Indicadores enviados correctamente a Firestore via Backend")
-        print(f"   Respuesta del servidor: {resp.status_code}")
-    except FileNotFoundError as e:
-        print(f"⚠️ No se encontró archivo de configuración: {e}")
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ Error de red enviando indicadores al backend: {e}")
-        print(f"   URL: {url if 'url' in locals() else 'N/A'}")
-        print("   Los indicadores se guardaron localmente y se pueden migrar manualmente")
+        from src.infrastructure.database.app_repository import AppRepository
+        AppRepository().upsert_indicators(report)
+        print("✅ Indicadores guardados en SQLite")
     except Exception as e:
-        print(f"⚠️ Error inesperado enviando indicadores: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"⚠️ Error guardando indicadores en SQLite: {e}")
+    # Compat JSON (deprecated)
+    try:
+        out_path = resource_path("data/indicadores_rendimiento.json")
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        from src.core.utils.json_store import read_json, write_json
+        _existing = read_json(out_path, {})
+        if isinstance(_existing, dict) and "metricas_tesis" in _existing:
+            report["metricas_tesis"] = _existing["metricas_tesis"]
+        write_json(out_path, report)
+    except Exception:
+        pass
+    print(f"✅ Indicadores generados para {report.get('nombre_video')} TI={report['indicadores']['TI']['porcentaje_acierto']}% TR={report['indicadores']['TR']['con_software']['tiempo_promedio_minutos']}min NID={report['indicadores']['NID']['total']} NIE={report['indicadores']['NIE']['total']}")
+    return report
 
 
 def create_infractions_window(window: tk.Toplevel, back_callback):
@@ -1819,18 +1443,16 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
 
         data_list = valid_data
 
-        # Ordenar: NID primero, luego fecha y hora (más reciente primero)
+        # Ordenar: fecha y hora (más reciente primero) — NID y NIE intercaladas
         try:
             data_list = sorted(data_list,
                             key=lambda x: (
-                                0 if x.get('clasificacion', 'NID') == 'NID' else 1,
                                 -_parse_fecha(x.get('fecha', '01/01/2000')).timestamp(),
                                 -_parse_hora(x.get('hora', '00:00:00'))
                             ))
         except Exception as e:
             print(f"Error al ordenar infracciones: {e}")
-            data_list = sorted([x for x in data_list if isinstance(x, dict)],
-                             key=lambda x: (0 if x.get('clasificacion', 'NID') == 'NID' else 1))
+            data_list = [x for x in data_list if isinstance(x, dict)]
 
         current_data = data_list
         total = len(data_list)
@@ -1883,18 +1505,6 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
     # Botones de acción adicionales al final
     bottom_actions = tk.Frame(window, bg="#ffffff")
     bottom_actions.pack(fill="x", padx=100, pady=10)
-    
-    # Botón de migraciones con callback para actualizar
-    def open_migrations():
-        show_migrations(refresh_callback=populate_cards, all_data_ref=all_data)
-    
-    tk.Button(
-        bottom_actions, text="📊 MIGRACIONES", font=("Arial", 12),
-        bg="#9b59b6", fg="white", bd=0,
-        activebackground="#8e44ad", activeforeground="white",
-        cursor="hand2", command=open_migrations,
-        width=20, height=2
-    ).pack(side="left", padx=10)
     
     # Botón vaciar todo
     tk.Button(

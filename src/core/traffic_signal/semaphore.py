@@ -31,6 +31,10 @@ class Semaforo:
         self.info_label = tk.Label(self.frame, text="Semáforo inactivo", font=("Arial", 14), bg='white')
         self.info_label.pack(pady=(0, 10))
 
+        # Label con temporizador de ejecución y parámetros del ciclo
+        self.meta_label = tk.Label(self.frame, text="", font=("Arial", 11), bg='white', justify="center")
+        self.meta_label.pack(pady=(0, 5))
+
         # Botón para abrir configuración de tiempos
         self.btn_tiempos = tk.Button(
             self.frame, text="Configurar Tiempos",
@@ -53,14 +57,70 @@ class Semaforo:
         self.current_state = "green"
         self.cycle_durations = {"green": 12, "yellow": 2, "red": 10}
         self.target_time = time.time() + self.cycle_durations[self.current_state]
-        
+
+        # Temporizador de ejecución (cuánto lleva procesando el video)
+        self.execution_start = None
+        self._meta_loop_active = False
+
         # Por defecto el semáforo está inactivo
         self.active = False
         self.show_inactive_state()
 
+    def reset_execution_timer(self):
+        """Reinicia el temporizador de ejecución (se llama al cargar un video nuevo)."""
+        self.execution_start = None
+        self.set_state_display()
+        self._update_meta_label()
+
+    def set_state_display(self):
+        """Actualiza el label de estado según el estado actual del semáforo."""
+        text = f"Estado: {self.current_state.upper()}" if self.current_state else "Semáforo inactivo"
+        self.info_label.config(text=text)
+
+    def start_meta_timer(self):
+        """Arranca el temporizador de ejecución y su refresco periódico (solo una vez)."""
+        if self.execution_start is None:
+            self.execution_start = time.time()
+        if not self._meta_loop_active:
+            self._meta_loop_active = True
+            self._schedule_meta_update()
+
+    def _schedule_meta_update(self):
+        """Actualiza el label de meta cada 500ms mientras el semáforo esté activo."""
+        if not self.active:
+            self._meta_loop_active = False
+            return
+        self._update_meta_label()
+        if self.active:
+            self.frame.after(500, self._schedule_meta_update)
+
+    def _format_elapsed(self, seconds):
+        """Formatea segundos como HH:mm:ss, omitiendo la hora si es 0."""
+        seconds = max(0, int(seconds))
+        h, rem = divmod(seconds, 3600)
+        m, s = divmod(rem, 60)
+        if h:
+            return f"{h:02d}:{m:02d}:{s:02d}"
+        return f"{m:02d}:{s:02d}"
+
+    def _update_meta_label(self):
+        """Actualiza el temporizador de ejecución y los parámetros del ciclo."""
+        elapsed = 0
+        if self.execution_start is not None:
+            elapsed = time.time() - self.execution_start
+        g = self.cycle_durations.get("green", 0)
+        y = self.cycle_durations.get("yellow", 0)
+        r = self.cycle_durations.get("red", 0)
+        self.meta_label.config(
+            text=f"⏱️ Tiempo de ejecución: {self._format_elapsed(elapsed)}\n"
+                 f"🚦 Parámetros: 🟢 {g}s 🟡 {y}s 🔴 {r}s"
+        )
+
     def activate_semaphore(self):
         """Activa el semáforo cuando se carga un video"""
         self.active = True
+        if self.execution_start is None:
+            self.execution_start = time.time()
         self.show_state()
         self.update_countdown()
 
@@ -116,6 +176,7 @@ class Semaforo:
         self.info_label.config(
             text=f"{ts}\nEstado: {self.current_state.upper()} – Quedan {secs}s {ms}ms"
         )
+        self._update_meta_label()
         # SOLO programar siguiente actualización si el semáforo está activo
         if self.active:
             self.frame.after(50, self.update_countdown)

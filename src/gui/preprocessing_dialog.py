@@ -16,7 +16,6 @@ import cv2
 import numpy as np
 from PIL import Image, ImageTk
 
-from src.automations.cloud_migrator import upload_infracciones_automatically
 from src.gui.infractions_management_window import generate_performance_indicators_json
 from src.path_helper import resource_path
 from src.core.utils.icon import set_window_icon
@@ -129,6 +128,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         self._official_infraction_ids = set()
         self._pending_infractions = []
         self._official_infraction_count = 0
+        self._meta_timer_ready = False
         self.processed_frames = 0
         self.total_frames = 0
         self.result_queue = queue.Queue()
@@ -203,6 +203,11 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
 
         # Add this line to track start time
         self.processing_start_time = time.time()
+
+        # Reiniciar el marcador del reproductor para medir la duración total
+        # del procesamiento del video (numerador del TR en Foto Rojo).
+        if self.player is not None and hasattr(self.player, "detection_start_time"):
+            self.player.detection_start_time = self.processing_start_time
         
         self.plate_classifier = PlateClassificationSystem()
         self.metrics_calculator = ThesisMetricsCalculator()
@@ -672,8 +677,10 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             if state in ("green", "yellow", "red"):
                 if not semaforo.active:
                     semaforo.active = True
+                semaforo.start_meta_timer()
                 semaforo.current_state = state
                 semaforo.show_state()
+                semaforo.set_state_display()
         except Exception as e:
             print(f"Error sincronizando semáforo inline: {e}")
 
@@ -760,6 +767,11 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                         self._update_video_frame(data["frame"])
                         # En modo inline: reflejar el estado en el widget Semaforo
                         if getattr(self, "inline", False):
+                            # Reiniciar temporizador una vez por corrida (hilo principal)
+                            if not self._meta_timer_ready:
+                                self._meta_timer_ready = True
+                                if getattr(self.player, "semaforo", None) is not None:
+                                    self.player.semaforo.reset_execution_timer()
                             self._sync_semaforo_state(data.get("state"))
                         total = max(1, data.get("total_frames", 1))
                         self.progress_value = min(99.9, data.get("frame_index", 0) / total * 100)
@@ -797,6 +809,9 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                         self.details_label.config(text=f"{self._official_infraction_count} infractores detectados | {len(self.detected_infractions)} mejores frames listos para OCR")
                         if getattr(self, "inline", False):
                             self._inline_progress_show(False)
+                        # Congelar temporizador y semáforo al terminar el procesamiento
+                        if getattr(self.player, "semaforo", None) is not None:
+                            self.player.semaforo.deactivate_semaphore()
                         self._open_official_review(payload)
                         continue
 
@@ -1306,21 +1321,102 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         NID = evidence.validated (✓) con placa reconocida -> verde.
         NIE = el resto, incluidos los pendientes sin placa -> rojo.
 
-        Además, guarda las infracciones validadas en Gestión de Infracciones
-        (infracciones.json / nie_infracciones.json).
+        Guarda en SQLite (única fuente) y genera indicadores coherentes.
         """
         try:
             self.player.apply_official_validation(evidences, getattr(self, "_pending_infractions", []))
         except Exception as e:
             print(f"⚠️ Error sincronizando validación en panel lateral: {e}")
 
-        # 💾 Guardar infracciones validadas en Gestión de Infracciones
+        nid_entries, nie_entries = [], []
         try:
-            self._save_official_infractions_to_json(evidences, getattr(self, "_pending_infractions", []))
+            nid_entries, nie_entries = self._save_official_infractions_to_db(
+                evidences, getattr(self, "_pending_infractions", [])
+            )
         except Exception as e:
-            print(f"⚠️ Error guardando infracciones oficiales en JSON: {e}")
+            print(f"⚠️ Error guardando infracciones oficiales en DB: {e}")
             import traceback
             traceback.print_exc()
+
+        try:
+            self._regenerate_indicators_after_validation(nid_entries, nie_entries)
+        except Exception as e:
+            print(f"⚠️ Error regenerando indicadores tras validación: {e}")
+            import traceback
+            traceback.print_exc()
+
+        self._migrate_after_validation(nid_entries, nie_entries)
+
+    def _migrate_after_validation(self, nid_entries, nie_entries):
+        """Migra SOLO la sesión actual a Firestore con TI/TR/NID/NIE coherentes.
+
+        Fuente única: SQLite + lista de la sesión (no lee JSONs).
+        """
+        import threading
+        import traceback
+        from src.automations.firestore_migrator import migrate_single_video_to_firestore
+
+        session_infractions = (nid_entries or []) + (nie_entries or [])
+        nombre_video = os.path.basename(self.video_path) if getattr(self, 'video_path', None) else "desconocido.mp4"
+        total = len(session_infractions)
+        # Snapshot para el hilo
+        nid_snap, nie_snap = list(nid_entries or []), list(nie_entries or [])
+
+        def _job():
+            try:
+                if hasattr(self, 'no_cloud_migration') and self.no_cloud_migration:
+                    print("⚠️ NO SE MIGRAN INFRACCIONES: Caso de detección nocturna sin resultados")
+                    return
+                if not session_infractions:
+                    print("⚠️ No se encontraron infracciones que migrar (sesión vacía)")
+                    from src.gui.infractions_management_window import add_migration_to_history
+                    add_migration_to_history(0, "Sin datos")
+                    return
+                resultado = migrate_single_video_to_firestore(nombre_video, session_infractions)
+                migrados = int(resultado.get("migrados", 0) or 0)
+                errores = resultado.get("errores", [])
+                estado = "Exitosa"
+                if errores:
+                    estado = "Fallida"
+                    for err in errores:
+                        print(f"⚠️ Error de migración: {err}")
+                if migrados <= 0 and not errores:
+                    estado = "Sin datos"
+                from src.gui.infractions_management_window import add_migration_to_history
+                try:
+                    add_migration_to_history(int(total or 0), estado)
+                except Exception as hist_error:
+                    print(f"⚠️ Error registrando en historial: {hist_error}")
+            except Exception as ex:
+                print(f"⚠️ Error migrando a Firestore: {ex}")
+                traceback.print_exc()
+                try:
+                    from src.gui.infractions_management_window import add_migration_to_history
+                    add_migration_to_history(int(total or 0), "Fallida")
+                except Exception:
+                    pass
+
+        threading.Thread(target=_job, daemon=True).start()
+
+    def _regenerate_indicators_after_validation(self, nid_entries, nie_entries):
+        """Genera indicadores en SQLite (única fuente) con la sesión validada.
+
+        TI/TR/NID/NIE quedan coherentes con lo que se migrará a Firebase.
+        """
+        from src.infrastructure.database.app_repository import AppRepository
+
+        current_session_infractions = (nid_entries or []) + (nie_entries or [])
+        nombre_video = os.path.basename(self.video_path) if getattr(self, 'video_path', None) else "desconocido.mp4"
+        config_semaforo = self.generar_config_id(
+            semaforo=getattr(self.player, 'semaforo', None),
+            cycle_durations=getattr(self, 'cycle_durations', None)
+        )
+        print(f"\n📊 Generando indicadores tras validación para {len(current_session_infractions)} infracciones "
+              f"({len(nid_entries or [])} NID + {len(nie_entries or [])} NIE)...")
+        repo = AppRepository()
+        report = repo.compute_indicators_report(current_session_infractions, nombre_video=nombre_video, config_semaforo=config_semaforo)
+        repo.upsert_indicators(report)
+        print(f"✅ Indicadores SQLite actualizados para {nombre_video}")
 
     def _process_next_frame(self):
         """
@@ -4080,8 +4176,6 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         import json
         import time
         import traceback
-        import threading
-        from src.automations.cloud_migrator import upload_infracciones_automatically
 
         try:
             # PASO 1: Deduplicar placas
@@ -4269,28 +4363,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 )
 
                 # — Subir indicadores en hilo aparte (SOLO si no es caso de segunda ventana nocturna)
-                def _upload_job():
-                    try:
-                        # VERIFICAR: No migrar si es caso de segunda ventana nocturna sin detecciones
-                        if hasattr(self, 'no_cloud_migration') and self.no_cloud_migration:
-                            print("⚠️ NO SE MIGRAN INFRACCIONES: Caso de detección nocturna sin resultados")
-                            print("✅ Solo se migran indicadores de rendimiento")
-                            # Aquí podrías migrar solo indicadores si fuera necesario
-                        else:
-                            upload_infracciones_automatically()
-                            print("✅ Infracciones e indicadores migrados automáticamente")
-                            
-                            # REGISTRAR MIGRACIÓN EN HISTORIAL ACUMULATIVO
-                            from src.gui.infractions_management_window import add_migration_to_history
-                            try:
-                                num_infractions = len(deduped) if deduped else 0
-                                add_migration_to_history(num_infractions, "Exitosa")
-                            except Exception as hist_error:
-                                print(f"⚠️ Error registrando en historial: {hist_error}")
-                    except Exception as ex:
-                        print(f"⚠️ Error subiendo indicadores: {ex}")
-
-                threading.Thread(target=_upload_job, daemon=True).start()
+                self._migrate_after_validation(len(deduped))
 
                 print(f"Tiempo medio por infracción: {avg_time:.2f}s")
 
@@ -4681,17 +4754,16 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         except Exception as e:
             print(f"Error guardando NIE en JSON: {e}")
 
-    def _save_official_infractions_to_json(self, evidences, pending_infractions=None):
+    def _save_official_infractions_to_db(self, evidences, pending_infractions=None):
+        """Guarda las infracciones validadas en SQLite (única fuente).
+
+        Compat: mantiene el nombre legacy `_save_official_infractions_to_json`
+        como alias para llamadas externas.
         """
-        Guarda las infracciones validadas del PIPELINE OFICIAL en los JSON de gestión.
-        NID (evidencia validada con placa) -> data/infracciones.json
-        NIE (no validada / sin placa / pendientes) -> data/nie_infracciones.json
-        """
-        import os
         import getpass
         import socket
         from datetime import datetime
-        from src.core.utils.json_store import read_json, write_json
+        from src.infrastructure.database.app_repository import AppRepository
 
         avenue_name = getattr(self.player, "current_avenue", "Desconocida")
         time_slot = self.cycle_durations.get("time_slot", "No especificada") if self.cycle_durations else "No especificada"
@@ -4700,8 +4772,6 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             semaforo=getattr(self.player, 'semaforo', None),
             cycle_durations=getattr(self, 'cycle_durations', None)
         )
-
-        # Duración total del video
         total_duration = "N/A"
         if hasattr(self.player, 'video_metadata') and self.player.video_metadata:
             total_duration = self.player.video_metadata.get('duration', 'N/A')
@@ -4716,105 +4786,67 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             except Exception:
                 total_duration = "N/A"
 
-        def _build_entry(placa, confianza, clasificacion, plate_path, vehicle_path,
-                         timestamp_seconds, metadata):
+        def _build_entry(placa, confianza, clasificacion, plate_path, vehicle_path, timestamp_seconds, metadata):
             now = datetime.now()
             total_seconds = int(timestamp_seconds or 0)
             mins, secs = divmod(total_seconds, 60)
             timestamp = f"{mins:02d}:{secs:02d}"
             return {
-                "placa":           placa,
-                "fecha":           now.strftime("%d/%m/%Y"),
-                "hora":            now.strftime("%H:%M:%S"),
+                "placa": placa,
+                "fecha": now.strftime("%d/%m/%Y"),
+                "hora": now.strftime("%H:%M:%S"),
                 "video_timestamp": timestamp,
-                "tiempo_video":    total_duration,
-                "ubicacion":       avenue_name,
-                "franja_horaria":  time_slot,
-                "tipo":            "Semáforo en rojo",
-                "estado":          "Pendiente" if clasificacion == "NID" else "Rechazada",
-                "plate_path":      plate_path,
-                "vehicle_path":    vehicle_path,
-                "nombre_video":    nombre_video,
+                "tiempo_video": total_duration,
+                "ubicacion": avenue_name,
+                "franja_horaria": time_slot,
+                "tipo": "Semáforo en rojo",
+                "estado": "Pendiente" if clasificacion == "NID" else "Rechazada",
+                "plate_path": plate_path,
+                "vehicle_path": vehicle_path,
+                "nombre_video": nombre_video,
                 "config_semaforo": config_semaforo,
-                "clasificacion":   clasificacion,
-                "confianza":       round(max(0.0, min(1.0, confianza)), 3),
+                "clasificacion": clasificacion,
+                "confianza": round(max(0.0, min(1.0, confianza)), 3),
                 "tiempo_procesamiento": round(timestamp_seconds or 0, 2),
                 "metadata_clasificacion": metadata,
+                "metadata_clasificacion_json": __import__("json").dumps(metadata, ensure_ascii=False),
                 "sistema_version": "InfractiVision_v2.0",
-                "hostname":        socket.gethostname(),
-                "username":        getpass.getuser()
+                "hostname": socket.gethostname(),
+                "username": getpass.getuser(),
+                "modo_nocturno": int(bool(getattr(self, "is_night", False))),
             }
 
-        nid_entries = []
-        nie_entries = []
-
-        # Evidencias del pipeline oficial
+        nid_entries: list[dict] = []
+        nie_entries: list[dict] = []
         for ev in (evidences or []):
             confianza = ev.ocr_confidence if ev.ocr_confidence else ev.quality_score
             crop = str(ev.crop_path or "")
             plate_path = crop if os.path.exists(crop) else ""
             if ev.validated and ev.plate_text:
-                metadata = {
-                    "placa_final": ev.plate_text,
-                    "confianza": round(confianza, 3),
-                    "calidad_deteccion": "alta" if confianza >= 0.7 else "media" if confianza >= 0.5 else "baja",
-                    "justificacion": "Validada en revisión oficial (OCR)"
-                }
-                nid_entries.append(_build_entry(
-                    ev.plate_text, confianza, "NID",
-                    plate_path, "", ev.timestamp_seconds, metadata
-                ))
+                metadata = {"placa_final": ev.plate_text, "confianza": round(confianza, 3), "calidad_deteccion": "alta" if confianza >= 0.7 else "media" if confianza >= 0.5 else "baja", "justificacion": "Validada en revisión oficial (OCR)"}
+                nid_entries.append(_build_entry(ev.plate_text, confianza, "NID", plate_path, "", ev.timestamp_seconds, metadata))
             else:
-                metadata = {
-                    "placa_final": ev.plate_text or "",
-                    "confianza": round(confianza, 3),
-                    "calidad_deteccion": "baja",
-                    "justificacion": "No validada en revisión oficial - NIE"
-                }
+                metadata = {"placa_final": ev.plate_text or "", "confianza": round(confianza, 3), "calidad_deteccion": "baja", "justificacion": "No validada en revisión oficial - NIE"}
                 placa_label = ev.plate_text or f"TRACK-{ev.track_id}"
-                nie_entries.append(_build_entry(
-                    placa_label, confianza, "NIE",
-                    plate_path, "", ev.timestamp_seconds, metadata
-                ))
-
-        # Pendientes sin placa (recuadros amarillos) -> NIE
+                nie_entries.append(_build_entry(placa_label, confianza, "NIE", plate_path, "", ev.timestamp_seconds, metadata))
         for pend in (pending_infractions or []):
             crop = str(pend.get("crop_path", "") or "")
             plate_path = crop if crop and os.path.exists(crop) else ""
-            metadata = {
-                "placa_final": "",
-                "confianza": 0.0,
-                "calidad_deteccion": "baja",
-                "justificacion": "Infracción pendiente sin placa detectada - NIE"
-            }
-            nie_entries.append(_build_entry(
-                f"TRACK-{pend.get('vehicle_id', '?')}", 0.0, "NIE",
-                plate_path, "", pend.get("timestamp_seconds", 0), metadata
-            ))
+            metadata = {"placa_final": "", "confianza": 0.0, "calidad_deteccion": "baja", "justificacion": "Infracción pendiente sin placa detectada - NIE"}
+            nie_entries.append(_build_entry(f"TRACK-{pend.get('vehicle_id', '?')}", 0.0, "NIE", plate_path, "", pend.get("timestamp_seconds", 0), metadata))
 
-        data_dir = resource_path("data")
-        os.makedirs(data_dir, exist_ok=True)
-
-        # Guardar NID en infracciones.json
-        if nid_entries:
-            infractions_file = os.path.join(data_dir, "infracciones.json")
-            data = read_json(infractions_file, [])
-            existing = data['infracciones'] if isinstance(data, dict) and 'infracciones' in data else (data if isinstance(data, list) else [])
-            final = nid_entries + existing
-            write_json(infractions_file, {"infracciones": final})
-            print(f"📝 [OFICIAL] NID guardadas: {len(nid_entries)} nuevas + {len(existing)} anteriores = {len(final)} en infracciones.json")
-
-        # Guardar NIE en nie_infracciones.json
-        if nie_entries:
-            nie_file = os.path.join(data_dir, "nie_infracciones.json")
-            data = read_json(nie_file, [])
-            existing = data['infracciones'] if isinstance(data, dict) and 'infracciones' in data else (data if isinstance(data, list) else [])
-            final = nie_entries + existing
-            write_json(nie_file, {"infracciones": final})
-            print(f"📝 [OFICIAL] NIE guardadas: {len(nie_entries)} nuevas + {len(existing)} anteriores = {len(final)} en nie_infracciones.json")
-
-        if not nid_entries and not nie_entries:
+        all_entries = nid_entries + nie_entries
+        if all_entries:
+            repo = AppRepository()
+            inserted = repo.insert_infractions(all_entries)
+            print(f"📝 [OFICIAL][SQLite] Insertadas {inserted} infracciones ({len(nid_entries)} NID + {len(nie_entries)} NIE) para {nombre_video}")
+        else:
             print("⚠️ [OFICIAL] No se guardaron infracciones (sin evidencias ni pendientes)")
+        return nid_entries, nie_entries
+
+    # Alias legacy para compatibilidad externa
+    def _save_official_infractions_to_json(self, evidences, pending_infractions=None):
+        return self._save_official_infractions_to_db(evidences, pending_infractions)
 
     def _generate_thesis_metrics(self, infractions):
         """

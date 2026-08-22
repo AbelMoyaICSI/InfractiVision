@@ -1217,6 +1217,9 @@ class VideoPlayerOpenCV:
         self.load_polygon_for_video()
         self.clear_detected_plates()
         
+        # Reiniciar temporizador de ejecución del semáforo para el video nuevo
+        self.semaforo.reset_execution_timer()
+        
         # Configurar semáforo pero NO activar
         self.semaforo.current_state = "green"
         
@@ -2984,14 +2987,14 @@ class VideoPlayerOpenCV:
         self.ti_label.pack(side="left", padx=2)
         
         self.tr_label = tk.Label(
-            self.metrics_frame, text="TR TOTAL:0.00min",
+            self.metrics_frame, text="TR:0.00min",
             bg="#e67e22", fg="white", font=("Arial", 9, "bold"),
             padx=4, pady=2, relief="flat", width=14
         )
         self.tr_label.pack(side="left", padx=2)
         
         self.nid_label = tk.Label(
-            self.metrics_frame, text="NID: 0 correctas",
+            self.metrics_frame, text="NID: 0",
             bg="#27ae60", fg="white", font=("Arial", 10, "bold"),
             padx=4, pady=2, relief="flat", width=12
         )
@@ -3143,7 +3146,6 @@ class VideoPlayerOpenCV:
             print("✅ Todos los labels están disponibles")
             
             # 🔧 MÉTODO CORREGIDO: Calcular DIRECTAMENTE desde las cards visibles
-            tr_individual_times = []
             nid_count = 0
             nie_count = 0
             total_cards = 0
@@ -3154,11 +3156,6 @@ class VideoPlayerOpenCV:
                 
                 for plate_data in self.detected_plates_widgets:
                     if isinstance(plate_data, dict):
-                        # OBTENER TR INDIVIDUAL de cada card para el cálculo correcto
-                        if 'timestamp' in plate_data and plate_data['timestamp'] is not None:
-                            tr_minutes = plate_data['timestamp'] / 60.0
-                            tr_individual_times.append(tr_minutes)
-                        
                         # CLASIFICAR COMO NID O NIE basado en la clasificación YA GUARDADA
                         classification = plate_data.get('classification', 'NIE')
                         
@@ -3167,12 +3164,14 @@ class VideoPlayerOpenCV:
                         else:  # NIE
                             nie_count += 1
             
-            # 🧮 CALCULAR TR TOTAL CORREGIDO: SUMA ACUMULADA (NO promedio)
-            if tr_individual_times:
-                tr_total = sum(tr_individual_times)  # ← SUMA TOTAL, no promedio
+            # 🧮 CALCULAR TR: duración total del procesamiento / infracciones validadas (NID)
+            video_processing_seconds = max(0.0, time.time() - self.detection_start_time)
+            if nid_count > 0:
+                tr_seconds_per_infraction = video_processing_seconds / nid_count
             else:
-                # Fallback: usar función anterior si no hay datos de cards
-                tr_total = self._calculate_registration_time()
+                tr_seconds_per_infraction = 0.0
+            tr_mm, tr_ss = divmod(int(round(tr_seconds_per_infraction)), 60)
+            tr_text = f"{tr_mm:02d}:{tr_ss:02d}"
             
             # 📊 TI (Tasa de Infracciones) - mantener cálculo actual
             ti = self._calculate_infraction_rate()
@@ -3184,32 +3183,32 @@ class VideoPlayerOpenCV:
             if current_layout == 'large':
                 # Texto completo para paneles grandes
                 self.ti_label.config(text=f"TI:{ti:.1f}%")
-                self.tr_label.config(text=f"TR TOTAL:{tr_total:.2f}min")
-                self.nid_label.config(text=f"NID: {nid_count} correctas")
+                self.tr_label.config(text=f"TR:{tr_text}")
+                self.nid_label.config(text=f"NID: {nid_count}")
                 self.nie_label.config(text=f"NIE:{nie_count}")
             elif current_layout == 'medium':
                 # Texto compacto para paneles medianos
                 self.ti_label.config(text=f"TI:{ti:.1f}%")
-                self.tr_label.config(text=f"TR:{tr_total:.2f}min")
+                self.tr_label.config(text=f"TR:{tr_text}")
                 self.nid_label.config(text=f"NID:{nid_count}")
                 self.nie_label.config(text=f"NIE:{nie_count}")
             else:  # small
                 # Texto muy compacto para paneles pequeños
                 self.ti_label.config(text=f"TI:{ti:.1f}%")
-                self.tr_label.config(text=f"TR:{tr_total:.2f}min")
+                self.tr_label.config(text=f"TR:{tr_text}")
                 self.nid_label.config(text=f"NID:{nid_count}")
                 self.nie_label.config(text=f"NIE:{nie_count}")
             
             # DEBUG: Mostrar valores actualizados
             print(f"📊 INDICADORES ACTUALIZADOS:")
-            print(f"   TI: {ti:.1f}% | TR: {tr_total:.2f}min | NID: {nid_count} | NIE: {nie_count}")
+            print(f"   TI: {ti:.1f}% | TR: {tr_text} ({tr_seconds_per_infraction:.2f}s/inf) | NID: {nid_count} | NIE: {nie_count}")
             print(f"   Total cards: {total_cards}")
             
             # 🐛 DEBUG: Mostrar cálculos para verificación
-            if tr_individual_times:
-                print(f"🧮 TR TOTAL CORREGIDO (SUMA ACUMULADA):")
-                print(f"   TR individuales: {[f'{t:.3f}' for t in tr_individual_times]} min")
-                print(f"   SUMA TOTAL: {sum(tr_individual_times):.3f} min")
+            print(f"🧮 TR (duración procesamiento / infracciones validadas):")
+            print(f"   Duración procesamiento: {video_processing_seconds:.2f}s")
+            print(f"   Infracciones validadas (NID): {nid_count}")
+            print(f"   TR: {tr_seconds_per_infraction:.2f}s/infracción = {tr_text}")
             
             print(f"📊 NID CORREGIDO:")
             print(f"   Cards totales en panel: {total_cards}")
@@ -3683,6 +3682,9 @@ class VideoPlayerOpenCV:
             self.semaforo.current_state = "green"
             self.semaforo.target_time = time.time() + self.semaforo.cycle_durations[self.semaforo.current_state]
             
+            # Reiniciar temporizador de ejecución para el video nuevo
+            self.semaforo.reset_execution_timer()
+            
             # Activar el semáforo
             self.semaforo.activate_semaphore()
         
@@ -4063,51 +4065,6 @@ class VideoPlayerOpenCV:
         report += f"Diferencia: {ti_simple - ti_validated:.1f} puntos porcentuales\n"
         
         return report
-
-    def _calculate_registration_time(self):
-        """
-        TR TOTAL: Tiempo de Registro TOTAL ACUMULADO en MINUTOS
-        CORREGIDO: Suma TOTAL de todos los TR, NO el promedio.
-        Representa el tiempo total acumulado que tardó el sistema.
-        """
-        if not hasattr(self, "detected_plates_widgets") or not self.detected_plates_widgets:
-            return 0.0
-        
-        # MÉTODO CORREGIDO: SUMAR todos los TR individuales (NO promediar)
-        total_tr_time = 0.0
-        
-        for plate_data in self.detected_plates_widgets:
-            if isinstance(plate_data, dict) and 'timestamp' in plate_data:
-                timestamp = plate_data['timestamp']
-                if timestamp is not None and timestamp > 0:
-                    tr_minutes = timestamp / 60.0  # Convertir a minutos
-                    total_tr_time += tr_minutes  # ← SUMAR, no promediar
-        
-        if total_tr_time > 0:
-            print(f"🧮 TR TOTAL desde cards: {total_tr_time:.3f} min (suma acumulada)")
-            return total_tr_time
-        
-        # Fallback: usar historial con suma acumulada
-        if hasattr(self, "plate_detection_history") and self.plate_detection_history:
-            registration_times = []
-            
-            for plate_id, data in self.plate_detection_history.items():
-                if "processing_time" in data and data["processing_time"] > 0:
-                    registration_times.append(data["processing_time"])
-                    
-                elif "detection_time" in data and "registration_time" in data:
-                    proc_time = data["registration_time"] - data["detection_time"]
-                    if proc_time > 0:
-                        registration_times.append(proc_time)
-                        data["processing_time"] = proc_time
-            
-            if registration_times:
-                # CORREGIDO: Sumar todos los tiempos, NO promediar
-                total_time_seconds = sum(registration_times)  # ← SUMA TOTAL
-                total_time_minutes = total_time_seconds / 60.0
-                return max(0.001, total_time_minutes)
-        
-        return 0.0
 
     def limpiar_configuracion_video(self):
         """Limpia solo la configuración del video actual"""

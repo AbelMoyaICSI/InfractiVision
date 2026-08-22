@@ -20,6 +20,16 @@ from src.infrastructure.configuration import VideoConfig
 from src.infrastructure.reports import ReportRepository
 
 
+def _format_hms(seconds):
+    """Formatea segundos como HH:mm:ss, omitiendo la hora si es 0."""
+    seconds = max(0, int(seconds))
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
 class OfficialVideoProcessor:
     def __init__(self, project_root: str | Path, vehicle_detector=None, plate_detector=None,
                  report_repository: ReportRepository | None = None,
@@ -28,8 +38,8 @@ class OfficialVideoProcessor:
         self.vehicle_detector = vehicle_detector
         self.plate_detector = plate_detector
         self.reports = report_repository or ReportRepository()
-        self.min_plate_crop_w = 40
-        self.min_plate_crop_h = 20
+        self.min_plate_crop_w = 55
+        self.min_plate_crop_h = 30
         self.plate_crop_margin = 0.5
         # Si es False, no se pinta el cartel "SEMAFORO: X" sobre el video
         # (el estado se muestra en el widget Semaforo de la GUI).
@@ -90,7 +100,8 @@ class OfficialVideoProcessor:
     @staticmethod
     def _draw(frame: np.ndarray, polygon: np.ndarray, tracks: dict, state: str,
               plate_boxes: dict[int, list[tuple[int, int, int, int]]], frame_index: int,
-              draw_state_banner: bool = True) -> np.ndarray:
+              draw_state_banner: bool = True, elapsed_seconds: float | None = None,
+              durations: tuple[int, int, int] | None = None) -> np.ndarray:
         display = frame.copy()
         cv2.polylines(display, [polygon], True, (0, 0, 255), 2)
         for track_id, track in tracks.items():
@@ -116,6 +127,14 @@ class OfficialVideoProcessor:
             size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
             cv2.rectangle(display, (5, 5), (size[0] + 14, 34), banner_color[1], -1)
             cv2.putText(display, text, (9, 27), cv2.FONT_HERSHEY_SIMPLEX, 0.7, banner_color[0], 2)
+
+            # Tiempo de ejecución y parámetros del ciclo bajo el cartel del semáforo
+            elapsed = elapsed_seconds if elapsed_seconds is not None else 0
+            g, y, r = durations if durations is not None else (0, 0, 0)
+            cv2.putText(display, f"T: {_format_hms(elapsed)}", (9, 56),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(display, f"G{g}s Y{y}s R{r}s", (9, 76),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         return display
 
     def process(self, video_path: str | Path, config: VideoConfig, output_dir: str | Path,
@@ -212,11 +231,13 @@ class OfficialVideoProcessor:
                         crop = vehicle[max(0, local[1]):min(vehicle.shape[0], local[3]), max(0, local[0]):min(vehicle.shape[1], local[2])]
                         if crop.size == 0:
                             continue
-                        if not self._viable_plate_crop(crop):
+                        crop_with_margin = self._plate_crop_with_margin(vehicle, local)
+                        evidence_crop = crop_with_margin if crop_with_margin.size else crop
+                        if not self._viable_plate_crop(evidence_crop):
                             continue
                         plate_found = True
                         mapped.append((x1 + local[0], y1 + local[1], x1 + local[2], y1 + local[3]))
-                        quality = self._quality(crop)
+                        quality = self._quality(evidence_crop)
                         crossing_frame = pending_crossings.get(track_id)
                         if crossing_frame is not None and track_id not in confirmed_at:
                             confirmed_at[track_id] = frame_index
@@ -239,8 +260,7 @@ class OfficialVideoProcessor:
                         if is_valid_candidate and quality >= best.get(track_id, PlateEvidence("", 0, 0, 0, "", -1)).quality_score:
                             crop_path = output_dir / "crops" / f"{video_path.stem}_v{track_id}_best.jpg"
                             crop_path.parent.mkdir(parents=True, exist_ok=True)
-                            crop_with_margin = self._plate_crop_with_margin(vehicle, local)
-                            cv2.imwrite(str(crop_path), crop_with_margin if crop_with_margin.size else crop)
+                            cv2.imwrite(str(crop_path), evidence_crop)
                             best[track_id] = PlateEvidence(config.video_name, track_id, frame_index, frame_index / fps, track["class_name"], quality, str(crop_path))
                     if mapped and plate_found:
                         plate_boxes[track_id] = mapped
@@ -263,7 +283,9 @@ class OfficialVideoProcessor:
                     if track_id in tracks
                 }
 
-            display = self._draw(frame, polygon, tracks, state, plate_boxes, frame_index, self.draw_state_banner)
+            display = self._draw(frame, polygon, tracks, state, plate_boxes, frame_index,
+                                 self.draw_state_banner, time.time() - started,
+                                 (config.green, config.yellow, config.red))
             if writer is not None and should_display:
                 writer.write(display)
             if callback is not None and should_display:

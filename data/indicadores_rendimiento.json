@@ -1,1 +1,118 @@
-{}
+{
+  "fecha_generacion": "21/08/2026 14:50:26",
+  "periodo_analisis": "21/08/2026 - 21/08/2026",
+  "dias_analizados": 1,
+  "ubicacion": "av. pesquedo",
+  "nombre_video": "VID2EDIT ‐ Hecho con Clipchamp.mp4",
+  "config_semaforo": "10-3-15",
+  "nota": "Datos de la sesión actual de procesamiento, no acumulados históricos",
+  "indicadores": {
+    "TI": {
+      "descripcion": "Tasa de Infracciones Detectadas (Nivel Diario Agregado)",
+      "unidad": "infracciones por día comparativo (%)",
+      "sin_software": {
+        "registros_campo_diarios": 4.23,
+        "fuente": "Registros PNP históricos"
+      },
+      "con_software": {
+        "detecciones_software_diarias": 56.0,
+        "dias_analizados": 1
+      },
+      "porcentaje_acierto": 28.57
+    },
+    "TR": {
+      "descripcion": "Tiempo de Registro por Infracción Individual",
+      "unidad": "minutos por infracción (min)",
+      "sin_software": {
+        "tiempo_promedio_minutos": 7.2,
+        "fuente": "Estimación basada en registros históricos de campo"
+      },
+      "con_software": {
+        "tiempo_promedio_minutos": 0.84,
+        "tiempos_individuales": [
+          0.29,
+          0.29,
+          0.39,
+          0.46,
+          0.46,
+          0.72,
+          0.88,
+          1.28,
+          1.33,
+          1.27,
+          1.38,
+          1.67,
+          1.65,
+          1.75,
+          1.75,
+          1.76,
+          0.25,
+          0.23,
+          0.22,
+          0.22,
+          0.24,
+          0.24,
+          0.39,
+          0.41,
+          0.43,
+          0.44,
+          0.44,
+          0.46,
+          0.68,
+          0.69,
+          0.7,
+          0.72,
+          0.71,
+          0.72,
+          0.72,
+          0.73,
+          0.83,
+          0.83,
+          0.84,
+          0.86,
+          0.84,
+          0.85,
+          0.85,
+          0.86,
+          0.86,
+          0.88,
+          0.87,
+          0.87,
+          0.88,
+          0.89,
+          1.15,
+          1.27,
+          1.32,
+          1.33,
+          1.34,
+          1.86
+        ],
+        "muestras_analizadas": 56
+      },
+      "reduccion_tiempo_porcentual": 88.27,
+      "veces_mas_rapido": 8.53
+    },
+    "NID": {
+      "descripcion": "Número de Infracciones Detectadas Correctamente (Clasificación por Confianza)",
+      "unidad": "cantidad válida por día",
+      "infracciones_hoy": 16,
+      "promedio_diario": 16.0,
+      "periodo_analizado": "1 días",
+      "total": 16
+    },
+    "NIE": {
+      "descripcion": "Número de Infracciones Incorrectamente Registradas",
+      "unidad": "cantidad no válida por día",
+      "infracciones_incorrectas": 40,
+      "total": 40
+    }
+  },
+  "resumen_global": {
+    "ti_porcentaje_acierto": "28.6%",
+    "tiempo_registro_minutos": "0.84 min",
+    "infracciones_detectadas_hoy": 16,
+    "nid_total": 16,
+    "nie_total": 40,
+    "tir_total": 56
+  }
+}

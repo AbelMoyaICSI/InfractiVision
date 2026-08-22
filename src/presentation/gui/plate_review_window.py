@@ -1,6 +1,7 @@
 """Scrollable sequential review of the best plate crop per infractor."""
 from __future__ import annotations
 
+import queue
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -26,6 +27,9 @@ class PlateReviewWindow:
         self.images: list[ImageTk.PhotoImage] = []
         self.rows: list[dict] = []
         self.reader = PlateRecognizerSnapshotReader()
+        # Tkinter NO es thread-safe: el worker de OCR nunca toca widgets.
+        # Publica resultados en esta cola y un poller (hilo de Tk) los drena.
+        self._results_queue: queue.Queue[tuple[int, str, float, str]] = queue.Queue()
 
         self.window = tk.Toplevel(parent)
         self.window.title("Validación secuencial de placas")
@@ -35,6 +39,7 @@ class PlateReviewWindow:
         self._build()
         self._render_all()
         self.window.after(150, self._process_next)
+        self.window.after(50, self._poll_results)
 
     def _build(self):
         ttk.Label(
@@ -66,6 +71,7 @@ class PlateReviewWindow:
         controls = ttk.Frame(self.window)
         controls.pack(fill="x", padx=12, pady=10)
         ttk.Button(controls, text="Reintentar actual", command=self._retry_current).pack(side="left")
+        ttk.Button(controls, text="Completado", command=self._complete).pack(side="right", padx=(0, 8))
         ttk.Button(controls, text="Exportar validados", command=self._export).pack(side="right")
 
     def _render_all(self):
@@ -140,9 +146,24 @@ class PlateReviewWindow:
                 error = ""
             except Exception as exc:
                 text, confidence, error = "", 0.0, str(exc)
-            self.window.after(0, lambda: self._show_result(idx, text, confidence, error))
+            # NUNCA llamar Tk desde este hilo: encolar y dejar que el poller
+            # (hilo principal) aplique _show_result.
+            self._results_queue.put((idx, text, confidence, error))
 
         threading.Thread(target=work, daemon=True).start()
+
+    def _poll_results(self):
+        """[HILO DE TK] Drena la cola de resultados del worker de OCR."""
+        try:
+            while True:
+                index, text, confidence, error = self._results_queue.get_nowait()
+                self._show_result(index, text, confidence, error)
+        except queue.Empty:
+            pass
+        try:
+            self.window.after(50, self._poll_results)
+        except tk.TclError:
+            pass
 
     def _show_result(self, index: int, text: str, confidence: float, error: str):
         if index >= len(self.rows):
@@ -184,6 +205,16 @@ class PlateReviewWindow:
             return
         json_path, csv_path = ReportRepository().export_validated(self.output_dir, valid)
         messagebox.showinfo("Reporte exportado", f"JSON: {json_path}\nCSV: {csv_path}", parent=self.window)
+
+    def _complete(self):
+        """Botón 'Completado': aplica la validación, notifica al llamador
+        (que dispara la migración) y cierra la ventana."""
+        self._apply_review_values()
+        self._notify_complete()
+        try:
+            self.window.destroy()
+        except Exception:
+            pass
 
     def _on_close(self):
         """Al cerrar la ventana sincroniza la validación marcada (sin exportar)."""

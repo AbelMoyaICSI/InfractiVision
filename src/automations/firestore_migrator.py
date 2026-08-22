@@ -1,7 +1,8 @@
 """Migración por-video a Firestore en el formato solicitado.
 
-Por cada video procesado (nombre_video) se escribe un documento en la
-colección `migraciones/{video_name}` con el siguiente esquema:
+Por cada ejecución de validación se escribe un documento en la
+colección `migraciones/{id}` (id único por ejecución; el mismo video puede
+repetirse en varios documentos) con el siguiente esquema:
 
     {
       "ti": number, "tr": number, "NID": number, "NIE": number,
@@ -20,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import uuid
 from datetime import datetime
 
 from src.path_helper import resource_path
@@ -27,38 +29,20 @@ from src.path_helper import resource_path
 ADMIN_KEY = resource_path("infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json")
 PROJECT_ID = "infractivision-e8c03"
 
-INFRA_FILE = resource_path("data/infracciones.json")
-NIE_FILE = resource_path("data/nie_infracciones.json")
-INDIC_FILE = resource_path("data/indicadores_rendimiento.json")
-TIME_PRESETS_FILE = resource_path("config/time_presets.json")
-POLYGON_FILE = resource_path("config/polygon_config.json")
 
-
-def _load_json_array(path: str) -> list:
-    if not os.path.exists(path):
-        return []
+def _settings_for_from_db(video_name: str) -> dict:
+    """Lee settings desde SQLite (video_configs), fallback vacío."""
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            return data.get("infracciones", []) if isinstance(data.get("infracciones"), list) else []
-        if isinstance(data, list):
-            return data
+        from src.infrastructure.database.app_repository import AppRepository
+        repo = AppRepository()
+        cfg = repo.get_video_config(video_name)
+        if cfg:
+            polygon = cfg.get("polygon") or []
+            polygon_points = [{"x": float(p[0]), "y": float(p[1])} for p in polygon if isinstance(p, (list, tuple)) and len(p) >= 2]
+            return {"red": int(cfg.get("red") or 0), "green": int(cfg.get("green") or 0), "yellow": int(cfg.get("yellow") or 0), "polygon": polygon_points}
     except Exception as e:
-        print(f"⚠️ Error leyendo {path}: {e}")
-    return []
-
-
-def _load_json_dict(path: str) -> dict:
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception as e:
-        print(f"⚠️ Error leyendo {path}: {e}")
-        return {}
+        print(f"⚠️ Error leyendo settings desde DB: {e}")
+    return {"red": 0, "green": 0, "yellow": 0, "polygon": []}
 
 
 def _parse_date(value: str) -> datetime | None:
@@ -90,22 +74,8 @@ def _parse_video_timestamp(ts: str) -> int:
 
 
 def _settings_for(video_name: str) -> dict:
-    """Construye settings {red, green, yellow, polygon} para un video."""
-    presets = _load_json_dict(TIME_PRESETS_FILE)
-    polygons = _load_json_dict(POLYGON_FILE)
-
-    cfg = presets.get(video_name, {})
-    red = int(cfg.get("red", 0))
-    green = int(cfg.get("green", 0))
-    yellow = int(cfg.get("yellow", 0))
-    polygon = polygons.get(video_name, [])
-
-    return {
-        "red": red,
-        "green": green,
-        "yellow": yellow,
-        "polygon": polygon,
-    }
+    """Compat: delega a DB."""
+    return _settings_for_from_db(video_name)
 
 
 def _deteccion_for(video_name: str, infractions: list) -> list:
@@ -141,29 +111,25 @@ def _deteccion_for(video_name: str, infractions: list) -> list:
 
 
 def _build_video_document(video_name: str, infractions: list) -> dict | None:
+    """Calcula TI/NID/NIE/TR SOLO sobre la sesión pasada (sin fallback JSON)."""
     if not infractions:
         return None
-
     nid = sum(1 for i in infractions if i.get("clasificacion", "NID") == "NID")
     nie = sum(1 for i in infractions if i.get("clasificacion", "NID") != "NID")
     total = nid + nie
     ti = (nid / total * 100.0) if total else 0.0
-
     times = [float(i.get("tiempo_procesamiento", 0) or 0) for i in infractions if (i.get("tiempo_procesamiento") or 0) > 0]
-    tr = (sum(times) / len(times) / 60.0) if times else 0.0  # seg -> min
-
-    fecha = _parse_date(infractions[0].get("fecha", "")) or datetime.now()
-
-    # Fallback TR/TI desde indicadores_rendimiento.json si existe coincidencia de video
-    indicadores = _load_json_dict(INDIC_FILE)
-    if (not times) or tr <= 0:
-        tr = 0.0
+    tr = (sum(times) / len(times) / 60.0) if times else 0.0
+    # TR fallback desde SQLite indicators si no hay tiempos (misma sesión)
+    if tr <= 0:
         try:
-            tr_con = indicadores.get("indicadores", {}).get("TR", {}).get("con_software", {})
-            tr = float(tr_con.get("tiempo_promedio_minutos", 0) or 0)
+            from src.infrastructure.database.app_repository import AppRepository
+            indic = AppRepository().get_indicators()
+            if indic:
+                tr = float(indic.get("indicadores", {}).get("TR", {}).get("con_software", {}).get("tiempo_promedio_minutos", 0) or 0)
         except Exception:
-            tr = 0.0
-
+            pass
+    fecha = _parse_date(infractions[0].get("fecha", "")) or datetime.now()
     return {
         "ti": round(ti, 2),
         "tr": round(tr, 4),
@@ -176,36 +142,66 @@ def _build_video_document(video_name: str, infractions: list) -> dict | None:
     }
 
 
-def migrate_videos_to_firestore(verbose: bool = True) -> dict:
-    """Agrupa las infracciones por video y sube un documento por cada video a Firestore.
+def build_session_document(infractions_session: list) -> dict | None:
+    """API para sesión actual: agrupa por video y valida coherencia."""
+    if not infractions_session:
+        return None
+    video = infractions_session[0].get("nombre_video", "desconocido.mp4")
+    return _build_video_document(video, infractions_session)
 
-    Returns:
-        dict con "migrados", "errores" y "documentos".
+
+def migrate_single_video_to_firestore(video_name: str, infractions_session: list, verbose: bool = True) -> dict:
+    """Migra SOLO la sesión actual de un video (SQLite es fuente, sin JSON).
+
+    TI/TR/NID/NIE se calculan exclusivamente sobre `infractions_session`,
+    garantizando coincidencia con `indicadores` de la misma sesión.
     """
     import firebase_admin
     from firebase_admin import credentials, firestore
 
+    if not infractions_session:
+        return {"migrados": 0, "errores": ["sin infracciones en sesión"], "documentos": {}}
     if not os.path.exists(ADMIN_KEY):
         raise FileNotFoundError(f"No se encontró la llave admin: {ADMIN_KEY}")
-
     if not firebase_admin._apps:
         cred = credentials.Certificate(ADMIN_KEY)
         firebase_admin.initialize_app(cred, {"projectId": PROJECT_ID})
-
     db = firestore.client()
+    doc = _build_video_document(video_name, infractions_session)
+    if doc is None:
+        return {"migrados": 0, "errores": ["documento vacío"], "documentos": {}}
+    try:
+        doc_id = str(uuid.uuid4())
+        db.collection("migraciones").document(doc_id).set(doc)
+        if verbose:
+            print(f"  ✔ {video_name}: NID={doc['NID']} NIE={doc['NIE']} TI={doc['ti']}% TR={doc['tr']}min (sesión)")
+        return {"migrados": 1, "errores": [], "documentos": {video_name: doc}}
+    except Exception as e:
+        if verbose:
+            print(f"  ✗ {video_name}: {e}")
+        return {"migrados": 0, "errores": [str(e)], "documentos": {}}
 
-    infracciones = _load_json_array(INFRA_FILE)
-    nie = _load_json_array(NIE_FILE)
-    all_infractions = infracciones + nie
 
+def migrate_videos_to_firestore(verbose: bool = True) -> dict:
+    """CLI/backfill: migra todo lo almacenado en SQLite (agrupado por video)."""
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+    from src.infrastructure.database.app_repository import AppRepository
+
+    if not os.path.exists(ADMIN_KEY):
+        raise FileNotFoundError(f"No se encontró la llave admin: {ADMIN_KEY}")
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(ADMIN_KEY)
+        firebase_admin.initialize_app(cred, {"projectId": PROJECT_ID})
+    db = firestore.client()
+    repo = AppRepository()
+    all_infractions = repo.list_infractions(limit=100000)
     by_video: dict[str, list] = {}
     for inf in all_infractions:
         video = inf.get("nombre_video", "desconocido.mp4")
         by_video.setdefault(video, []).append(inf)
-
     if verbose:
-        print(f"📹 Videos a migrar: {len(by_video)}")
-
+        print(f"📹 Videos a migrar (SQLite): {len(by_video)}")
     migrados = 0
     errores = []
     documentos = {}
@@ -214,7 +210,8 @@ def migrate_videos_to_firestore(verbose: bool = True) -> dict:
         if doc is None:
             continue
         try:
-            db.collection("migraciones").document(video_name).set(doc)
+            doc_id = str(uuid.uuid4())
+            db.collection("migraciones").document(doc_id).set(doc)
             documentos[video_name] = doc
             migrados += 1
             if verbose:
@@ -223,7 +220,6 @@ def migrate_videos_to_firestore(verbose: bool = True) -> dict:
             errores.append(f"{video_name}: {e}")
             if verbose:
                 print(f"  ✗ {video_name}: {e}")
-
     if verbose:
         print(f"✅ {migrados} videos migrados a Firestore ({PROJECT_ID})")
     return {"migrados": migrados, "errores": errores, "documentos": documentos}

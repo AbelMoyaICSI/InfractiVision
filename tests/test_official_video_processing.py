@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -9,6 +10,7 @@ from src.infrastructure.configuration import VideoConfigRepository
 from src.infrastructure.ocr.cloud_plate_readers import PlateRecognizerSnapshotReader
 from src.infrastructure.reports import ReportRepository
 from src.domain.entities.plate_evidence import PlateEvidence
+from src.presentation.gui.plate_review_window import PlateReviewWindow
 
 
 def test_video_config_repository_uses_existing_gui_files():
@@ -90,7 +92,7 @@ def test_report_excludes_evidence_without_plate_text(tmp_path):
 def test_viable_plate_crop_rejects_tiny_crops():
     processor = OfficialVideoProcessor(Path.cwd())
     tiny = np.zeros((12, 26, 3), dtype=np.uint8)
-    ok = np.zeros((25, 50, 3), dtype=np.uint8)
+    ok = np.zeros((35, 70, 3), dtype=np.uint8)
 
     assert processor._viable_plate_crop(tiny) is False
     assert processor._viable_plate_crop(ok) is True
@@ -110,3 +112,18 @@ def test_plate_crop_with_margin_pads_and_clamps_to_vehicle():
     corner = processor._plate_crop_with_margin(vehicle, (0, 0, 40, 20))
     assert corner.shape[:2] == (30, 60)
     assert corner[0, 0, 0] == vehicle[0, 0, 0]
+
+
+def test_plate_review_poll_drains_worker_results():
+    """El worker encola resultados y el poller de Tk los aplica (no `after` desde el hilo)."""
+    window = PlateReviewWindow.__new__(PlateReviewWindow)
+    window._results_queue = __import__("queue").Queue()
+    seen = []
+    window.window = SimpleNamespace(after=lambda _ms, _fn: None)
+    window._show_result = lambda *args: seen.append(args)
+
+    window._results_queue.put((2, "T5K479", 0.94, ""))
+    window._poll_results()
+
+    assert seen == [(2, "T5K479", 0.94, "")]
+    assert window._results_queue.empty()
