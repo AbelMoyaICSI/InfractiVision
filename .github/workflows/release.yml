@@ -51,23 +51,35 @@ jobs:
       - name: Build PyInstaller
         run: python -m PyInstaller --noconfirm --clean ${{ matrix.spec }}
       - name: Smoke test built exe
+        shell: bash
         run: |
           ls -lh dist/
-          # smoke: el exe existe y no es vacío
-          test -f dist/InfractiVision || test -f dist/InfractiVision.exe
+          # smoke: el exe existe y no es vacío (cross-platform: bash en Windows via Git Bash)
+          test -f dist/InfractiVision || test -f dist/InfractiVision.exe || (echo "ERROR: exe missing in dist/" && ls -R dist && exit 1)
+          echo "Smoke OK: $(ls -lh dist/InfractiVision* 2>/dev/null | head -n 5)"
       - name: Zip artifact
         shell: bash
         run: |
-          cd dist
           ARCH=$(uname -m); [[ "$ARCH" == "x86_64" ]] && ARCH="x64" || true; [[ "$ARCH" == "arm64" ]] && ARCH="arm64" || true
           OS_TAG="Linux"; [[ "${{ matrix.os }}" == "windows-latest" ]] && OS_TAG="Win"; [[ "${{ matrix.os }}" == "macos-latest" ]] && OS_TAG="Mac"
           NAME="InfractiVision-${{ matrix.variant }}-${OS_TAG}-${ARCH}.zip"
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            powershell Compress-Archive -Path InfractiVision.exe,models,img,config -DestinationPath $NAME 2>/dev/null || 7z a $NAME dist/InfractiVision.exe 2>/dev/null || zip -r $NAME InfractiVision.exe
+            # En Windows el exe ya contiene datas, solo zippear el exe
+            if [[ -f dist/InfractiVision.exe ]]; then
+              if command -v powershell >/dev/null 2>&1; then
+                powershell -Command "Compress-Archive -Path dist/InfractiVision.exe -DestinationPath dist/$NAME -Force" 2>/dev/null || (cd dist && zip -j "$NAME" InfractiVision.exe)
+              else
+                (cd dist && zip -j "$NAME" InfractiVision.exe)
+              fi
+            else
+              echo "ERROR: dist/InfractiVision.exe no existe" && ls -lh dist/
+              exit 1
+            fi
+            ls -lh "dist/$NAME" 2>/dev/null || ls -lh dist/*.zip 2>/dev/null || true
           else
-            zip -r "$NAME" InfractiVision 2>/dev/null || tar czf "${NAME%.zip}.tar.gz" InfractiVision
+            (cd dist && zip -r "$NAME" InfractiVision 2>/dev/null || tar czf "${NAME%.zip}.tar.gz" InfractiVision)
+            ls -lh "dist/$NAME" 2>/dev/null || ls -lh dist/*.zip dist/*.tar.gz 2>/dev/null || true
           fi
-          ls -lh "$NAME" 2>/dev/null || ls -lh *.zip *.tar.gz 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         with:
           name: InfractiVision-${{ matrix.variant }}-${{ matrix.os }}
