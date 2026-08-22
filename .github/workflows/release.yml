@@ -1,0 +1,115 @@
+name: release-online
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (e.g. 2.1.0)"
+        required: false
+        default: "2.1.0"
+
+jobs:
+  build-artifacts:
+    name: Build ${{ matrix.variant }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            variant: cpu
+            req: requirements-cpu.txt
+            spec: InfractiVision-CPU.spec
+          - os: windows-latest
+            variant: cuda
+            req: requirements.txt
+            spec: InfractiVision-CUDA.spec
+          - os: ubuntu-latest
+            variant: cpu
+            req: requirements-cpu.txt
+            spec: InfractiVision-CPU.spec
+          - os: ubuntu-latest
+            variant: cuda
+            req: requirements.txt
+            spec: InfractiVision-CUDA.spec
+          - os: macos-latest
+            variant: cpu
+            req: requirements-cpu.txt
+            spec: InfractiVision-CPU.spec
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install Tk (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+      - name: Install deps
+        run: pip install -r ${{ matrix.req }}
+      - name: Build PyInstaller
+        run: python -m PyInstaller --noconfirm --clean ${{ matrix.spec }}
+      - name: Smoke test built exe
+        run: |
+          ls -lh dist/
+          # smoke: el exe existe y no es vacío
+          test -f dist/InfractiVision || test -f dist/InfractiVision.exe
+      - name: Zip artifact
+        shell: bash
+        run: |
+          cd dist
+          ARCH=$(uname -m); [[ "$ARCH" == "x86_64" ]] && ARCH="x64" || true; [[ "$ARCH" == "arm64" ]] && ARCH="arm64" || true
+          OS_TAG="Linux"; [[ "${{ matrix.os }}" == "windows-latest" ]] && OS_TAG="Win"; [[ "${{ matrix.os }}" == "macos-latest" ]] && OS_TAG="Mac"
+          NAME="InfractiVision-${{ matrix.variant }}-${OS_TAG}-${ARCH}.zip"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            powershell Compress-Archive -Path InfractiVision.exe,models,img,config -DestinationPath $NAME 2>/dev/null || 7z a $NAME dist/InfractiVision.exe 2>/dev/null || zip -r $NAME InfractiVision.exe
+          else
+            zip -r "$NAME" InfractiVision 2>/dev/null || tar czf "${NAME%.zip}.tar.gz" InfractiVision
+          fi
+          ls -lh "$NAME" 2>/dev/null || ls -lh *.zip *.tar.gz 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: InfractiVision-${{ matrix.variant }}-${{ matrix.os }}
+          path: dist/*.zip
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        with:
+          name: InfractiVision-${{ matrix.variant }}-${{ matrix.os }}-tar
+          path: dist/*.tar.gz
+          if-no-files-found: ignore
+
+  build-setup-win:
+    name: Setup Online (Win)
+    needs: build-artifacts
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+      - name: Build Setup-Online.exe
+        run: iscc installer/win/online.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: InfractiVision-Setup-Online-Win
+          path: dist/InfractiVision-Setup-Online.exe
+
+  release:
+    name: Publish Release
+    needs: [build-artifacts, build-setup-win]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/**/*
+          generate_release_notes: true
