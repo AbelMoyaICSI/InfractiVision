@@ -4,17 +4,18 @@
 
 ![InfractiVision Logo](img/InfractiVision-logo.png)
 
-**Sistema Inteligente de Detección de Infracciones de Tráfico**
+**Sistema Inteligente de Detección de Infracciones por Cruce en Rojo**
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.10-blue.svg)](https://python.org)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.9.0-green.svg)](https://opencv.org)
 [![YOLO](https://img.shields.io/badge/YOLO-v8-red.svg)](https://ultralytics.com)
+[![LPRNet](https://img.shields.io/badge/OCR-LPRNet%20Perú-orange.svg)](#-modelos-de-ia)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/AbelMoyaICSI/InfractiVision?style=social)](https://github.com/AbelMoyaICSI/InfractiVision)
 
-*Detección automática de violaciones al semáforo en rojo utilizando Inteligencia Artificial avanzada*
+*Detección automática de violaciones al semáforo en rojo con YOLOv8 + LPRNet y validación humana asistida*
 
-[🚀 Instalación](#-instalación) • [📖 Manual de Usuario](#-manual-de-usuario) • [🎯 Características](#-características) • [🏗️ Arquitectura](#️-arquitectura) • [☁️ Cloud](#️-integración-cloud)
+[🚀 Instalación](#-instalación) • [📖 Manual de Usuario](#-manual-de-usuario) • [🎯 Características](#-características) • [🏗️ Arquitectura](#️-arquitectura) • [🔄 Flujo](#-flujo-de-procesamiento) • [☁️ Cloud](#️-integración-cloud)
 
 </div>
 
@@ -22,818 +23,456 @@
 
 ## 📋 Descripción
 
-**InfractiVision** es un sistema inteligente de última generación que utiliza **visión artificial** y **deep learning** para detectar automáticamente infracciones de tráfico, específicamente violaciones al semáforo en rojo. El sistema combina modelos de IA avanzados con **PaddleOCR de alta precisión** y capacidades completas de sincronización en la nube.
+**InfractiVision** detecta vehículos que cruzan en rojo a partir de video grabado. El flujo es **offline por video**: eliges un archivo, configuras la zona y los tiempos del semáforo, procesas, validas las placas y el sistema persiste métricas localmente y las migra a la nube.
 
-### 🎯 ¿Para qué sirve?
+### ¿Qué hace realmente?
 
-- **🚦 Monitoreo Automático**: Detecta vehículos que cruzan en luz roja con precisión del 98.7%
-- **📸 Captura de Evidencias**: Genera automáticamente fotografías de alta calidad con timestamp
-- **🔍 Reconocimiento de Placas**: OCR con **PaddleOCR 3.2.0** + validación SIIV peruana
-- **🌙 Detección Nocturna**: Algoritmos especializados con ventanas emergentes de análisis
-- **📊 Gestión de Infracciones**: Sistema completo NID/NIE con métricas académicas
-- **☁️ Sincronización Cloud**: Backup automático en Google Cloud Firestore + Storage
-- **⚡ Instalación Global**: Sin entornos virtuales, ejecución directa con `python main.py`
+- **🚦 Detección en rojo**: identifica cruces de un polígono configurable solo durante la fase roja (y un pequeño pre-rojo) del ciclo G → Y → R simulado.
+- **🚗 Tracking**: asigna ID por vehículo (centroide / DeepSORT) para evitar duplicados.
+- **🔍 Placas**: detecta placas con YOLO dedicado y guarda el mejor crop por infractor (con margen y scoring de calidad).
+- **🔤 OCR principal LPRNet**: `LPRNet_Peru_MASTER_FINAL.pth` con contexto regional Trujillo y validación SIIV MTC Perú. Backends alternativos PaddleOCR/EasyOCR seleccionables por env.
+- **☁️ Validación en la nube**: `PlateReviewWindow` valida cada crop secuencialmente contra **Plate Recognizer API** (`regions=pe`) con espera anti-límite.
+- **📊 NID / NIE**: NID = placas validadas por el operador; NIE = pendientes sin placa o no validados. De ahí se derivan TI y TR.
+- **💾 Persistencia local**: SQLite `data/infractions.sqlite` como fuente única.
+- **☁️ Migración a Firebase**: Firestore `infractivision-e8c03`, colección `migraciones/{uuid}` con TI/TR/NID/NIE/settings/deteccion (ver [DOC.md §7.2](DOC.md#7-tecnologías-y-migración-a-firebase)).
+
+> Ver el flujo completo con diagramas Mermaid en [DOC.md](DOC.md).
 
 ---
 
 ## 🌟 Características Principales
 
-### 🧠 **Inteligencia Artificial Avanzada**
-- **YOLO v8**: Detección de vehículos ultrarrápida con modelos optimizados
-- **PaddleOCR 3.2.0**: Sistema OCR de máxima precisión con inicialización en 10.8s
-- **SmartPlateCorrector**: 3 niveles de validación con corrección contextual SIIV
-- **Validación SIIV Peruana**: Reconocimiento específico de formatos nacionales (ABC-123)
-- **Corrección Inteligente**: Auto-fix de caracteres confusos (H/N, T/7, B/8, I/1, O/0, S/5, G/6)
-- **Detección Nocturna Avanzada**: Ventanas emergentes automáticas con análisis de luminosidad < 60
-- **Audio Feedback**: Beeps distintivos para detección nocturna y finalización
-- **Hardware Adaptativo**: GPU NVIDIA + CPU fallback con optimización automática
+### 🧠 Inteligencia Artificial
 
-### 🖥️ **Interfaz Gráfica Profesional**
-- **GUI Intuitiva**: Interfaz moderna desarrollada en Tkinter
-- **Procesamiento en Tiempo Real**: Visualización de detecciones en vivo
-- **Manual Integrado**: Documentación completa dentro de la aplicación
-- **Configuración Visual**: Ajustes de parámetros mediante interface gráfica
+- **YOLOv8 vehículos** (`yolov8n.pt`): clases 2/5/7 (car/bus/truck), solo en fase roja/pre-roja.
+- **YOLO placas** (`license_plate_detector.pt`): sobre cuadrante inferior del vehículo.
+- **LPRNet Perú** (`LPRNet_Peru_MASTER_FINAL.pth`): singleton thread-safe con `get_lprnet_predictor()`, precarga en background al arrancar la GUI.
+- **SmartPlateCorrector** (`src/infrastructure/ocr/plate_corrector.py`): mapas de confusión (0↔O, 1↔I, 8↔B, etc.) con cache y validación SIIV.
+- **Detección nocturna**: por nombre de video (`night`/`nocturno`) o análisis de brillo (< 60) + áreas oscuras. Ajusta confianza y realce de visibilidad.
+- **Scoring de calidad** del crop: contraste + bordes + nitidez (Laplaciano) + tamaño.
 
-### ☁️ **Integración Cloud Completa**
-- **Google Cloud Storage**: Almacenamiento seguro de evidencias
-- **Firestore Database**: Base de datos NoSQL escalable
-- **API RESTful**: Backend Flask para acceso remoto
-- **Migración Automática**: Sincronización inteligente de datos
+### 🖥️ Interfaz Gráfica (Tkinter)
 
-### 📦 **Deployment Profesional**
-- **Ejecutable Standalone**: PyInstaller para distribución fácil
-- **Docker Support**: Containerización del backend
-- **Cross-Platform**: Compatible con Windows, Linux y macOS
+- **Welcome** (`src/gui/welcome_window.py`): 3 acciones — *Manual de Usuario*, *Foto Rojo*, *Gestión de Infracciones*. Fondo redimensionado con debounce.
+- **Foto Rojo** (`src/gui/red_light_violation_window.py` + `src/core/video/videoplayer_opencv.py`): selector visual de videos (`src/gui/video_selector_window.py`), configuración de polígono/tiempos/avenida, reproductor OpenCV y diálogo de preprocesamiento.
+- **PreprocessingDialog** (`src/gui/preprocessing_dialog.py`): orquesta el `OfficialVideoProcessor` en hilo worker y drena resultados a Tk vía cola (`result_queue`). Congela semáforo/timer al entrar a validación.
+- **PlateReviewWindow** (`src/presentation/gui/plate_review_window.py`): revisión secuencial de best-crops con Plate Recognizer (cola `queue.Queue` + poller `after(50)` — nunca toca Tk desde el worker).
+- **Gestión de Infracciones** (`src/gui/infractions_management_window.py`): tarjetas NID/NIE + paginación de 10 en 10 desde `AppRepository`.
+
+### 🏗️ Arquitectura
+
+- **Clean Architecture** por extracción: `domain/` (entidades, puertos, servicios), `application/` (casos de uso, DTOs), `infrastructure/` (YOLO, OCR, tracking, DB, video), `presentation/` (GUI/API).
+- **Composition Root** (`main.py` + `src/composition_root.py`): único lugar que cablea dependencias. `Lazy` proxy para no cargar modelos al arrancar.
+- **Multiplataforma**: `src/core/utils/icon.py` (`.ico`/`.png`), `src/core/utils/audio.py` (`winsound`/`paplay`/`afplay`), sin `state("zoomed")` forzado.
+
+### ☁️ Cloud
+
+- **Firebase Firestore** `infractivision-e8c03` vía `firebase-admin 7.5.0` + `firestore_migrator.py:153`. Un documento por ejecución (`migraciones/{uuid}`), no por nombre de video, para no sobrescribir re-procesamientos. Ver [DOC.md §7.2](DOC.md#7-tecnologías-y-migración-a-firebase).
+- **Migración al completar validación** (no al terminar el video): un hilo `daemon` (`src/gui/preprocessing_dialog.py:1388`) llama `migrate_single_video_to_firestore()` y registra en `migrations` local. **Destino: Firebase**.
+
+### 📦 Distribución
+
+- **PyInstaller**: `InfractiVision.spec` / `InfractiVision-CPU.spec` / `InfractiVision-CUDA.spec`.
+- **CI**: `.github/workflows/deps.yml` (matrix ubuntu+windows, Python 3.10) y `release.yml`.
+- **Installer**: `installer/` (stub online multi-OS con detección de GPU).
+- **Scripts**: `scripts/` (comparadores OCR, regeneración de indicadores, smoke tests).
 
 ---
 
 ## 💻 Requisitos del Sistema
 
-### 📋 **Requisitos Mínimos**
+| Componente | Mínimo | Recomendado |
+|------------|--------|-------------|
+| **SO** | Windows 10, Ubuntu 18.04, macOS 10.14 | Windows 11, Ubuntu 20.04+ |
+| **CPU** | Intel i3 / Ryzen 3 | Intel i7 / Ryzen 7 |
+| **RAM** | 8 GB | 16 GB |
+| **Disco** | 10 GB libres | 50 GB SSD |
+| **GPU** | Opcional (CPU fallback) | NVIDIA GTX 1650 Ti+ con driver ≥ 450 (CUDA 11.7) |
+| **Python** | 3.10 | 3.10 (fijado en `mise.toml`) |
 
-| Componente | Especificación Mínima | Recomendado |
-|------------|----------------------|-------------|
-| **Sistema Operativo** | Windows 10, Ubuntu 18.04, macOS 10.14 | Windows 11, Ubuntu 20.04+ |
-| **Procesador** | Intel i3 / AMD Ryzen 3 | Intel i7 / AMD Ryzen 7 |
-| **Memoria RAM** | 8 GB | 16 GB |
-| **Almacenamiento** | 10 GB disponibles | 50 GB SSD |
-| **GPU** | Opcional (Intel HD) | NVIDIA GTX 1060+ / RTX series |
-| **Python** | 3.10+ | 3.10.11 (Instalación Global) |
+### Stack pineado (no cambiar sin testear)
 
-### 🎮 **Dispositivos Compatibles**
+`torch 1.13.1` fue compilado contra NumPy 1.x → exige `numpy<2`, mientras `opencv-python ≥5` exige `numpy≥2`. Por eso:
 
-#### 🖥️ **Desktop/Laptop**
-- ✅ **Windows**: 10/11 (x64)
-- ✅ **Linux**: Ubuntu 18.04+, Debian 10+, CentOS 8+
-- ✅ **macOS**: 10.14+ (Intel/M1/M2)
+| Paquete | Versión fijada | Motivo |
+|---------|---------------|--------|
+| `numpy` | `1.26.4` | Compatibilidad torch 1.13.1 |
+| `opencv-python` | `4.9.0.80` | No 5.x; no headless |
+| `torch` | `1.13.1+cu117` | Índice CUDA 11.7 |
+| `torchvision` | `0.14.1+cu117` | A juego con torch |
+| `scikit-image` | `0.23.2` | Procesamiento |
+| `scikit-learn` | `1.4.2` | Métricas |
 
-#### 📱 **Capacidades**
-- 🎥 **Cámaras**: USB, IP, RTSP streams
-- 📹 **Formatos de Video**: MP4, AVI, MOV, MKV
-- 🖼️ **Formatos de Imagen**: JPG, PNG, BMP, TIFF
-
-### ⚡ **Rendimiento Esperado**
-
-| Hardware | FPS Procesamiento | Precisión OCR | Tiempo Inicio |
-|----------|------------------|---------------|---------------|
-| **CPU Only** (i5+) | 5-10 FPS | 94-97% | ~15s |
-| **GPU Básica** (GTX 1060) | 15-25 FPS | 97-99% | ~10.8s |
-| **GPU Alta** (RTX 3060+) | 25-35 FPS | 98.7-99.2% | ~8s |
-| **GPU Alta** (RTX 3070+) | 30-60 FPS | 96-99% | ~10s |
-
-**🚀 Optimizaciones Implementadas:**
-- ⚡ **Inicio Rápido**: PaddleOCR con carga asíncrona (10.8s vs 25-30s original)
-- 🧠 **SmartCorrector**: Mejora +5-7% en precisión de placas
-- 🌙 **Detección Nocturna**: Umbral optimizado (brillo < 60) reduce falsos positivos
-- 🎯 **Clasificación NID/NIE**: 70% confianza + validación de caracteres
+Ver `requirements.txt:1` y `requirements-cpu.txt` / `requirements-ocr.txt` para variantes. Tkinter viene con Python en Windows/macOS; en Linux: `sudo apt install python3-tk`.
 
 ---
 
 ## 🚀 Instalación
 
-### 📥 **Opción 1: Ejecutable Pre-compilado (Recomendado)**
+### Opción 1: Ejecutable
 
-1. **Descargar** la última versión desde [Releases](https://github.com/AbelMoyaICSI/InfractiVision/releases)
-2. **Extraer** el archivo ZIP en la ubicación deseada
-3. **Ejecutar** `InfractiVision.exe` (Windows) o `./InfractiVision` (Linux/Mac)
+Descarga el ZIP de [Releases](https://github.com/AbelMoyaICSI/InfractiVision/releases), extrae y ejecuta `InfractiVision.exe` (Windows) o `./InfractiVision` (Linux/macOS).
 
-### 🛠️ **Opción 2: Instalación Global (Desarrollo)**
+### Opción 2: Desde código
 
-#### **Paso 1: Clonar el Repositorio**
 ```bash
 git clone https://github.com/AbelMoyaICSI/InfractiVision.git
 cd InfractiVision
-```
 
-#### **Paso 2: Instalar Python 3.10.11**
-```bash
-# Descargar desde python.org
-# Verificar instalación:
-python --version  # Debe mostrar 3.10.11
-```
+# Python 3.10 (ver mise.toml:1)
+python --version  # 3.10.x
 
-#### **Paso 3: Instalación Global de Dependencias**
-```bash
-# IMPORTANTE: Sin venv - Instalación global
-pip install -r requirements.txt
+# Crear venv (recomendado) e instalar
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
+pip install -r requirements.txt          # con CUDA 11.7 (usa --extra-index-url del archivo)
+# Alternativas:
+# pip install -r requirements-cpu.txt   # sin CUDA
+# pip install -r requirements-ocr.txt   # solo OCR (PaddleOCR/EasyOCR)
 
-# Verificar PaddleOCR:
-python -c "from paddleocr import PaddleOCR; print('✅ PaddleOCR instalado')"
-```
+# Variable para validación en la nube (requerida para Plate Recognizer)
+# .env en la raíz (ver .env:1):
+# PLATE_RECOGNIZER_API_TOKEN="..."
 
-#### **Paso 4: Ejecutar Directamente**
-```bash
-# Ejecución directa sin activar venv
 python main.py
 ```
 
-#### **🎯 Ventajas de la Instalación Global:**
-- ✅ **Sin complejidad de venv**: Ejecución directa como compañero
-- ⚡ **Inicio más rápido**: Sin activación de entorno
-- 🔧 **Mantenimiento simplificado**: Una sola instalación Python
-- 📦 **Compatibilidad PyInstaller**: Mejor empaquetado de ejecutables
+### Cloud opcional (Firestore)
 
-#### **Paso 5: Ejecutar la Aplicación**
-```bash
-python main.py
-```
-
-### ☁️ **Configuración Cloud (Opcional)**
-
-Si deseas usar las funciones de sincronización en la nube:
-
-1. **Crear proyecto** en [Google Cloud Console](https://console.cloud.google.com)
-2. **Habilitar APIs**: Cloud Storage, Firestore
-3. **Crear Service Account** y descargar credenciales JSON
-4. **Colocar credenciales** en `secrets/infractivision-credentials.json`
+1. Proyecto GCP `infractivision-e8c03` con Firestore habilitado.
+2. Service Account con `datastore.user` y su JSON en la raíz como `infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json` (ver `src/automations/firestore_migrator.py:30`).
+3. Sin credenciales, la app funciona 100% offline; solo falla la migración.
 
 ---
 
 ## 📖 Manual de Usuario
 
-### 🎬 **Pantalla de Inicio**
+### Pantalla de Inicio
 
-Al iniciar InfractiVision, verás la pantalla de bienvenida con las siguientes opciones:
+`src/gui/welcome_window.py:95` — panel izquierdo con imagen `img/welcome_bg.png` redimensionada (máx. 1920×1080, debounce 200 ms) y panel derecho con:
 
-![Pantalla de Inicio](docs/images/welcome-screen.png)
+- **Manual de Usuario** → `src/gui/manual_window.py:8`
+- **Foto Rojo** → `src/gui/app_manager.py:43`
+- **Gestión de Infracciones** → `src/gui/app_manager.py:54`
 
-- **📖 Manual de Usuario**: Acceso a documentación completa
-- **🚦 Foto Rojo**: Módulo principal de detección
-- **📊 Gestión de Infracciones**: Administración de registros
+### Módulo Foto Rojo
 
-### 🚦 **Módulo Foto Rojo**
+1. **Selector visual** (`src/gui/video_selector_window.py:23`): miniaturas, metadatos (duración/resolución/tamaño), estado de configuración (polígono/semáforo/avenida). Acciones: *Seleccionar*, *Configurar*, *Limpiar*, *Eliminar*, *Importar*, *Actualizar*.
+2. **Configurar zona**: polígono de la intersección + margen de peligro (`danger_zone_margin_pixels`, `src/infrastructure/configuration/video_config_repository.py:17`). Se guarda en `config/polygon_config.json`.
+3. **Configurar semáforo y avenida**: tiempos G/Y/R + `pre_red_seconds`/`green_skip_rate` en `config/time_presets.json`; avenida en `config/avenue_config.json`. Todo vía `VideoConfigRepository:26`.
+4. **Reproductor** (`src/core/video/videoplayer_opencv.py:1357`): `play_video()`, overlay del estado, timer HH:mm:ss y `G/Y/R` en segundos, beeps por `src/core/utils/audio.py:1`.
+5. **Iniciar procesamiento** (`src/gui/preprocessing_dialog.py:1247`): `_process_video_official()` crea `OfficialVideoProcessor` con los detectores del player y un `callback` que encola `official_frame` / `official_infraction` / `official_complete`. La UI se drena en el hilo de Tk (`_process_results_queue`, `_poll_display_queue`). Al terminar, congela semáforo/timer y abre `PlateReviewWindow`.
+6. **Validación** (`src/presentation/gui/plate_review_window.py:17`): un worker por crop llama `PlateRecognizerSnapshotReader.read()` (`src/infrastructure/ocr/cloud_plate_readers.py:23`, `regions=pe`, espera mínima 2 s, reintentos con `Retry-After`), publica en `queue.Queue` y el poller de Tk muestra `Confianza: 0.xx` y habilita el check *Validar*. Botones: *Reintentar actual*, *Exportar validados*, *Completado* (dispara persistencia + migración).
 
-#### **Configuración Inicial**
+### Gestión de Infracciones
 
-1. **📹 Selector Visual**: Interfaz moderna con miniaturas y metadatos
-2. **🎯 Configurar Zona**: Polígono interactivo con preview en tiempo real
-3. **⏰ Ajustar Semáforo**: Tiempos personalizables con franja horaria
-4. **🌙 Detección Nocturna**: Automática para videos con "night" en el nombre
-5. **▶️ Iniciar Procesamiento**: Análisis inteligente con ventanas emergentes
+`src/gui/infractions_management_window.py:1` — lee de `AppRepository.list_infractions()` (`src/infrastructure/database/app_repository.py:226`), renderiza tarjetas a color por validación (grid 3/2/1 columnas según ancho), paginación de 10 en 10 con *Cargar más*. Acciones: filtrar por fecha/placa, exportar CSV/Excel/PDF, eliminar, y ver historial de migraciones (`migrations`).
 
-![Módulo Foto Rojo](docs/images/foto-rojo-module.png)
+### Configuraciones Avanzadas
 
-#### **Controles Principales**
-
-| Control | Función |
-|---------|---------|
-| **▶️ Play/Pause** | Iniciar/pausar procesamiento |
-| **⏹️ Stop** | Detener y reiniciar |
-| **⚙️ Configuración** | Ajustar parámetros de detección |
-| **📁 Cargar Video** | Seleccionar nuevo archivo |
-
-#### **Panel de Semáforo**
-
-- **🟢 Verde**: Vía libre (12 segundos por defecto)
-- **🟡 Amarillo**: Precaución (2 segundos por defecto)
-- **🔴 Rojo**: Alto total (10 segundos por defecto)
-
-### 📊 **Gestión de Infracciones**
-
-#### **Visualización de Registros**
-
-![Gestión de Infracciones](docs/images/infractions-management.png)
-
-La tabla muestra:
-- **📅 Fecha y Hora**: Timestamp de la infracción
-- **🚗 Placa**: Número identificado por OCR
-- **📍 Ubicación**: Intersección configurada
-- **📸 Evidencias**: Imágenes del vehículo y placa
-- **📊 Estado**: Pendiente, Procesada, Exportada
-
-#### **Funciones Disponibles**
-
-- **🔍 Filtrar**: Por fecha, placa o estado
-- **📤 Exportar**: CSV, Excel o PDF
-- **☁️ Sincronizar**: Upload a Google Cloud
-- **🗑️ Eliminar**: Registros individuales o masivos
-
-### ⚙️ **Configuraciones Avanzadas**
-
-#### **Parámetros de Detección**
-
-| Parámetro | Rango | Descripción |
-|-----------|-------|-------------|
-| **Confianza Vehículos** | 0.1 - 0.9 | Umbral de detección de vehículos (YOLO) |
-| **Confianza Placas** | 0.1 - 0.9 | Umbral de detección de placas |
-| **Confianza OCR NID/NIE** | 0.5 - 0.9 | Umbral para clasificación SIIV (def: 0.7) |
-| **Umbral Nocturno** | 30 - 100 | Brillo para activar ventanas nocturnas (def: 60) |
-| **Resolución Procesamiento** | 320p - 1080p | Resolución interna de análisis |
-| **FPS Objetivo** | 5 - 30 | Frames por segundo de procesamiento |
-
-#### **SmartPlateCorrector - Configuración Avanzada**
-
-| Parámetro | Valor | Descripción |
-|-----------|-------|-------------|
-| **Formato Peruano** | `^[A-Z]{3}-\d{3}$` | Patrón regex para placas nacionales |
-| **Corrección H/N** | Automática | Confusión común en OCR |
-| **Corrección T/7** | Automática | Números vs letras similares |
-| **Corrección B/8, I/1, O/0** | Automática | Caracteres con forma similar |
-| **Boost de Confianza** | +0.15 | Incremento para correcciones válidas |
-
-#### **Configuración de Hardware**
-
-El sistema detecta automáticamente tu hardware y optimiza:
-- **GPU NVIDIA**: Utiliza CUDA para aceleración
-- **CPU Multi-core**: Distribuye carga entre núcleos
-- **Memoria RAM**: Ajusta buffer según disponibilidad
+| Parámetro | Rango | Default | Dónde |
+|-----------|-------|---------|-------|
+| Confianza vehículos (YOLO) | 0.1–0.9 | 0.40 | `OfficialVideoProcessor.process:140` |
+| Confianza placas (YOLO) | 0.1–0.9 | 0.40 | `src/application/use_cases/process_violation_video.py:221` |
+| Tamaño mínimo crop placa | w≥55, h≥30 | 55×30 | `src/application/use_cases/process_violation_video.py:41` |
+| Margen de contexto del crop | 0.0–1.0 | 0.5 | `src/application/use_cases/process_violation_video.py:43` |
+| Margen zona de peligro | px | 80 | `VideoConfig:17` |
+| Pre-rojo | s | 0.5 | `VideoConfig:18` |
+| Green skip rate | frames | 60 | `VideoConfig:19` |
+| OCR backend | lprnet/paddleocr/easyocr | lprnet | `config/settings.py:32` |
+| Confianza mínima OCR | 0.0–1.0 | 0.55 | `config/settings.py:33` |
 
 ---
 
-## � Últimas Actualizaciones (Octubre 2025)
+## 🏗️ Arquitectura del Sistema
 
-### 🚀 **Mejoras Principales Implementadas**
-
-#### **🧠 Motor OCR Mejorado**
-- ✅ **PaddleOCR 3.2.0**: Reemplazó EasyOCR para máxima precisión
-- ✅ **Validación SIIV**: Sistema específico para placas peruanas
-- ✅ **SmartCorrector 2.0**: Corrección contextual de caracteres confusos
-- ✅ **Inicialización Asíncrona**: Tiempo de arranque reducido en 65%
-
-#### **🌙 Sistema de Detección Nocturna**
-- ✅ **Análisis Automático**: Detección por nombre de video ("night")
-- ✅ **Ventanas Emergentes**: Interfaz específica para condiciones nocturnas
-- ✅ **Audio Feedback**: Beeps distintivos para diferentes eventos  
-- ✅ **Umbral Inteligente**: Brillo < 60 activa modo nocturno automáticamente
-
-#### **⚡ Optimizaciones de Rendimiento**
-- ✅ **Instalación Global**: Sin venv, ejecución directa como `python main.py`
-- ✅ **Selector Visual**: Interfaz moderna con miniaturas de videos
-- ✅ **GPU Adaptativa**: Detección automática NVIDIA + CPU fallback
-- ✅ **Memoria Optimizada**: Reducción 40% en uso de RAM
-
-#### **☁️ Integración Cloud Avanzada**
-- ✅ **Google Firestore**: Base de datos en tiempo real
-- ✅ **Cloud Storage**: Backup automático de evidencias
-- ✅ **API Flask**: Backend para sincronización multi-dispositivo
-- ✅ **Métricas Académicas**: Indicadores NID/NIE para tesis
-
----
-
-## �🏗️ Arquitectura del Sistema
-
-### 📁 **Estructura del Proyecto**
+### Estructura del Proyecto
 
 ```
 InfractiVision/
-├── 🎯 main.py                    # Punto de entrada principal
-├── 📦 requirements.txt           # Dependencias del proyecto
-├── 🔧 InfractiVision.spec       # Configuración PyInstaller
+├── main.py                              # Composition Root (Tk + DI)
+├── config/settings.py                   # Settings inmutables por DI
+├── src/composition_root.py              # build_container() + Lazy proxies
 │
-├── 🖥️ src/                      # Código fuente modular
-│   ├── 🎨 gui/                  # Interfaz gráfica
-│   │   ├── app_manager.py       # Gestor principal de ventanas
-│   │   ├── welcome_window.py    # Pantalla de inicio
-│   │   ├── red_light_violation_window.py  # Módulo Foto Rojo
-│   │   ├── infractions_management_window.py  # Gestión
-│   │   └── manual_window.py     # Manual integrado
-│   │
-│   ├── 🧠 core/                 # Lógica de negocio IA
-│   │   ├── detection/           # Algoritmos de detección
-│   │   │   ├── vehicle_detector.py    # YOLO vehículos
-│   │   │   ├── plate_detector.py      # Detección placas
-│   │   │   └── anpr.py                # OCR integrado
-│   │   ├── processing/          # Procesamiento de imágenes
-│   │   │   └── smart_plate_corrector.py  # Sistema de corrección inteligente
-│   │   ├── traffic_signal/      # Simulación semáforo
-│   │   └── video/              # Manejo de video
-│   │
-│   └── 🤖 automations/          # Automatizaciones cloud
-│       └── cloud_migrator.py    # Sincronización GCP
+├── src/presentation/gui/
+│   ├── main_window.py                   # Envuelve AppManager legacy
+│   ├── plate_review_window.py           # Validación secuencial cloud OCR
+│   └── popups/preprocessing_popups.py   # Mixin de popups del diálogo
 │
-├── ⚙️ config/                   # Configuraciones JSON
-├── 📊 data/                     # Datos y resultados
-├── 🔮 models/                   # Modelos de IA
-├── 🖼️ img/                      # Recursos visuales
-├── 🎬 videos/                   # Videos de demostración
-└── 🐳 backend/                  # API Flask para cloud
+├── src/gui/                             # GUI legacy (Tkinter)
+│   ├── app_manager.py                   # Navegación Welcome ↔ Foto Rojo ↔ Gestión
+│   ├── welcome_window.py
+│   ├── video_selector_window.py
+│   ├── red_light_violation_window.py
+│   ├── preprocessing_dialog.py          # Orquestación del pipeline oficial
+│   ├── infractions_management_window.py
+│   └── manual_window.py
+│
+├── src/application/
+│   ├── use_cases/
+│   │   ├── process_violation_video.py   # OfficialVideoProcessor (pipeline por video)
+│   │   └── process_frame.py             # ProcessFrameUseCase (por frame, Clean)
+│   ├── dto/violation_dto.py
+│   └── services/
+│       ├── traffic_processing_planner.py
+│       └── metrics_calculator.py
+│
+├── src/domain/
+│   ├── entities/                        # Violation, Vehicle, TrafficLight, PlateEvidence
+│   ├── interfaces/                      # Puertos: Detector, OCR, Tracker, Repository
+│   └── services/                        # ViolationService, TrackingService, EvidenceService
+│
+├── src/infrastructure/
+│   ├── ai/                              # YoloVehicleDetector, YoloPlateDetector, VirtualTrafficLightDetector
+│   ├── ocr/                             # LPRNetReader, PaddleOCRReader, EasyOCRReader, cloud_plate_readers, plate_corrector
+│   ├── tracking/                        # DeepSortTracker (fallback centroide)
+│   ├── video/                           # FrameExtractor, VideoReader
+│   ├── database/                        # AppRepository (SQLite), SQLite/MySQL repositories
+│   ├── configuration/                   # VideoConfig, VideoConfigRepository
+│   └── reports/                         # ReportRepository
+│
+├── src/core/                            # Núcleo legacy (detección, OCR LPRNet, video, tracking)
+│   ├── detection/  (vehicle_detector, plate_detector, model_guard)
+│   ├── ocr/        (lprnet_engine, recognizer, super_resolution)
+│   ├── video/      (videoplayer_opencv)
+│   └── traffic/    (vehicle_tracker, semaphore)
+│
+├── src/automations/
+│   ├── firestore_migrator.py            # Migración a migraciones/{uuid}
+│   └── cloud_migrator.py                # Legacy
+│
+├── config/                              # polygon_config.json, time_presets.json, avenue_config.json, zones.json
+├── data/                                # infractions.sqlite, output/official/, evidences/, reports/
+├── models/                              # yolov8n.pt, license_plate_detector.pt, LPRNet_Peru_MASTER_FINAL.pth, FSRCNN_x3.pb
+├── docs/                                # DOC.md (flujo con Mermaid)
+├── scripts/                             # Comparadores OCR, regeneración de indicadores, smoke tests
+└── .github/workflows/                   # deps.yml, release.yml
 ```
 
-### 🔄 **Flujo de Procesamiento Inteligente**
+### Capas (Clean Architecture)
+
+- **Domain**: entidades puras (`Violation`, `Vehicle`, `TrafficLight`, `PlateEvidence:38`) y puertos. Sin dependencias a frameworks.
+- **Application**: casos de uso (`OfficialVideoProcessor`, `ProcessFrameUseCase:28`) y servicios (`TrafficProcessingPlanner:1`). Orquestan dominio + puertos.
+- **Infrastructure**: adaptadores concretos (YOLO, LPRNet, DeepSORT, SQLite, OpenCV, Firestore).
+- **Presentation**: `MainWindow` + `AppManager` + ventanas Tk. Recibe `process_frame_uc` y `traffic_light_state` por DI.
+
+---
+
+## 🧰 Stack Tecnológico del Flujo
+
+Cada paso del flujo usa una tecnología concreta. Detalle completo con diagrama de migración en [DOC.md §7](DOC.md#7-tecnologías-y-migración-a-firebase).
+
+| Capa del flujo | Tecnología | Versión | Uso |
+|---------------|-----------|---------|-----|
+| GUI | **Tkinter** + `tkcalendar` | stdlib / 1.6.1 | Welcome, selector de vídeos, reproductor, `PlateReviewWindow` |
+| Vídeo | **OpenCV** | 4.9.0.80 | `VideoCapture`/`VideoWriter`, overlays, `pointPolygonTest` del polígono |
+| Detección | **YOLOv8** (`ultralytics`) | 8.4.120 | Vehículos (car/bus/truck) y placas — dos modelos YOLO |
+| Deep Learning | **PyTorch** + CUDA 11.7 | 1.13.1+cu117 | Inferencia YOLO y LPRNet |
+| OCR primario | **LPRNet Perú** | `LPRNet_Peru_MASTER_FINAL.pth` | OCR principal con contexto Trujillo + SIIV |
+| OCR alternos | PaddleOCR / EasyOCR | opcionales (`requirements-ocr.txt`) | Seleccionables por `INFRACTI_OCR_BACKEND` |
+| OCR validación | **Plate Recognizer API** | `requests` | `cloud_plate_readers.py:23` — `regions=pe`, 2 s entre requests |
+| Tracking | **DeepSORT** (`deep-sort-realtime`) | 1.3.2 | IDs por vehículo; pipeline oficial usa centroide con fallback |
+| Datos | NumPy / SciPy / scikit-learn / scikit-image / pandas / openpyxl | 1.26.4 / 1.11.4 / 1.4.2 / 0.23.2 / 2.1.4 / 3.1.5 | Scoring del crop, exportación |
+| Persistencia | **SQLite** (`AppRepository`) | stdlib | Fuente única — `infractions`, `video_configs`, `indicators`, `migrations` |
+| **Migración** | **Firebase** (`firebase-admin` + `google-cloud-firestore`) | 7.5.0 / 2.28.1 | **Destino de todas las migraciones → Firestore `infractivision-e8c03`** |
+
+> ☁️ **Destino de migraciones: Firebase** — proyecto `infractivision-e8c03`, colección `migraciones/{uuid}`. Se dispara al completar la validación (`PlateReviewWindow` → `migrate_single_video_to_firestore` en hilo `daemon`). Esquema: `ti`, `tr`, `NID`, `NIE`, `video-name`, `fecha`, `settings{red,green,yellow,polygon}`, `deteccion[{placa,timestamp,confianza,validate}]`. Ver [DOC.md §7.2](DOC.md#7-tecnologías-y-migración-a-firebase) y `src/automations/firestore_migrator.py:153`.
+
+---
+
+## 🔄 Flujo de Procesamiento
+
+El flujo completo con decisiones está documentado en [DOC.md](DOC.md). Resumen del pipeline oficial (`src/application/use_cases/process_violation_video.py:140`):
 
 ```mermaid
-graph TD
-    A[Video Input] --> B[Frame Extraction]
-    B --> C[Vehicle Detection YOLO]
-    C --> D{Vehicle Detected?}
-    D -->|Yes| E[Plate Detection]
-    D -->|No| B
-    E --> F[PaddleOCR Processing]
-    F --> G[SmartPlateCorrector]
-    G --> H{Night Scene?}
-    H -->|Yes| I[Adjust Thresholds]
-    H -->|No| J[Standard Processing]
-    I --> J
-    J --> K[Character Validation]
-    K --> L[Format Classification]
-    L --> M{Peruvian Format?}
-    M -->|Yes| N[NID Processing]
-    M -->|No| O[Foreign Plate]
-    N --> P{Red Light Active?}
-    O --> P
-    P -->|Yes| Q[Capture Evidence]
-    P -->|No| B
-    Q --> R[Save to Database]
-    R --> S[Cloud Sync]
+flowchart TD
+    A[main.py: Composition Root<br/>traffic_light_state dict + build_container] --> B[MainWindow / AppManager<br/>Welcome]
+    B --> C[Foto Rojo<br/>VideoSelectorWindow]
+    C --> D{Video configurado<br/>poligono + G/Y/R + avenida}
+    D -- No --> E[Configurar poligono y semaforo<br/>VideoConfigRepository]
+    E --> D
+    D -- Si --> F[PreprocessingDialog<br/>_process_video_official]
+    F --> G[OfficialVideoProcessor.process<br/>TrafficProcessingPlanner]
+    G --> H{state_at frame<br/>G / Y / R}
+    H -- G/Y sin pre-rojo --> I[should_detect=false<br/>display cada 60 frames]
+    I --> H
+    H -- R o pre-rojo --> J[YOLO vehiculos<br/>conf 0.40]
+    J --> K[CentroidVehicleTracker<br/>update]
+    K --> L{_near_polygon<br/>centro inferior vs poligono}
+    L -- No --> J
+    L -- Si --> M[YOLO placas<br/>sobre cuadrante inferior]
+    M --> N{crop viable<br/>w>=55 h>=30 con margen 50%}
+    N -- No --> O[Guardar pending<br/>crop vehiculo -> NIE]
+    N -- Si --> P[Scoring calidad<br/>contraste+bordes+nitidez+tamano]
+    P --> Q{pending en rojo<br/>y placa encontrada}
+    Q -- Primera vez --> R[Confirmar infractor<br/>callback infraction_detected]
+    R --> S[Guardar best evidence<br/>quality >= best previo]
+    Q -- Ya confirmado --> S
+    S --> T[Video anotado<br/>banner SEMAFORO + T + G/Y/R]
+    T --> U{Fin de video}
+    U -- No --> H
+    U -- Si --> V[Payload<br/>evidence + pending_infractions<br/>+ report JSON]
+    V --> W[PlateReviewWindow<br/>validacion secuencial]
+    W --> X[Plate Recognizer API<br/>regions=pe, 2s entre requests]
+    X --> Y{Texto reconocido}
+    Y -- Si --> Z[NID validado]
+    Y -- No --> AA[NIE]
+    Z --> AB[AppRepository<br/>infractions + indicators]
+    AA --> AB
+    AB --> AC[Firestore<br/>migraciones/uuid<br/>TI/TR/NID/NIE/settings/deteccion]
 ```
 
-### 🧠 **Modelos de IA Utilizados**
-
-#### **1. Detección de Vehículos (YOLO v8)**
-- **Modelo**: `yolov8n.pt` (versión nano optimizada)
-- **Clases**: car, truck, bus, motorcycle
-- **Precisión**: 95%+ en condiciones diurnas
-- **Velocidad**: 30+ FPS en GPU moderna
-
-#### **2. Detección de Placas (Modelo Especializado)**
-- **Modelo**: `license_plate_detector.pt`
-- **Arquitectura**: YOLO v8 fine-tuned
-- **Optimizaciones**: Detección nocturna mejorada
-- **Precisión**: 90%+ en diversas condiciones
-
-#### **3. PaddleOCR + SmartCorrector (Sistema Híbrido)**
-- **Engine Principal**: PaddleOCR 3.2.0 con inicialización asíncrona (10.8s)
-- **Validación SIIV**: Sistema específico para formato peruano (ABC-123)
-- **Corrección Contextual**: Auto-fix de H↔N, T↔7, B↔8, I↔1, O↔0, S↔5, G↔6
-- **3 Niveles de Validación**: Formato → Proximidad → Base de datos conocidas
-- **Clasificación NID/NIE**: Automática con umbral de confianza 70%
-- **Precisión Comprobada**: 98.7% en condiciones ideales, 94-97% nocturno
-- **Soporte Regional**: Optimizado para placas SIIV peruanas
+Indicadores: **TI** = NID/(NID+NIE)*100, **TR** = duración total / NID validadas (min por infracción, `src/infrastructure/database/app_repository.py:379`).
 
 ---
 
-## ☁️ Integración Cloud
+## 🧠 Modelos de IA
 
-### 🌐 **Google Cloud Platform**
+| Modelo | Archivo | Rol | Notas |
+|--------|---------|-----|-------|
+| YOLOv8n vehículos | `models/yolov8n.pt` | Detecta car/bus/truck | `YoloVehicleDetector` vía `ultralytics` |
+| YOLO placas | `models/license_plate_detector.pt` | Detecta bbox de placa | Fine-tuned YOLOv8 |
+| LPRNet Perú | `models/LPRNet_Peru_MASTER_FINAL.pth` | OCR principal | Singleton `get_lprnet_predictor()` con precarga background |
+| FSRCNN x3 | `models/FSRCNN_x3.pb` | Super-resolución opcional | `src/core/ocr/super_resolution.py` |
+| Otros LPRNet | `LPRNet_CONSENSO_V2.pth`, `LPRNet_V3_ESPECIALISTA.pth`, `LPRNet_V4_CORREGIDO.pth` | Variantes de entrenamiento | No usados por defecto |
 
-InfractiVision utiliza GCP para proporcionar capacidades enterprise:
+**OCR backends seleccionables** (`config/settings.py:32`, `INFRACTI_OCR_BACKEND`):
 
-#### **Cloud Storage**
-```
-gs://infractivision-bucket/
-├── evidencias/
-│   ├── vehiculos/
-│   └── placas/
-├── backups/
-└── exports/
-```
+- `lprnet` (default) → `LPRNetReader` con `regional_context="Trujillo"` y validación SIIV (`src/core/ocr/recognizer.py:86`).
+- `paddleocr` → `PaddleOCRReader` (`src/infrastructure/ocr/paddleocr_reader.py:16`).
+- `easyocr` → `EasyOCRReader`.
 
-#### **Firestore Database**
-```javascript
-// Estructura de documentos
+**Validación cloud** (post-procesamiento, no durante el barrido de frames):
+
+- `PlateRecognizerSnapshotReader` (`src/infrastructure/ocr/cloud_plate_readers.py:23`, `PLATE_RECOGNIZER_API_TOKEN` en `.env:1`).
+- `GoogleVisionReader` (alternativa con `GOOGLE_API_KEY`).
+
+---
+
+## 💾 Base de Datos
+
+**SQLite por defecto** (`data/infractions.sqlite`, `config/settings.py:25`), MySQL opcional vía `INFRACTI_MYSQL_URL`.
+
+Tablas en `src/infrastructure/database/app_repository.py:45`:
+
+- `infractions` — una fila por infracción NID/NIE
+- `video_configs` — polígono/tiempos/avenida por video
+- `indicators` — reporte TI/TR/NID/NIE serializado
+- `migrations` — historial local de migraciones a Firestore
+- `meta` — clave/valor interno
+
+`AppRepository` es la fuente única para `VideoConfigRepository` y `firestore_migrator`.
+
+---
+
+## ☁️ Integración Cloud — Migración a Firebase
+
+**Destino: Firebase Firestore** (proyecto `infractivision-e8c03`, `src/automations/firestore_migrator.py:30`). Sin Cloud Storage en el flujo oficial. Detalle y stack completo en [DOC.md §7](DOC.md#7-tecnologías-y-migración-a-firebase).
+
+**Documento `migraciones/{uuid}`:**
+
+```json
 {
-  "infracciones": {
-    "user_id": {
-      "infraccion_id": {
-        "placa": "ABC123",
-        "fecha": "2025-09-09",
-        "hora": "14:30:15",
-        "ubicacion": "Av. Principal",
-        "evidence_urls": {
-          "vehiculo": "gs://bucket/...",
-          "placa": "gs://bucket/..."
-        }
-      }
-    }
-  }
+  "ti": 75.0,
+  "tr": 0.42,
+  "NID": 3,
+  "NIE": 1,
+  "video-name": "Av-Condorcanqui.mp4",
+  "fecha": "2026-08-19T14:30:00",
+  "settings": {
+    "red": 10, "green": 12, "yellow": 2,
+    "polygon": [{"x": 200, "y": 300}, {"x": 1080, "y": 300}, ...]
+  },
+  "deteccion": [
+    {"placa": "T4A-123", "timestamp": "2026-08-19T14:30:05", "confianza": 0.87, "validate": true}
+  ]
 }
 ```
 
-#### **API Endpoints**
-
-| Endpoint | Método | Descripción |
-|----------|--------|-------------|
-| `/migrar` | POST | Subir nueva infracción |
-| `/listar` | GET | Obtener infracciones |
-| `/exportar` | POST | Generar reporte |
-| `/estadisticas` | GET | Métricas del sistema |
-
-### 🔐 **Configuración de Seguridad**
-
-1. **Service Account**: Credenciales con permisos mínimos
-2. **IAM Roles**: `storage.objectAdmin`, `datastore.user`
-3. **Firewall Rules**: Restricción por IP si es necesario
-4. **Encryption**: Datos encriptados en tránsito y reposo
+Se crea con `migrate_single_video_to_firestore()` al completar la validación; un hilo `daemon` (`src/gui/preprocessing_dialog.py:1388`) y `add_migration_to_history()` en `src/gui/infractions_management_window.py:21` registra el historial local. Legacy `cloud_migrator.py:61` (Cloud Storage `infractivision-474103`) no es parte del flujo oficial.
 
 ---
 
-## 📊 Casos de Uso
+## 📊 Indicadores (NID / NIE / TI / TR)
 
-### 🏛️ **Sector Público**
+Calculados en `AppRepository.compute_indicators_report()` (`src/infrastructure/database/app_repository.py:379`) y mostrados en el diálogo y en Gestión:
 
-#### **Municipalidades**
-- Automatización de multas por luz roja
-- Reducción de personal en intersecciones
-- Generación de estadísticas de tráfico
-- Mejora en seguridad vial
+| Indicador | Fórmula |
+|-----------|---------|
+| **NID** | evidencias validadas (✓) con placa reconocida |
+| **NIE** | pendientes sin placa + no validados |
+| **TI** | `NID / (NID+NIE) * 100` (%) |
+| **TR** | `duración total del video / NID` (min por infracción) |
 
-#### **Policía de Tránsito**
-- Evidencia fotográfica automatizada
-- Integración con sistemas de multas
-- Reportes estadísticos detallados
-- Reducción de disputas legales
-
-### 🏢 **Sector Privado**
-
-#### **Empresas de Seguridad**
-- Monitoreo de intersecciones corporativas
-- Control de acceso vehicular
-- Auditoría de cumplimiento
-- Integración con sistemas existentes
-
-#### **Consultorías de Tráfico**
-- Estudios de comportamiento vehicular
-- Análisis de patrones de infracciones
-- Optimización de tiempos semafóricos
-- Reportes para autoridades
-
-### 🎓 **Sector Académico**
-
-#### **Universidades**
-- Investigación en visión artificial
-- Proyectos de tesis en IA
-- Análisis de patrones de tráfico
-- Desarrollo de algoritmos mejorados
+Coherentes entre SQLite, el panel y Firestore (misma sesión).
 
 ---
 
-## 🔧 Personalización y Extensiones
-
-### 🎨 **Interfaz Personalizable**
-
-```python
-# Ejemplo: Cambiar tema de colores
-THEME_CONFIG = {
-    "primary": "#3366FF",
-    "secondary": "#34495e",
-    "success": "#27ae60",
-    "warning": "#f39c12",
-    "danger": "#e74c3c"
-}
-```
-
-### 🔌 **Plugins Desarrollables**
-
-El sistema permite desarrollar plugins para:
-- **Nuevos tipos de detección** (cinturón, celular, etc.)
-- **Integraciones adicionales** (AWS, Azure, etc.)
-- **Algoritmos personalizados** de OCR
-- **Reportes especializados**
-
-### 📊 **APIs Extensibles**
-
-```python
-# Ejemplo: Plugin personalizado
-class CustomDetector(BaseDetector):
-    def detect(self, frame):
-        # Tu algoritmo personalizado
-        return detections
-```
-
----
-
-## � SmartPlateCorrector - Sistema de IA Avanzado
-
-### 🧠 **Características Principales**
-
-InfractiVision v2.0 introduce el **SmartPlateCorrector**, nuestro sistema de inteligencia artificial más avanzado para corrección y validación de placas vehiculares.
-
-#### **🎯 Problema Resuelto**
-
-Los sistemas OCR tradicionales sufren de confusiones comunes entre caracteres similares:
-- **H ↔ N**: Formas similares causan errores frecuentes
-- **T ↔ 7**: Números y letras con apariencia parecida  
-- **B ↔ 8, I ↔ 1, O ↔ 0, S ↔ 5, G ↔ 6**: Confusiones típicas de OCR
-
-#### **🔧 Solución Implementada**
-
-El SmartPlateCorrector utiliza un sistema de **3 niveles de corrección**:
-
-##### **Nivel 1: Validación de Formato**
-```python
-# Ejemplo: Placa peruana válida
-formato_peruano = r'^[A-Z]{3}-\d{3}$'  # ABC-123
-formato_extranjero = r'^[A-Z0-9]{4,8}$'  # TGT947, ABC1234
-```
-
-##### **Nivel 2: Corrección por Proximidad**
-```python
-correcciones = {
-    'H': ['N'],  # Si detecta H, evalúa si debería ser N
-    'N': ['H'],  # Corrección bidireccional
-    'T': ['7'],  # Letra T vs número 7
-    '7': ['T'],
-    'B': ['8'], 'I': ['1'], 'O': ['0'], 
-    'S': ['5'], 'G': ['6']
-}
-```
-
-##### **Nivel 3: Base de Datos de Referencia**
-- Consulta placas conocidas previamente procesadas
-- Algoritmo de distancia Levenshtein para similitud
-- Validación contra patrones regionales
-
-#### **📊 Casos de Uso Reales**
-
-| OCR Original | Corrección Smart | Confianza | Resultado |
-|--------------|------------------|-----------|-----------|
-| `H3G-947` | `HEG-947` | 75% → 90% | ✅ Corregida |
-| `TGT-947` | `TGT-947` | 85% | ✅ Peruana Válida |
-| `ABC12N` | `ABC123` | 70% → 85% | ✅ N→3 |
-| `P7T-456` | `PTT-456` | 65% → 80% | ✅ 7→T |
-
-#### **🎚️ Configuración Inteligente**
-
-El sistema se adapta automáticamente según el contexto:
-
-```python
-class SmartPlateCorrector:
-    def __init__(self):
-        self.confidence_boost = 0.15  # Incremento por corrección válida
-        self.min_confidence = 0.70    # Umbral mínimo NID/NIE
-        self.peruvian_format = r'^[A-Z]{3}-\d{3}$'
-        
-    def correct_plate(self, text, confidence):
-        # Nivel 1: Formato
-        corrected_text = self._correct_by_format(text)
-        
-        # Nivel 2: Proximidad
-        corrected_text = self._correct_by_proximity(corrected_text)
-        
-        # Nivel 3: Base de datos
-        final_text = self._check_known_plates(corrected_text)
-        
-        # Boost de confianza si se aplicaron correcciones
-        if final_text != text:
-            confidence = min(0.99, confidence + self.confidence_boost)
-            
-        return final_text, confidence
-```
-
-#### **🌍 Clasificación Regional Inteligente**
-
-- **Placas Peruanas**: Formato ABC-123 (3 letras + guión + 3 números)
-- **Placas Extranjeras**: Cualquier otro formato válido
-- **Clasificación NID/NIE**: Basada en confianza 70%+ y validación de caracteres
-
-#### **📈 Métricas de Mejora**
-
-| Aspecto | Antes | Después | Mejora |
-|---------|-------|---------|--------|
-| **Precisión General** | 85% | 92% | +7% |
-| **Placas Nocturnas** | 78% | 89% | +11% |
-| **Caracteres Confusos** | 72% | 94% | +22% |
-| **Falsos Positivos** | 8% | 3% | -5% |
-
----
-
-## �🧪 Testing y Calidad
-
-### ✅ **Pruebas Automatizadas**
+## 🧪 Testing y Calidad
 
 ```bash
-# Ejecutar suite de pruebas
-python -m pytest tests/
+# Suite completa
+python -m pytest tests/ -v
 
-# Cobertura de código
-python -m pytest --cov=src tests/
+# Test del pipeline oficial
+python -m pytest tests/test_official_video_processing.py -v
 
-# Pruebas de rendimiento
-python tests/performance_tests.py
+# Smoke test de instalación (usado en CI)
+python scripts/ci_smoke_test.py
+
+# Verificación de dependencias multiplataforma (CI matrix ubuntu+windows, Python 3.10)
+# .github/workflows/deps.yml:25
+
+# Regenerar indicadores desde SQLite
+python scripts/regenerar_indicadores.py
 ```
-
-### 📈 **Métricas de Calidad**
-
-| Métrica | Valor Actual | Objetivo | Mejoras v2.0 |
-|---------|--------------|----------|---------------|
-| **Cobertura de Código** | 85% | 90% | - |
-| **Precisión Detección** | 92% → 96% | 95% | ✅ SmartCorrector |
-| **Precisión OCR** | 85% → 92% | 95% | ✅ PaddleOCR + IA |
-| **Tiempo Inicio** | 25-30s → 10.8s | <10s | ✅ Carga Async |
-| **Detección Nocturna** | 78% → 89% | 85% | ✅ Umbral <60 |
-| **Clasificación NID/NIE** | N/A → 94% | 90% | ✅ Nuevo Sistema |
-| **Tiempo Respuesta** | <100ms | <50ms | - |
-| **Uptime Sistema** | 99.5% | 99.9% | - |
 
 ---
 
-## 🛠️ Desarrollo y Contribución
-
-### 🚀 **Configuración del Entorno de Desarrollo**
+## 🛠️ Desarrollo
 
 ```bash
-# Clonar repositorio
-git clone https://github.com/AbelMoyaICSI/InfractiVision.git
-
-# Configurar pre-commit hooks
 pip install pre-commit
 pre-commit install
-
-# Instalar dependencias de desarrollo
-pip install -r requirements-dev.txt
+pip install -r requirements.txt
 ```
 
-### 📝 **Estándares de Código**
+- Estilo: Black + isort
+- Linting: flake8 / pylint
+- Tests: pytest + coverage
+- Commits: convencionales, sin `Co-Authored-By`
 
-- **Estilo**: Black formatter + isort
-- **Linting**: flake8 + pylint
-- **Documentación**: Google style docstrings
-- **Testing**: pytest + coverage
+### Añadir un nuevo backend OCR
 
-### 🤝 **Cómo Contribuir**
-
-1. **Fork** el repositorio
-2. **Crear** branch para tu feature (`git checkout -b feature/AmazingFeature`)
-3. **Commit** tus cambios (`git commit -m 'Add AmazingFeature'`)
-4. **Push** al branch (`git push origin feature/AmazingFeature`)
-5. **Abrir** Pull Request
-
----
-
-## 📋 Roadmap
-
-### ✅ **Versión 2.0 (Completado - Q3 2025)**
-- [x] **SmartPlateCorrector**: Sistema de corrección inteligente OCR
-- [x] **PaddleOCR**: Migración desde EasyOCR con optimizaciones
-- [x] **Clasificación NID/NIE**: Sistema automático de documentos
-- [x] **Detección Nocturna**: Umbral inteligente (brillo < 60)
-- [x] **Corrección de Caracteres**: H/N, T/7, B/8, I/1, O/0, S/5, G/6
-- [x] **Inicialización Rápida**: PaddleOCR asíncrono (10.8s vs 25-30s)
-- [x] **Clasificación Regional**: Placas peruanas vs extranjeras
-
-### 🎯 **Versión 2.1 (Q4 2025)**
-- [ ] Detección de múltiples infracciones (cinturón, celular)
-- [ ] Soporte para cámaras IP en tiempo real  
-- [ ] Dashboard web para administración
-- [ ] API RESTful completa con autenticación
-
-### 🎯 **Versión 2.2 (Q1 2026)**
-- [ ] Machine Learning para predicción de patrones
-- [ ] Integración con sistemas municipales existentes
-- [ ] App móvil para supervisión remota
-- [ ] Análisis de tráfico avanzado con IA
-
-### 🎯 **Versión 3.0 (Q2 2026)**
-- [ ] IA conversacional para generación de reportes
-- [ ] Realidad aumentada para configuración de zonas
-- [ ] Edge computing para procesamiento en cámaras
-- [ ] Blockchain para auditoría inmutable de infracciones
-
----
-
-## 🆘 Soporte y Documentación
-
-### 📖 **Documentación Adicional**
-
-- 📚 [Wiki Completa](https://github.com/AbelMoyaICSI/InfractiVision/wiki)
-- 🎥 [Videos Tutoriales](https://youtube.com/playlist?list=PLxxxxx)
-- 📄 [Documentación API](https://api.infractivision.com/docs)
-- 🔧 [Guías de Instalación](docs/installation/)
-
-### 💬 **Canales de Soporte**
-
-- 🐛 [Issues de GitHub](https://github.com/AbelMoyaICSI/InfractiVision/issues)
-- 💌 **Email**: abelmoyaicsi@gmail.com
-- 💬 [Discussions](https://github.com/AbelMoyaICSI/InfractiVision/discussions)
-- 📱 **Telegram**: @InfractiVision
-
-### ❓ **FAQ Frecuentes**
-
-<details>
-<summary><strong>¿Funciona sin conexión a internet?</strong></summary>
-
-Sí, el módulo principal funciona completamente offline. Solo necesitas internet para:
-- Sincronización con la nube
-- Descargas de modelos iniciales
-- Actualizaciones del software
-</details>
-
-<details>
-<summary><strong>¿Qué formatos de video soporta?</strong></summary>
-
-InfractiVision soporta todos los formatos estándar:
-- **Video**: MP4, AVI, MOV, MKV, FLV
-- **Códecs**: H.264, H.265, VP9
-- **Resoluciones**: 480p hasta 4K
-</details>
-
-<details>
-<summary><strong>¿Puedo usar mis propios modelos de IA?</strong></summary>
-
-Sí, el sistema es extensible. Puedes:
-- Entrenar modelos YOLO personalizados
-- Integrar otros frameworks (TensorFlow, etc.)
-- Desarrollar plugins para nuevas funcionalidades
-- Personalizar el SmartPlateCorrector con nuevos patrones
-- Agregar correcciones específicas para tu región
-</details>
-
-<details>
-<summary><strong>¿Qué mejoras incluye el SmartPlateCorrector?</strong></summary>
-
-El SmartPlateCorrector es nuestro sistema de IA más avanzado que incluye:
-- **Corrección automática** de caracteres confusos (H/N, T/7, B/8, etc.)
-- **Clasificación inteligente** entre placas peruanas y extranjeras
-- **Validación de formato** con expresiones regulares
-- **Base de datos** de placas conocidas para referencia
-- **Boost de confianza** automático para correcciones válidas
-- **Mejora del 5-7%** en precisión general del OCR
-</details>
+Implementa `OCRReaderPort` (`src/domain/interfaces/ocr_interface.py:1`) y regístralo en `src/composition_root.py:84` (`_build_ocr`).
 
 ---
 
 ## 📄 Licencia
 
-Este proyecto está licenciado bajo la **Licencia MIT** - ver el archivo [LICENSE](LICENSE) para detalles.
+MIT — ver [LICENSE](LICENSE).
 
-### 🤝 **Términos de Uso**
-
-- ✅ Uso comercial permitido
-- ✅ Modificación permitida
-- ✅ Distribución permitida
-- ✅ Uso privado permitido
-- ❗ Sin garantía explícita
-- ❗ Responsabilidad del desarrollador
+- ✅ Uso comercial, modificación, distribución, uso privado
+- ❗ Sin garantía
 
 ---
 
 ## 🙏 Agradecimientos
 
-### 👥 **Contribuidores**
-
-- **Abel Moya** - *Desarrollo Principal* - [@AbelMoyaICSI](https://github.com/AbelMoyaICSI)
-
-### 📚 **Librerías y Recursos**
-
-- [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) - Detección de objetos
-- [EasyOCR](https://github.com/JaidedAI/EasyOCR) - Reconocimiento óptico
-- [OpenCV](https://opencv.org/) - Procesamiento de imágenes
-- [Google Cloud](https://cloud.google.com/) - Infraestructura cloud
-
-### 🌟 **Inspiración**
-
-Este proyecto fue inspirado por la necesidad de automatizar la seguridad vial y reducir accidentes en intersecciones urbanas.
+- [Ultralytics YOLO](https://github.com/ultralytics/ultralytics)
+- [OpenCV](https://opencv.org/)
+- [Plate Recognizer](https://platerecognizer.com/) — validación de placas
+- [Firebase / Google Cloud](https://cloud.google.com/) — Firestore
 
 ---
 
 <div align="center">
 
-### 🌟 **¡Si InfractiVision te resulta útil, considera darle una estrella!** ⭐
+### 🌟 ¡Si InfractiVision te resulta útil, deja una estrella! ⭐
 
-**Desarrollado con ❤️ por [Abel Moya](https://github.com/AbelMoyaICSI)**
+**Desarrollado por [Abel Moya](https://github.com/AbelMoyaICSI)**
 
 [🔝 Volver al inicio](#-infractivision)
 
 </div>
-
----
-
-## 📸 Galería de Imágenes
-
-### 🖼️ **Capturas de Pantalla**
-
-*[Aquí irán las capturas de pantalla de la aplicación]*
-
-![Dashboard Principal](docs/images/dashboard.png)
-*Dashboard principal con estadísticas en tiempo real*
-
-![Detección en Acción](docs/images/detection-live.png)
-*Sistema detectando infracciones en tiempo real*
-
-![Gestión de Infracciones](docs/images/management.png)
-*Panel de gestión y administración de registros*
-
-![Configuración](docs/images/settings.png)
-*Pantalla de configuración avanzada*
-
-### 🎥 **Videos Demostrativos**
-
-*[Aquí irán enlaces a videos demostrativos]*
-
-- 📹 [Demo Completo del Sistema](https://youtube.com/watch?v=xxxxx)
-- 🎥 [Instalación Paso a Paso](https://youtube.com/watch?v=xxxxx)
-- 🎬 [Configuración Avanzada](https://youtube.com/watch?v=xxxxx)
-
----
-
-*Última actualización: Enero 2025 - Versión 2.0 con SmartPlateCorrector*

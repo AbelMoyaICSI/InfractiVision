@@ -247,6 +247,13 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             self._after_ids = []
             self.video_label = render_target if render_target is not None else None
             self._setup_inline_ui(progress_mount)
+            # Si el player se destruye (Volver / _clear_root) el video_label
+            # muere pero root/dialog sigue vivo → apagar el sistema fluido.
+            if self.video_label is not None:
+                try:
+                    self.video_label.bind("<Destroy>", self._on_video_label_destroy, add="+")
+                except Exception:
+                    pass
         else:
             self.dialog = tk.Toplevel(parent)
             self.dialog.title("Análisis de infracciones")
@@ -307,6 +314,15 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         self._ui_call(self._safe_after_idle, func, *args, **kwargs)
         return None
 
+    def _widget_exists(self, widget):
+        """Retorna True solo si el widget sigue vivo en el intérprete Tcl."""
+        try:
+            return widget is not None and bool(widget.winfo_exists())
+        except tk.TclError:
+            return False
+        except Exception:
+            return False
+
     # ─── Pump de UI: ejecuta en el hilo principal los callables encolados ──
 
     def _start_ui_pump(self):
@@ -330,11 +346,14 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 fn, args, kwargs = self._ui_queue.get_nowait()
                 try:
                     fn(*args, **kwargs)
+                except tk.TclError:
+                    # Widget destruido (navegación / cierre): silenciar
+                    pass
                 except Exception as e:
                     print(f"Error en UI encolado: {e}")
         except queue.Empty:
             pass
-        if getattr(self, 'display_active', False):
+        if getattr(self, 'display_active', False) and self._widget_exists(self.dialog):
             try:
                 self.dialog.after(50, self._pump_ui_queue)
             except tk.TclError:
@@ -975,19 +994,20 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
 
     def _schedule_display_poller(self):
         """Programa el poller de la cola de visualización en el hilo principal."""
-        try:
-            self.dialog.after(16, self._poll_display_queue)
-        except tk.TclError:
-            pass
+        # Usar _safe_after para que _cancel_all_after() sí lo cancele
+        self._safe_after(16, self._poll_display_queue)
 
     def _poll_display_queue(self):
         """[HILO PRINCIPAL] Drena `_display_queue` y muestra el frame más reciente."""
         if not getattr(self, 'display_active', False):
             return
-        try:
-            if not hasattr(self, 'dialog') or not self.dialog.winfo_exists():
-                return
-        except tk.TclError:
+        if not self._widget_exists(self.dialog):
+            self.display_active = False
+            return
+        # En modo inline dialog==root nunca muere; el que muere es video_label.
+        # Si ya no existe, apagar el sistema fluido (evita "invalid command name").
+        if hasattr(self, 'video_label') and not self._widget_exists(self.video_label):
+            self.display_active = False
             return
         frame = None
         try:
@@ -1004,16 +1024,23 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             try:
                 self._display_frame_immediate(frame)
             except tk.TclError:
+                self.display_active = False
                 return
-        self._schedule_display_poller()
+        # Reprogramar solo si seguimos activos y los widgets viven
+        if getattr(self, 'display_active', False) and self._widget_exists(self.dialog) \
+                and (not hasattr(self, 'video_label') or self._widget_exists(self.video_label)):
+            self._schedule_display_poller()
     
     def _display_frame_immediate(self, frame):
         """🎬 Muestra frame inmediatamente sin procesamiento pesado"""
         if frame is None or not hasattr(self, 'video_label'):
             return
-            
+        if not self._widget_exists(self.video_label):
+            self.display_active = False
+            return
         # Verificaciones de seguridad
-        if not hasattr(self, 'dialog') or not self.dialog.winfo_exists():
+        if not self._widget_exists(self.dialog):
+            self.display_active = False
             return
             
         try:
@@ -1050,6 +1077,10 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             if not getattr(self, "inline", False):
                 self.update_synchronized_semaphore()
             
+        except tk.TclError:
+            # Widget destruido durante shutdown/navegación: apagar sin ruido
+            self.display_active = False
+            return
         except Exception as e:
             print(f"Error mostrando frame fluido: {e}")
     
@@ -4986,6 +5017,19 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 ap.stop()
             except Exception as e:
                 print(f"Error deteniendo async_processor: {e}")
+
+    def _on_video_label_destroy(self, event):
+        if event is None or getattr(event, "widget", None) is not self.video_label:
+            return
+        self.display_active = False
+        try:
+            self._cancel_all_after()
+        except Exception:
+            pass
+        try:
+            self._cleanup_threads()
+        except Exception as e:
+            print(f"Error en cleanup por video_label destruido: {e}")
 
     def _on_dialog_destroy(self, event):
         if event is not None and getattr(event, "widget", None) is not self.dialog:

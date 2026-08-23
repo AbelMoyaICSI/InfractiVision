@@ -73,6 +73,27 @@ def _parse_video_timestamp(ts: str) -> int:
     return seconds
 
 
+def _combine_fecha_hora(fecha: str, hora: str) -> datetime | None:
+    """Combina fecha DD/MM/YYYY + hora HH:MM:SS en un datetime exacto.
+
+    Retorna None si no se puede parsear.
+    """
+    fecha = (fecha or "").strip()
+    hora = (hora or "").strip()
+    if hora:
+        try:
+            base = _parse_date(fecha) or datetime.now()
+            hora_dt = datetime.strptime(hora, "%H:%M:%S")
+            return base.replace(hour=hora_dt.hour, minute=hora_dt.minute, second=hora_dt.second, microsecond=0)
+        except ValueError:
+            pass
+    if fecha:
+        parsed = _parse_date(fecha)
+        if parsed is not None:
+            return parsed
+    return None
+
+
 def _settings_for(video_name: str) -> dict:
     """Compat: delega a DB."""
     return _settings_for_from_db(video_name)
@@ -87,18 +108,7 @@ def _deteccion_for(video_name: str, infractions: list) -> list:
         hora = inf.get("hora", "")
         ts = inf.get("video_timestamp", "")
 
-        if hora:
-            try:
-                base = _parse_date(fecha) or datetime.now()
-                hora_dt = datetime.strptime(hora.strip(), "%H:%M:%S")
-                timestamp = base.replace(hour=hora_dt.hour, minute=hora_dt.minute, second=hora_dt.second)
-            except ValueError:
-                timestamp = _parse_date(fecha)
-        else:
-            timestamp = _parse_date(fecha)
-
-        if timestamp is None:
-            timestamp = datetime.now()
+        timestamp = _combine_fecha_hora(fecha, hora) or datetime.now()
 
         clasificacion = inf.get("clasificacion", "NID")
         detecciones.append({
@@ -129,7 +139,9 @@ def _build_video_document(video_name: str, infractions: list) -> dict | None:
                 tr = float(indic.get("indicadores", {}).get("TR", {}).get("con_software", {}).get("tiempo_promedio_minutos", 0) or 0)
         except Exception:
             pass
-    fecha = _parse_date(infractions[0].get("fecha", "")) or datetime.now()
+    # Fecha y hora exacta de la prueba (session): combina fecha + hora de la primera infracción
+    first = infractions[0] if infractions else {}
+    fecha = _combine_fecha_hora(first.get("fecha", ""), first.get("hora", "")) or datetime.now()
     return {
         "ti": round(ti, 2),
         "tr": round(tr, 4),
