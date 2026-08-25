@@ -99,6 +99,7 @@ end;
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   URL, ZipPath, ExePath: String;
+  ResultCode: Integer;
 begin
   Result := True;
   if CurPageID = wpReady then begin
