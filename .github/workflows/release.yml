@@ -107,20 +107,7 @@ jobs:
             echo "::warning::Sin FIREBASE_SA_JSON: el zip cuda-Win (>2GB) solo se sirve desde GCS y se omitira aqui."
             exit 0
           fi
-          python - <<'PY'
-          import json, os, glob
-          from google.cloud import storage
-          from google.oauth2 import service_account
-          info = json.loads(os.environ["FIREBASE_SA_JSON"])
-          creds = service_account.Credentials.from_service_account_info(info)
-          client = storage.Client(project="infractivision-e8c03", credentials=creds)
-          bucket = client.bucket("infractivision-e8c03.firebasestorage.app")
-          for path in glob.glob("dist/*.zip"):
-            name = os.path.basename(path)
-            blob = bucket.blob(f"releases/latest/{name}")
-            blob.upload_from_filename(path, predefined_acl="publicRead")
-            print("GCS OK:", blob.public_url)
-          PY
+          python scripts/upload_release_asset.py dist/*.zip
       - uses: actions/upload-artifact@v4
         with:
           name: InfractiVision-${{ matrix.variant }}-${{ matrix.os }}
