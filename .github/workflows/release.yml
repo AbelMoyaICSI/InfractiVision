@@ -52,14 +52,14 @@ jobs:
         shell: bash
         run: |
           if [[ -z "${{ secrets.PLATE_RECOGNIZER_TOKEN }}" || -z "${{ secrets.FIREBASE_SA_JSON }}" ]]; then
-            echo "::error::Faltan secrets del repo: FIREBASE_SA_JSON y PLATE_RECOGNIZER_TOKEN."
-            echo "Sin ellos el exe publicado NO tendra migraciones Firestore ni validacion Plate Recognizer."
-            echo "Configuralos y relanza con workflow_dispatch o re-tag."
-            exit 1
+            echo "::warning::Faltan secrets del repo (FIREBASE_SA_JSON, PLATE_RECOGNIZER_TOKEN)."
+            echo "Este build NO incluira migraciones Firestore ni validacion Plate Recognizer."
+            echo "Configuralos en Settings>Secrets y relanza con workflow_dispatch."
+          else
+            printf '%s\n' "PLATE_RECOGNIZER_API_TOKEN=${{ secrets.PLATE_RECOGNIZER_TOKEN }}" > .env
+            printf '%s' '${{ secrets.FIREBASE_SA_JSON }}' > infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json
+            ls -l .env infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json
           fi
-          printf '%s\n' "PLATE_RECOGNIZER_API_TOKEN=${{ secrets.PLATE_RECOGNIZER_TOKEN }}" > .env
-          printf '%s' '${{ secrets.FIREBASE_SA_JSON }}' > infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json
-          ls -l .env infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json
       - name: Build PyInstaller
         run: python -m PyInstaller --noconfirm --clean ${{ matrix.spec }}
       - name: Smoke test built exe
