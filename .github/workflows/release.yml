@@ -79,18 +79,20 @@ jobs:
           OS_TAG="Linux"; [[ "${{ matrix.os }}" == "windows-latest" ]] && OS_TAG="Win"; [[ "${{ matrix.os }}" == "macos-latest" ]] && OS_TAG="Mac"
           NAME="InfractiVision-${{ matrix.variant }}-${OS_TAG}-${ARCH}.zip"
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            # En Windows el exe ya contiene datas, solo zippear el exe
+            # En Windows el exe ya contiene datas, solo zippear el exe.
+            # OJO: Compress-Archive falla con archivos >2GB (exe CUDA); usar 7-Zip.
             if [[ -f dist/InfractiVision.exe ]]; then
-              if command -v powershell >/dev/null 2>&1; then
-                powershell -Command "Compress-Archive -Path dist/InfractiVision.exe -DestinationPath dist/$NAME -Force" 2>/dev/null || (cd dist && zip -j "$NAME" InfractiVision.exe)
+              SEVENZIP="C:/Program Files/7-Zip/7z.exe"
+              if [[ -f "$SEVENZIP" ]]; then
+                "$SEVENZIP" a -tzip "dist/$NAME" "dist/InfractiVision.exe" -mx1
               else
-                (cd dist && zip -j "$NAME" InfractiVision.exe)
+                powershell -Command "Compress-Archive -Path dist/InfractiVision.exe -DestinationPath dist/$NAME -Force"
               fi
             else
               echo "ERROR: dist/InfractiVision.exe no existe" && ls -lh dist/
               exit 1
             fi
-            ls -lh "dist/$NAME" 2>/dev/null || ls -lh dist/*.zip 2>/dev/null || true
+            ls -lh "dist/$NAME" || { echo "ERROR: no se genero $NAME"; exit 1; }
           else
             (cd dist && zip -r "$NAME" InfractiVision 2>/dev/null || tar czf "${NAME%.zip}.tar.gz" InfractiVision)
             ls -lh "dist/$NAME" 2>/dev/null || ls -lh dist/*.zip dist/*.tar.gz 2>/dev/null || true
@@ -99,7 +101,7 @@ jobs:
         with:
           name: InfractiVision-${{ matrix.variant }}-${{ matrix.os }}
           path: dist/*.zip
-          if-no-files-found: warn
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: InfractiVision-${{ matrix.variant }}-${{ matrix.os }}-tar
