@@ -8,21 +8,6 @@
 #define MyAppURL "https://github.com/AbelMoyaICSI/InfractiVision"
 #define RepoBase "https://github.com/AbelMoyaICSI/InfractiVision/releases/latest/download"
 
-; Videos demo (deben coincidir con config/demo_videos.json)
-const
-  DemoFiles: array[0..4] of String = (
-    'Av-Condorcanqui.mp4',
-    'VID1EDIT ‐ Hecho con Clipchamp.mp4',
-    'VID2COLISEO.MOV',
-    'VID2EDIT ‐ Hecho con Clipchamp.mp4',
-    'VID4EDIT ‐ Hecho con Clipchamp.mp4');
-  DemoURLs: array[0..4] of String = (
-    'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/Av-Condorcanqui.mp4?alt=media&token=9ee9bd87-2a0f-4bf2-8acb-445f0bbb48e4',
-    'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID1EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=b99a2f2d-a765-44bb-a4b4-63c2e8a1357a',
-    'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID2COLISEO.MOV?alt=media&token=10317415-ed30-4ae1-869f-3c47c31fdaa6',
-    'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID2EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=9bcae3a5-b76a-4b70-ad5a-ea153cdaec18',
-    'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID4EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=520a3110-d499-4a9e-b43d-cb054ca48e0a');
-
 [Setup]
 AppId={{2033F5B2-85DB-456E-9800-9FC2EB030ADB}
 AppName={#MyAppName}
@@ -73,6 +58,26 @@ Filename: "{app}\InfractiVision.exe"; WorkingDir: "{app}"; Description: "{cm:Lau
 var
   DownloadPage: TDownloadWizardPage;
   HasNvidiaGPU: Boolean;
+  DemoFiles: array of String;
+  DemoURLs: array of String;
+
+// Videos demo (deben coincidir con config/demo_videos.json)
+procedure InitDemoVideos;
+begin
+  SetArrayLength(DemoFiles, 5);
+  DemoFiles[0] := 'Av-Condorcanqui.mp4';
+  DemoFiles[1] := 'VID1EDIT ‐ Hecho con Clipchamp.mp4';
+  DemoFiles[2] := 'VID2COLISEO.MOV';
+  DemoFiles[3] := 'VID2EDIT ‐ Hecho con Clipchamp.mp4';
+  DemoFiles[4] := 'VID4EDIT ‐ Hecho con Clipchamp.mp4';
+
+  SetArrayLength(DemoURLs, 5);
+  DemoURLs[0] := 'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/Av-Condorcanqui.mp4?alt=media&token=9ee9bd87-2a0f-4bf2-8acb-445f0bbb48e4';
+  DemoURLs[1] := 'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID1EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=b99a2f2d-a765-44bb-a4b4-63c2e8a1357a';
+  DemoURLs[2] := 'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID2COLISEO.MOV?alt=media&token=10317415-ed30-4ae1-869f-3c47c31fdaa6';
+  DemoURLs[3] := 'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID2EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=9bcae3a5-b76a-4b70-ad5a-ea153cdaec18';
+  DemoURLs[4] := 'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID4EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=520a3110-d499-4a9e-b43d-cb054ca48e0a';
+end;
 
 function HasNvidiaGPUCheck(): Boolean;
 var
@@ -108,6 +113,7 @@ end;
 procedure InitializeWizard;
 begin
   HasNvidiaGPU := HasNvidiaGPUCheck();
+  InitDemoVideos;
   DownloadPage := CreateDownloadPage(SetupMessage(msgWizardPreparing), SetupMessage(msgPreparingDesc), nil);
 end;
 
