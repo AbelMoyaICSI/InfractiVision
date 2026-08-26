@@ -7,6 +7,8 @@
 #define MyAppPublisher "Abel Moya"
 #define MyAppURL "https://github.com/AbelMoyaICSI/InfractiVision"
 #define RepoBase "https://github.com/AbelMoyaICSI/InfractiVision/releases/latest/download"
+; El zip CUDA-Win supera el limite de 2GB de GitHub Releases; se aloja en GCS publico.
+#define GcsBase "https://storage.googleapis.com/infractivision-e8c03.firebasestorage.app/releases/latest"
 
 [Setup]
 AppId={{2033F5B2-85DB-456E-9800-9FC2EB030ADB}
@@ -99,7 +101,7 @@ end;
 function GetArtifactURL(): String;
 begin
   if HasNvidiaGPU then
-    Result := '{#RepoBase}/InfractiVision-cuda-Win-x64.zip'
+    Result := '{#GcsBase}/InfractiVision-cuda-Win-x64.zip'
   else
     Result := '{#RepoBase}/InfractiVision-cpu-Win-x64.zip';
 end;

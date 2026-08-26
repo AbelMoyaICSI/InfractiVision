@@ -97,6 +97,30 @@ jobs:
             (cd dist && zip -r "$NAME" InfractiVision 2>/dev/null || tar czf "${NAME%.zip}.tar.gz" InfractiVision)
             ls -lh "dist/$NAME" 2>/dev/null || ls -lh dist/*.zip dist/*.tar.gz 2>/dev/null || true
           fi
+      - name: Upload to GCS (zip >2GB no cabe en GitHub Releases)
+        if: ${{ matrix.os == 'windows-latest' && matrix.variant == 'cuda' }}
+        shell: bash
+        env:
+          FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
+        run: |
+          if [[ -z "$FIREBASE_SA_JSON" ]]; then
+            echo "::warning::Sin FIREBASE_SA_JSON: el zip cuda-Win (>2GB) solo se sirve desde GCS y se omitira aqui."
+            exit 0
+          fi
+          python - <<'PY'
+          import json, os, glob
+          from google.cloud import storage
+          from google.oauth2 import service_account
+          info = json.loads(os.environ["FIREBASE_SA_JSON"])
+          creds = service_account.Credentials.from_service_account_info(info)
+          client = storage.Client(project="infractivision-e8c03", credentials=creds)
+          bucket = client.bucket("infractivision-e8c03.firebasestorage.app")
+          for path in glob.glob("dist/*.zip"):
+            name = os.path.basename(path)
+            blob = bucket.blob(f"releases/latest/{name}")
+            blob.upload_from_filename(path, predefined_acl="publicRead")
+            print("GCS OK:", blob.public_url)
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: InfractiVision-${{ matrix.variant }}-${{ matrix.os }}
@@ -137,6 +161,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
+      - name: Remove >2GB assets (no caben en GitHub Releases)
+        run: |
+          find release-assets -type f -size +2147483647c -delete
+          ls -laR release-assets
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
