@@ -50,6 +50,7 @@ data/*.json
 !*test.json
 !requirements.txt
 !package*.json
+!config/demo_videos.json
 
 # === ARCHIVOS TEMPORALES DE SCRIPTS ===
 clean_method.py

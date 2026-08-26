@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from src.core.utils import resource_path
+from src.core.utils.paths import user_data_path
 
 
 @dataclass(frozen=True)
@@ -23,7 +24,7 @@ class ModelPaths:
 @dataclass(frozen=True)
 class DatabaseSettings:
     backend: str = field(default_factory=lambda: os.getenv("INFRACTI_DB_BACKEND", "sqlite"))
-    sqlite_path: str = field(default_factory=lambda: resource_path("data/infractions.sqlite"))
+    sqlite_path: str = field(default_factory=lambda: user_data_path("data/infractions.sqlite"))
     mysql_url: str = field(default_factory=lambda: os.getenv("INFRACTI_MYSQL_URL", ""))
 
 
@@ -42,9 +43,9 @@ class DetectionSettings:
 
 @dataclass(frozen=True)
 class StoragePaths:
-    videos: str = field(default_factory=lambda: resource_path("data/videos"))
-    images: str = field(default_factory=lambda: resource_path("data/images"))
-    evidences: str = field(default_factory=lambda: resource_path("data/evidences"))
+    videos: str = field(default_factory=lambda: user_data_path("data/videos"))
+    images: str = field(default_factory=lambda: user_data_path("data/images"))
+    evidences: str = field(default_factory=lambda: user_data_path("data/evidences"))
 
 
 @dataclass(frozen=True)

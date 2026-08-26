@@ -80,6 +80,18 @@ def main() -> None:
         # Precarga LPRNet solo cuando el mainloop ya está vivo (arranque libre).
     root.after(300, _preload_lprnet_in_background)
 
+    # Descarga de videos demo en background (idempotente, solo si faltan).
+    # Los 5 videos demo se traen a videos/ para que el preset de BD funcione
+    # de inmediato; si no hay red, la app sigue igual y reintenta al seleccionar.
+    def _download_demo_videos() -> None:
+        try:
+            from src.infrastructure.storage.demo_video_downloader import ensure_demo_videos_async
+            ensure_demo_videos_async()
+        except Exception as e:
+            log.warning("No se pudo iniciar descarga de videos demo: %s", e)
+
+    root.after(500, _download_demo_videos)
+
     # El proveedor de estado del semáforo se inyecta más tarde, cuando la GUI
     # crea su panel `Semaforo`. Por ahora, valor por defecto "green".
     traffic_light_state: dict[str, str] = {"value": "green"}

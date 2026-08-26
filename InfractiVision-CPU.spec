@@ -35,10 +35,20 @@ for img in ["welcome_bg.png", "icon.ico", "InfractiVision-logo.png"]:
 
 # Configs por defecto (solo JSON de config, no secrets/data/videos)
 for cfg in ["avenue_config.json", "camera_config.json", "polygon_config.json",
-            "time_presets.json", "zones.json"]:
+            "time_presets.json", "zones.json", "demo_videos.json"]:
     _add_data(BASE_DIR / "config" / cfg, "config", datas)
 
-# Nota: data/, secrets/, videos/ se excluyen a proposito para instalador ONLINE
+# Preset de BD (seed versionable con video_configs de los videos demo)
+_add_data(BASE_DIR / "presets" / "infractions_preset.db", "presets", datas)
+
+# Secretos necesarios POST-instalacion (migraciones Firestore + Plate Recognizer).
+# Se empaquetan SOLO si existen al compilar (el CI sin secrets no rompe).
+# ADVERTENCIA: quedan extraibles del onefile; rotar keys requiere re-build.
+_add_data(BASE_DIR / "infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json", ".", datas)
+_add_data(BASE_DIR / ".env", ".", datas)
+
+# Nota: data/, videos/ se excluyen a proposito para instalador ONLINE
+#       (los videos demo se descargan al instalar desde config/demo_videos.json)
 
 hiddenimports = [
     'tkinter', 'tkinter.messagebox', 'tkinter.filedialog', 'tkinter.ttk',
@@ -78,6 +88,8 @@ hiddenimports = [
     'src.automations.cloud_migrator',
     'src.infrastructure.ai.yolo_detector', 'src.infrastructure.ai.plate_detector',
     'src.infrastructure.ocr.lprnet_reader', 'src.infrastructure.database.sqlite_repository',
+    'src.infrastructure.storage.demo_video_downloader',
+    'src.infrastructure.ocr.cloud_plate_readers',
 ]
 
 pathex = [str(BASE_DIR), str(SRC_DIR)]

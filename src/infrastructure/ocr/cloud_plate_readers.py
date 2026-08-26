@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import re
 import time
@@ -9,11 +10,37 @@ from pathlib import Path
 
 import requests
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv(Path(__file__).resolve().parents[3] / ".env")
-except ImportError:
-    pass
+def _load_env_files() -> None:
+    """Carga variables de entorno desde los candidatos de `.env`.
+
+    Orden: env real > raíz de proyecto/frozen (_MEIPASS) > APPDATA del usuario.
+    Así el token de Plate Recognizer funciona igual en dev y en el exe
+    instalado (donde el `.env` viaja empaquetado o se coloca en APPDATA).
+    """
+    candidates: list[Path] = []
+    here = Path(__file__).resolve()
+    candidates.append(here.parents[3] / ".env")
+    try:
+        from src.path_helper import resource_path
+        candidates.append(Path(resource_path(".env")))
+    except Exception:
+        pass
+    try:
+        from src.core.utils.paths import APPDATA_DIR
+        candidates.append(APPDATA_DIR / ".env")
+        candidates.append(APPDATA_DIR / "plate_recognizer.json")
+    except Exception:
+        pass
+    try:
+        from dotenv import load_dotenv
+        for cand in candidates:
+            if cand.exists():
+                load_dotenv(cand)
+    except ImportError:
+        pass
+
+
+_load_env_files()
 
 
 def normalize_plate(text: str) -> str:
@@ -25,11 +52,24 @@ class PlateRecognizerSnapshotReader:
 
     def __init__(self, token: str | None = None, timeout: int = 30,
                  min_interval_seconds: float = 2.0, max_retries: int = 3):
-        self.token = token or os.getenv("PLATE_RECOGNIZER_API_TOKEN")
+        self.token = token or os.getenv("PLATE_RECOGNIZER_API_TOKEN") or self._token_from_appdata()
         self.timeout = timeout
         self.min_interval_seconds = max(0.0, float(min_interval_seconds))
         self.max_retries = max(0, int(max_retries))
         self._last_request_at = 0.0
+
+    @staticmethod
+    def _token_from_appdata() -> str | None:
+        """Lee el token persistido por el usuario en APPDATA (JSON plano)."""
+        try:
+            from src.core.utils.paths import APPDATA_DIR
+            path = APPDATA_DIR / "plate_recognizer.json"
+            if path.exists():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return data.get("token") or data.get("PLATE_RECOGNIZER_API_TOKEN")
+        except Exception:
+            return None
+        return None
 
     def _wait_between_requests(self) -> None:
         elapsed = time.monotonic() - self._last_request_at

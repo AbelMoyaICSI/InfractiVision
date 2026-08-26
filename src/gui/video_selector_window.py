@@ -155,6 +155,19 @@ class VideoSelectorWindow:
             pady=10
         )
         refresh_btn.pack(side="right", padx=5)
+
+        # Botón descargar videos demo (instalación online sin videos)
+        demo_btn = tk.Button(
+            self.button_frame,
+            text="⬇️ Descargar Demo",
+            command=self.download_demo_videos,
+            bg="#2c3e50",
+            fg="white",
+            font=("Arial", 12),
+            padx=20,
+            pady=10
+        )
+        demo_btn.pack(side="right", padx=5)
         
         # Label de estado
         self.status_label = tk.Label(
@@ -936,6 +949,23 @@ class VideoSelectorWindow:
             print(f"⚠️ Error limpiando infracciones: {e}")
             pass
     
+    def download_demo_videos(self):
+        """Descargar los videos demo en background y refrescar al terminar."""
+        self.status_label.config(text="⬇️ Descargando videos demo...")
+        try:
+            from src.infrastructure.storage.demo_video_downloader import ensure_demo_videos_async
+            ensure_demo_videos_async(
+                dest_dir=self.video_dir,
+                callback=lambda _res: self._safe_after_refresh(),
+            )
+        except Exception as e:
+            self.status_label.config(text=f"❌ Error descargando demo: {e}")
+
+    def _safe_after_refresh(self):
+        # El callback corre en un hilo worker: refrescar Tk solo en el hilo
+        # principal vía la cola UI (nunca tocar widgets desde worker).
+        self.ui_queue.put(self.refresh_videos)
+
     def refresh_videos(self):
         """Actualizar lista de videos"""
         # Limpiar cache

@@ -8,6 +8,21 @@
 #define MyAppURL "https://github.com/AbelMoyaICSI/InfractiVision"
 #define RepoBase "https://github.com/AbelMoyaICSI/InfractiVision/releases/latest/download"
 
+; Videos demo (deben coincidir con config/demo_videos.json)
+const
+  DemoFiles: array[0..4] of String = (
+    'Av-Condorcanqui.mp4',
+    'VID1EDIT ‐ Hecho con Clipchamp.mp4',
+    'VID2COLISEO.MOV',
+    'VID2EDIT ‐ Hecho con Clipchamp.mp4',
+    'VID4EDIT ‐ Hecho con Clipchamp.mp4');
+  DemoURLs: array[0..4] of String = (
+    'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/Av-Condorcanqui.mp4?alt=media&token=9ee9bd87-2a0f-4bf2-8acb-445f0bbb48e4',
+    'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID1EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=b99a2f2d-a765-44bb-a4b4-63c2e8a1357a',
+    'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID2COLISEO.MOV?alt=media&token=10317415-ed30-4ae1-869f-3c47c31fdaa6',
+    'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID2EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=9bcae3a5-b76a-4b70-ad5a-ea153cdaec18',
+    'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID4EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=520a3110-d499-4a9e-b43d-cb054ca48e0a');
+
 [Setup]
 AppId={{2033F5B2-85DB-456E-9800-9FC2EB030ADB}
 AppName={#MyAppName}
@@ -96,6 +111,32 @@ begin
   DownloadPage := CreateDownloadPage(SetupMessage(msgWizardPreparing), SetupMessage(msgPreparingDesc), nil);
 end;
 
+function DownloadFile(URL, Dest: String): Boolean;
+var
+  ResultCode: Integer;
+  Script: String;
+begin
+  Result := False;
+  Script := '-NoProfile -ExecutionPolicy Bypass -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ErrorActionPreference = ''Stop''; try { Invoke-WebRequest -Uri ''@@URL@@'' -OutFile ''@@DEST@@'' -UseBasicParsing -TimeoutSec 3600 } catch { exit 1 } }"';
+  StringChangeEx(Script, '@@URL@@', URL, True);
+  StringChangeEx(Script, '@@DEST@@', Dest, True);
+  if Exec('powershell.exe', Script, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    Result := (ResultCode = 0);
+end;
+
+procedure DownloadDemoVideos(AppPath: String);
+var
+  I: Integer;
+  VDir: String;
+begin
+  VDir := AppPath + '\videos';
+  if not ForceDirectories(VDir) then
+    Log('No se pudo crear ' + VDir);
+  for I := 0 to 4 do
+    if not DownloadFile(DemoURLs[I], VDir + '\' + DemoFiles[I]) then
+      Log('Fallo descarga demo ' + DemoFiles[I] + ' (la app la reintentara al primer inicio)');
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   URL, ZipPath, ExePath: String;
@@ -133,6 +174,9 @@ begin
     end else if ResultCode <> 0 then begin
       MsgBox('Descompresion fallo (codigo ' + IntToStr(ResultCode) + '). Intenta de nuevo.', mbError, MB_OK);
       Result := False;
+    end else begin
+      // Artefacto extraido OK: descarga los videos demo a {app}\videos.
+      DownloadDemoVideos(ExePath);
     end;
     if NeedsVCRedist() then
       SuppressibleMsgBox('Falta Microsoft Visual C++ 2015-2022 Redistributable (x64). La app puede fallar al iniciar. Descargalo desde https://aka.ms/vs/17/release/vc_redist.x64.exe', mbInformation, MB_OK, IDOK);

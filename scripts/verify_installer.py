@@ -27,6 +27,32 @@ def test_spec_no_videos():
     # debe incluir modelos criticos
     assert "yolov8n.pt" in text and "license_plate_detector.pt" in text
 
+def test_spec_has_preset_and_secrets():
+    for f in ["InfractiVision.spec","InfractiVision-CPU.spec","InfractiVision-CUDA.spec"]:
+        text = (ROOT / f).read_text()
+        assert "infractions_preset.db" in text, f"{f}: debe empaquetar presets/infractions_preset.db"
+        assert "demo_videos.json" in text, f"{f}: debe empaquetar config/demo_videos.json"
+        assert "infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json" in text, f"{f}: debe empaquetar la Service Account de migraciones"
+        assert '".env"' in text or ".env" in text, f"{f}: debe empaquetar .env (token Plate Recognizer)"
+
+def test_demo_manifest_valid():
+    import json
+    m = json.loads((ROOT / "config" / "demo_videos.json").read_text(encoding="utf-8"))
+    videos = m["videos"]
+    assert len(videos) == 5, "el manifest debe listar 5 videos demo"
+    for v in videos:
+        assert v["filename"] and v["gcs_path"] and v["sha256"] and v["size"], f"manifest incompleto: {v}"
+        assert "firebasestorage.googleapis.com" in v["url"] or "storage.googleapis.com" in v["url"], f"URL inválida: {v}"
+    # cada video demo debe tener config en el preset
+    import sqlite3
+    preset = ROOT / "presets" / "infractions_preset.db"
+    assert preset.exists(), "presets/infractions_preset.db debe existir"
+    conn = sqlite3.connect(preset)
+    names = {r[0] for r in conn.execute("SELECT video_name FROM video_configs")}
+    conn.close()
+    for v in videos:
+        assert v["filename"] in names, f"video demo sin config en preset: {v['filename']}"
+
 def test_spec_compile():
     import py_compile
     for f in ["InfractiVision.spec","InfractiVision-CPU.spec","InfractiVision-CUDA.spec"]:
@@ -62,6 +88,8 @@ def test_gpu_detection_unit():
     assert "cuda:0" in (ROOT/"src/core/ocr/lprnet_engine.py").read_text()
 
 check("spec no videos/secrets", test_spec_no_videos)
+check("spec preset + secrets", test_spec_has_preset_and_secrets)
+check("demo manifest válido", test_demo_manifest_valid)
 check("spec compile", test_spec_compile)
 check("linux sh syntax", test_linux_sh_syntax)
 check("win iss content", test_win_iss_syntax)

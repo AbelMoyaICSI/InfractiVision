@@ -147,8 +147,9 @@ class VideoPlayerOpenCV:
         self.registration_times = []
         self.plate_detection_history = {}
 
-                # Directorio de vídeos
-        self.video_dir = resource_path("videos")
+                # Directorio de vídeos (persistente en frozen: APPDATA; en dev: proyecto)
+        from src.core.utils.paths import user_data_path
+        self.video_dir = user_data_path("videos")
         os.makedirs(self.video_dir, exist_ok=True)
         
         # Contenedor principal
@@ -634,7 +635,17 @@ class VideoPlayerOpenCV:
         """
         try:
             from src.gui.video_selector_window import show_video_selector
-            
+
+            # Si faltan videos demo, dispara la descarga en background (no bloquea).
+            try:
+                from src.infrastructure.storage.demo_video_downloader import (
+                    ensure_demo_videos_async, missing_demo_videos,
+                )
+                if missing_demo_videos(self.video_dir):
+                    ensure_demo_videos_async(dest_dir=self.video_dir)
+            except Exception:
+                pass
+
             def on_video_selected(video_path, force_config=False):
                 """Callback cuando se selecciona un video del selector visual"""
                 if video_path:

@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "base_dir": "videos",
+  "videos": [
+    {
+      "filename": "Av-Condorcanqui.mp4",
+      "gcs_path": "Av-Condorcanqui.mp4",
+      "size": 1021890522,
+      "sha256": "e0c07002a6584bb4e5ee23ef8145aa6f694ffe38db32f3d3b01378e71460f6e6",
+      "url": "https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/Av-Condorcanqui.mp4?alt=media&token=9ee9bd87-2a0f-4bf2-8acb-445f0bbb48e4",
+      "public_url": "https://storage.googleapis.com/infractivision-e8c03.firebasestorage.app/Av-Condorcanqui.mp4"
+    },
+    {
+      "filename": "VID1EDIT \u2010 Hecho con Clipchamp.mp4",
+      "gcs_path": "VID1EDIT \u2010 Hecho con Clipchamp.mp4",
+      "size": 203634481,
+      "sha256": "b8e1d821c124ff26bae01349673457b0abaa250cd41fe30618424f534c5619a1",
+      "url": "https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID1EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=b99a2f2d-a765-44bb-a4b4-63c2e8a1357a",
+      "public_url": "https://storage.googleapis.com/infractivision-e8c03.firebasestorage.app/VID1EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4"
+    },
+    {
+      "filename": "VID2COLISEO.MOV",
+      "gcs_path": "VID2COLISEO.MOV",
+      "size": 632964821,
+      "sha256": "e4fc28ee56dbf38cb7348f76c4cfaa8b32a3ba561815a4a670ea3d700dd12bbd",
+      "url": "https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID2COLISEO.MOV?alt=media&token=10317415-ed30-4ae1-869f-3c47c31fdaa6",
+      "public_url": "https://storage.googleapis.com/infractivision-e8c03.firebasestorage.app/VID2COLISEO.MOV"
+    },
+    {
+      "filename": "VID2EDIT \u2010 Hecho con Clipchamp.mp4",
+      "gcs_path": "VID2EDIT \u2010 Hecho con Clipchamp.mp4",
+      "size": 289479439,
+      "sha256": "111b8d0dab288f7db9a842c7efd786db3b865607e837fd9c98b3b890ee1b4075",
+      "url": "https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID2EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=9bcae3a5-b76a-4b70-ad5a-ea153cdaec18",
+      "public_url": "https://storage.googleapis.com/infractivision-e8c03.firebasestorage.app/VID2EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4"
+    },
+    {
+      "filename": "VID4EDIT \u2010 Hecho con Clipchamp.mp4",
+      "gcs_path": "VID4EDIT \u2010 Hecho con Clipchamp.mp4",
+      "size": 468973419,
+      "sha256": "28fa2f9f768dcfa2d28850508d67ab2322343153d5a1443d1d722d21b7150659",
+      "url": "https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID4EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=520a3110-d499-4a9e-b43d-cb054ca48e0a",
+      "public_url": "https://storage.googleapis.com/infractivision-e8c03.firebasestorage.app/VID4EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4"
+    }
+  ]
+}

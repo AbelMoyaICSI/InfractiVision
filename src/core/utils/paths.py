@@ -19,6 +19,20 @@ def resource_path(rel: str) -> str:
     return str(base / rel)
 
 
+def user_data_path(rel: str) -> str:
+    """Ruta persistente para datos ESCRIBIBLES del usuario.
+
+    En frozen (onefile) `resource_path` apunta a `_MEIPASS` (extracción
+    temporal que se borra al salir). Los datos que deben sobrevivir
+    (videos, sqlite, evidencias) van a `APPDATA_DIR` cuando el exe está
+    empaquetado; en desarrollo se resuelve contra el directorio actual
+    (raíz del proyecto, igual que `src.core.utils.resource_path`).
+    """
+    if hasattr(sys, "_MEIPASS"):
+        return str(APPDATA_DIR / rel)
+    return str((Path(".").resolve() / rel).resolve())
+
+
 def _user_data_root() -> Path:
     """Directorio raíz para datos del usuario, según la plataforma."""
     if sys.platform.startswith("win"):

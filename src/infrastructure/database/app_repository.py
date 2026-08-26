@@ -27,11 +27,13 @@ from typing import Any
 
 from src.core.logger import get_logger
 from src.core.utils import resource_path
+from src.core.utils.paths import user_data_path
 
 log = get_logger("infra.db.app")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "infractions.sqlite"
+# En frozen (onefile) la DB debe ser PERSISTENTE (APPDATA), no _MEIPASS.
+DEFAULT_DB_PATH = Path(user_data_path("data/infractions.sqlite"))
 # Preset (seed) versionable: schema + video_configs con los presets actuales.
 # Se usa como bootstrap: si la DB local no existe, se restaura una copia.
 PRESET_DB = resource_path("presets/infractions_preset.db")
