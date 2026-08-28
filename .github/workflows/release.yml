@@ -2,163 +2,53 @@ name: release-online
 
 on:
   push:
-    tags: ["v*"]
+    branches: [feature/cli_and_test, develop, main]
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Version (e.g. 2.1.0)"
-        required: false
-        default: "2.1.0"
 
 jobs:
-  build-artifacts:
-    name: Build ${{ matrix.variant }} (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # ONEFILE portable Windows (solo para USB; Setup-Online usa ONEDIR)
-          - os: windows-latest
-            variant: cpu-onefile
-            req: requirements-cpu.txt
-            spec: InfractiVision-CPU.spec
-          - os: windows-latest
-            variant: cuda-onefile
-            req: requirements.txt
-            spec: InfractiVision-CUDA.spec
-          - os: ubuntu-latest
-            variant: cpu
-            req: requirements-cpu.txt
-            spec: InfractiVision-ONEDIR-CPU.spec
-          - os: ubuntu-latest
-            variant: cuda
-            req: requirements.txt
-            spec: InfractiVision-ONEDIR-CUDA.spec
-          - os: macos-latest
-            variant: cpu
-            req: requirements-cpu.txt
-            spec: InfractiVision-ONEDIR-CPU.spec
-    runs-on: ${{ matrix.os }}
+  build-setup-win:
+    name: Build Setup Online (Win) - prueba
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - name: Install Tk (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y python3-tk
-      - name: Install deps
-        run: pip install -r ${{ matrix.req }}
-      - name: Inject secrets (migraciones + Plate Recognizer)
+      - name: Install deps (CPU, prueba sin CUDA)
+        run: pip install -r requirements-cpu.txt
+      - name: Inject secrets (solo migraciones Firestore, no distribución)
         shell: bash
         env:
           FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
           PLATE_RECOGNIZER_TOKEN: ${{ secrets.PLATE_RECOGNIZER_TOKEN }}
         run: |
-          if [[ -z "$FIREBASE_SA_JSON" || -z "$PLATE_RECOGNIZER_TOKEN" ]]; then
-            echo "::warning::Faltan secrets del repo (FIREBASE_SA_JSON, PLATE_RECOGNIZER_TOKEN)."
-            echo "Este build NO incluira migraciones Firestore ni validacion Plate Recognizer."
-            echo "Configuralos en Settings>Secrets y relanza con workflow_dispatch."
+          if [[ -z "$FIREBASE_SA_JSON" ]]; then
+            echo "::warning::Sin FIREBASE_SA_JSON: build sin migraciones bundladas (la app funciona igual)."
           else
-            printf '%s\n' "PLATE_RECOGNIZER_API_TOKEN=$PLATE_RECOGNIZER_TOKEN" > .env
             printf '%s' "$FIREBASE_SA_JSON" > infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json
-            ls -l .env infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json
+            ls -l infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json
           fi
-      - name: Build PyInstaller
-        run: python -m PyInstaller --noconfirm --clean ${{ matrix.spec }}
-      - name: Smoke test built exe
+          if [[ -n "$PLATE_RECOGNIZER_TOKEN" ]]; then
+            printf '%s\n' "PLATE_RECOGNIZER_API_TOKEN=$PLATE_RECOGNIZER_TOKEN" > .env
+          fi
+      - name: Build PyInstaller ONEDIR (prueba)
+        run: python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CPU.spec
+      - name: Smoke test ONEDIR
         shell: bash
         run: |
           ls -lh dist/
-          # smoke: ONEDIR -> dist/InfractiVision/InfractiVision.exe, ONEFILE -> dist/InfractiVision.exe
-          if test -f dist/InfractiVision/InfractiVision.exe; then echo "Smoke ONEDIR OK"; ls -lh dist/InfractiVision/ | head -n 10; elif test -f dist/InfractiVision.exe; then echo "Smoke ONEFILE OK"; ls -lh dist/InfractiVision* 2>/dev/null | head -n 5; else echo "ERROR: exe missing in dist/" && ls -R dist && exit 1; fi
-      - name: Zip artifact
-        shell: bash
-        run: |
-          ARCH=$(uname -m); [[ "$ARCH" == "x86_64" ]] && ARCH="x64" || true; [[ "$ARCH" == "arm64" ]] && ARCH="arm64" || true
-          OS_TAG="Linux"; [[ "${{ matrix.os }}" == "windows-latest" ]] && OS_TAG="Win"; [[ "${{ matrix.os }}" == "macos-latest" ]] && OS_TAG="Mac"
-          NAME="InfractiVision-${{ matrix.variant }}-${OS_TAG}-${ARCH}.zip"
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            # ONEDIR: zippear carpeta dist/InfractiVision/, ONEFILE: solo exe
-            if [[ -d dist/InfractiVision ]]; then
-              SEVENZIP="C:/Program Files/7-Zip/7z.exe"
-              if [[ -f "$SEVENZIP" ]]; then
-                "$SEVENZIP" a -tzip "dist/$NAME" "dist/InfractiVision" -mx1
-              else
-                powershell -Command "Compress-Archive -Path dist\InfractiVision -DestinationPath dist\$NAME -Force"
-              fi
-            elif [[ -f dist/InfractiVision.exe ]]; then
-              SEVENZIP="C:/Program Files/7-Zip/7z.exe"
-              if [[ -f "$SEVENZIP" ]]; then
-                "$SEVENZIP" a -tzip "dist/$NAME" "dist/InfractiVision.exe" -mx1
-              else
-                powershell -Command "Compress-Archive -Path dist/InfractiVision.exe -DestinationPath dist/$NAME -Force"
-              fi
-            else
-              echo "ERROR: dist/InfractiVision(.exe) no existe" && ls -lh dist/ && ls -R dist | head -n 30 && exit 1
-            fi
-            ls -lh "dist/$NAME" || { echo "ERROR: no se genero $NAME"; exit 1; }
-          else
-            (cd dist && zip -r "$NAME" InfractiVision 2>/dev/null || tar czf "${NAME%.zip}.tar.gz" InfractiVision)
-            ls -lh "dist/$NAME" 2>/dev/null || ls -lh dist/*.zip dist/*.tar.gz 2>/dev/null || true
-          fi
-      - name: Upload to GCS (zip >2GB no cabe en GitHub Releases)
-        if: ${{ matrix.os == 'windows-latest' && contains(matrix.variant, 'cuda') }}
-        shell: bash
-        env:
-          FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
-        run: |
-          if [[ -z "$FIREBASE_SA_JSON" ]]; then
-            echo "::warning::Sin FIREBASE_SA_JSON: el zip cuda-Win (>2GB) solo se sirve desde GCS y se omitira aqui."
-            exit 0
-          fi
-          python scripts/upload_release_asset.py dist/*.zip
-      - uses: actions/upload-artifact@v4
-        with:
-          name: InfractiVision-${{ matrix.variant }}-${{ matrix.os }}
-          path: dist/*.zip
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: InfractiVision-${{ matrix.variant }}-${{ matrix.os }}-tar
-          path: dist/*.tar.gz
-          if-no-files-found: ignore
-
-  build-setup-win:
-    name: Setup Online (Win)
-    needs: build-artifacts
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
+          test -f dist/InfractiVision/InfractiVision.exe || (echo "ERROR: ONEDIR exe no generado" && ls -R dist | head -n 50 && exit 1)
+          echo "Smoke ONEDIR OK"
+          ls -lh dist/InfractiVision/ | head -n 20
       - name: Install Inno Setup
         run: choco install innosetup -y
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist-artifacts
-      - name: Build Setup-Online.exe
+      - name: Build Setup-Online.exe (offline embebido)
         run: iscc installer/win/online.iss
+      - name: Smoke Setup
+        shell: bash
+        run: ls -lh dist/InfractiVision-Setup-Online.exe
       - uses: actions/upload-artifact@v4
         with:
           name: InfractiVision-Setup-Online-Win
           path: dist/InfractiVision-Setup-Online.exe
-
-  release:
-    name: Publish Release
-    needs: [build-artifacts, build-setup-win]
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-      - name: Remove >2GB assets (no caben en GitHub Releases)
-        run: |
-          find release-assets -type f -size +2147483647c -delete
-          ls -laR release-assets
-      - name: Publish
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release-assets/**/*
-          generate_release_notes: true
+          if-no-files-found: error
