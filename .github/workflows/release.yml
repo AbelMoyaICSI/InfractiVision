@@ -17,26 +17,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Setup-Online ONEDIR (prioritario, arranque <1.5s sin extraccion)
           - os: windows-latest
             variant: cpu
             req: requirements-cpu.txt
-            spec: InfractiVision-CPU.spec
+            spec: InfractiVision-ONEDIR-CPU.spec
           - os: windows-latest
             variant: cuda
+            req: requirements.txt
+            spec: InfractiVision-ONEDIR-CUDA.spec
+          # ONEFILE portable (secundario, para USB)
+          - os: windows-latest
+            variant: cpu-onefile
+            req: requirements-cpu.txt
+            spec: InfractiVision-CPU.spec
+          - os: windows-latest
+            variant: cuda-onefile
             req: requirements.txt
             spec: InfractiVision-CUDA.spec
           - os: ubuntu-latest
             variant: cpu
             req: requirements-cpu.txt
-            spec: InfractiVision-CPU.spec
+            spec: InfractiVision-ONEDIR-CPU.spec
           - os: ubuntu-latest
             variant: cuda
             req: requirements.txt
-            spec: InfractiVision-CUDA.spec
+            spec: InfractiVision-ONEDIR-CUDA.spec
           - os: macos-latest
             variant: cpu
             req: requirements-cpu.txt
-            spec: InfractiVision-CPU.spec
+            spec: InfractiVision-ONEDIR-CPU.spec
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -69,9 +79,8 @@ jobs:
         shell: bash
         run: |
           ls -lh dist/
-          # smoke: el exe existe y no es vacío (cross-platform: bash en Windows via Git Bash)
-          test -f dist/InfractiVision || test -f dist/InfractiVision.exe || (echo "ERROR: exe missing in dist/" && ls -R dist && exit 1)
-          echo "Smoke OK: $(ls -lh dist/InfractiVision* 2>/dev/null | head -n 5)"
+          # smoke: ONEDIR -> dist/InfractiVision/InfractiVision.exe, ONEFILE -> dist/InfractiVision.exe
+          if test -f dist/InfractiVision/InfractiVision.exe; then echo "Smoke ONEDIR OK"; ls -lh dist/InfractiVision/ | head -n 10; elif test -f dist/InfractiVision.exe; then echo "Smoke ONEFILE OK"; ls -lh dist/InfractiVision* 2>/dev/null | head -n 5; else echo "ERROR: exe missing in dist/" && ls -R dist && exit 1; fi
       - name: Zip artifact
         shell: bash
         run: |
@@ -79,9 +88,15 @@ jobs:
           OS_TAG="Linux"; [[ "${{ matrix.os }}" == "windows-latest" ]] && OS_TAG="Win"; [[ "${{ matrix.os }}" == "macos-latest" ]] && OS_TAG="Mac"
           NAME="InfractiVision-${{ matrix.variant }}-${OS_TAG}-${ARCH}.zip"
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            # En Windows el exe ya contiene datas, solo zippear el exe.
-            # OJO: Compress-Archive falla con archivos >2GB (exe CUDA); usar 7-Zip.
-            if [[ -f dist/InfractiVision.exe ]]; then
+            # ONEDIR: zippear carpeta dist/InfractiVision/, ONEFILE: solo exe
+            if [[ -d dist/InfractiVision ]]; then
+              SEVENZIP="C:/Program Files/7-Zip/7z.exe"
+              if [[ -f "$SEVENZIP" ]]; then
+                "$SEVENZIP" a -tzip "dist/$NAME" "dist/InfractiVision" -mx1
+              else
+                powershell -Command "Compress-Archive -Path dist\InfractiVision -DestinationPath dist\$NAME -Force"
+              fi
+            elif [[ -f dist/InfractiVision.exe ]]; then
               SEVENZIP="C:/Program Files/7-Zip/7z.exe"
               if [[ -f "$SEVENZIP" ]]; then
                 "$SEVENZIP" a -tzip "dist/$NAME" "dist/InfractiVision.exe" -mx1
@@ -89,8 +104,7 @@ jobs:
                 powershell -Command "Compress-Archive -Path dist/InfractiVision.exe -DestinationPath dist/$NAME -Force"
               fi
             else
-              echo "ERROR: dist/InfractiVision.exe no existe" && ls -lh dist/
-              exit 1
+              echo "ERROR: dist/InfractiVision(.exe) no existe" && ls -lh dist/ && ls -R dist | head -n 30 && exit 1
             fi
             ls -lh "dist/$NAME" || { echo "ERROR: no se genero $NAME"; exit 1; }
           else

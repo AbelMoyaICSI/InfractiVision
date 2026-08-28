@@ -25,4 +25,11 @@ def ensure_torch_compat() -> None:
         return _original_torch_load(*args, **kwargs)
 
     torch.load = _patched_torch_load
+    # PyTorch 2.6+ safe globals para DetectionModel de ultralytics (windows_machine_owner)
+    try:
+        from ultralytics.yolo.engine.model import DetectionModel
+
+        torch.serialization.add_safe_globals([DetectionModel])
+    except Exception:
+        pass
     _patched = True

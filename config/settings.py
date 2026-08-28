@@ -12,13 +12,21 @@ from pathlib import Path
 from src.core.utils import resource_path
 from src.core.utils.paths import user_data_path
 
+try:
+    from src.infrastructure.storage.model_downloader import get_model_path
+except ImportError:
+    # Fallback dev: usa resource_path si el downloader no esta disponible
+    def get_model_path(filename: str, dest_dir=None) -> str:  # type: ignore[no-redef]
+        return resource_path(f"models/{filename}")
+
 
 @dataclass(frozen=True)
 class ModelPaths:
-    yolo_vehicle: str = field(default_factory=lambda: resource_path("models/yolov8n.pt"))
-    yolo_plate: str = field(default_factory=lambda: resource_path("models/license_plate_detector.pt"))
-    lprnet_master: str = field(default_factory=lambda: resource_path("models/LPRNet_Peru_MASTER_FINAL.pth"))
-    fsrcnn: str = field(default_factory=lambda: resource_path("models/FSRCNN_x3.pb"))
+    # Usa get_model_path para descarga selectiva (APPDATA/models en frozen)
+    yolo_vehicle: str = field(default_factory=lambda: get_model_path("yolov8n.pt"))
+    yolo_plate: str = field(default_factory=lambda: get_model_path("license_plate_detector.pt"))
+    lprnet_master: str = field(default_factory=lambda: get_model_path("LPRNet_Peru_MASTER_FINAL.pth"))
+    fsrcnn: str = field(default_factory=lambda: get_model_path("FSRCNN_x3.pb"))
 
 
 @dataclass(frozen=True)

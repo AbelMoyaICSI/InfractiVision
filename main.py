@@ -17,10 +17,7 @@ import tkinter as tk
 import uuid
 from pathlib import Path
 
-from src.composition_root import build_container
 from src.core.logger import get_logger
-from src.core.utils.icon import set_window_icon
-from src.core.utils.paths import APPDATA_DIR
 
 log = get_logger("main")
 
@@ -66,6 +63,14 @@ def _preload_lprnet_in_background() -> None:
 
 # ─── Bootstrap GUI ─────────────────────────────────────────────────────────
 def main() -> None:
+    # Lazy imports para arranque rápido: no pagan torch/cv2/ultralytics antes de Tk.
+    import tkinter as tk
+
+    from src.core.utils.icon import set_window_icon
+    from src.core.utils.paths import APPDATA_DIR, ensure_user_dirs
+
+    ensure_user_dirs()
+
     ids = _load_or_create_ids()
 
     root = tk.Tk()
@@ -80,21 +85,41 @@ def main() -> None:
         # Precarga LPRNet solo cuando el mainloop ya está vivo (arranque libre).
     root.after(300, _preload_lprnet_in_background)
 
-    # Descarga de videos demo en background (idempotente, solo si faltan).
-    # Los 5 videos demo se traen a videos/ para que el preset de BD funcione
-    # de inmediato; si no hay red, la app sigue igual y reintenta al seleccionar.
-    def _download_demo_videos() -> None:
+    # Descarga selectiva: modelos AI primero (requeridos para inferencia),
+    # luego videos demo. Idempotente y no bloquea el arranque.
+    def _ensure_assets() -> None:
+        # 1) Modelos: solo required (yolov8n, license_plate_detector, LPRNet V4)
+        try:
+            from src.infrastructure.storage.model_downloader import ensure_models_async, missing_models
+
+            pending = missing_models()
+            if pending:
+                log.info("Modelos faltantes detectados: %s — descargando en background", pending)
+
+            def _on_models_done(result: dict):
+                log.info("Modelos: %s (dest=%s)", result, result.get("dest_dir"))
+                if result.get("failed"):
+                    log.warning("Algunos modelos fallaron — la app usara fallbacks si existen")
+
+            ensure_models_async(callback=_on_models_done)
+        except Exception as e:
+            log.warning("No se pudo iniciar descarga de modelos: %s", e)
+
+        # 2) Videos demo (5 videos grandes, descarga lazy no critica)
         try:
             from src.infrastructure.storage.demo_video_downloader import ensure_demo_videos_async
+
             ensure_demo_videos_async()
         except Exception as e:
             log.warning("No se pudo iniciar descarga de videos demo: %s", e)
 
-    root.after(500, _download_demo_videos)
+    root.after(500, _ensure_assets)
 
     # El proveedor de estado del semáforo se inyecta más tarde, cuando la GUI
     # crea su panel `Semaforo`. Por ahora, valor por defecto "green".
     traffic_light_state: dict[str, str] = {"value": "green"}
+
+    from src.composition_root import build_container
 
     container = build_container(
         traffic_light_state_provider=lambda: traffic_light_state["value"]

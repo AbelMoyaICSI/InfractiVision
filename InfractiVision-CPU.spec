@@ -1,9 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-InfractiVision - Especificacion PyInstaller ONLINE
+InfractiVision - Especificacion PyInstaller ONLINE (CPU)
 Autor: InfractiVision Team - 2025/2026
-Modo: ONEFILE, recursos minimos. Videos y datasets NO se empaquetan
-      (se ofrecen como descarga opcional). Soporta CPU y CUDA con mismo spec.
+Modo: ONEFILE ligero, SIN libs CUDA. Para GPU usa InfractiVision-CUDA.spec
+      con requirements.txt (torch 2.6+cu124). Este spec usa requirements-cpu.txt
+      (torch 1.13.1 CPU) y bundlea solo CPU.
 """
 
 import sys
@@ -22,20 +23,12 @@ def _add_data(src: Path, dst: str, datas_list: list):
         print(f"[spec] skip missing: {src}")
 
 datas: list[tuple[str, str]] = []
-# Modelos AI (todos los pesos necesarios para LPRNet + YOLO)
-for m in ["yolov8n.pt", "license_plate_detector.pt",
-          "LPRNet_Peru_MASTER_FINAL.pth", "LPRNet_V4_CORREGIDO.pth",
-          "LPRNet_V3_ESPECIALISTA.pth", "LPRNet_CONSENSO_V2.pth",
-          "FSRCNN_x3.pb"]:
-    _add_data(BASE_DIR / "models" / m, "models", datas)
-
-# Recursos visuales
+# ONLINE ligero: modelos NO bundlean (descarga selectiva)
 for img in ["welcome_bg.png", "icon.ico", "InfractiVision-logo.png"]:
     _add_data(BASE_DIR / "img" / img, "img", datas)
 
-# Configs por defecto (solo JSON de config, no secrets/data/videos)
 for cfg in ["avenue_config.json", "camera_config.json", "polygon_config.json",
-            "time_presets.json", "zones.json", "demo_videos.json"]:
+            "time_presets.json", "zones.json", "demo_videos.json", "models_manifest.json"]:
     _add_data(BASE_DIR / "config" / cfg, "config", datas)
 
 # Preset de BD (seed versionable con video_configs de los videos demo)
@@ -89,6 +82,7 @@ hiddenimports = [
     'src.infrastructure.ai.yolo_detector', 'src.infrastructure.ai.plate_detector',
     'src.infrastructure.ocr.lprnet_reader', 'src.infrastructure.database.sqlite_repository',
     'src.infrastructure.storage.demo_video_downloader',
+    'src.infrastructure.storage.model_downloader',
     'src.infrastructure.ocr.cloud_plate_readers',
 ]
 
@@ -147,4 +141,4 @@ exe = EXE(
     uac_uiaccess=False,
 )
 
-print("InfractiVision.spec ONLINE listo (sin videos/secrets/data, modelos verificados)")
+print("InfractiVision-CPU.spec ONLINE listo (CPU-only, sin nvidia libs)")

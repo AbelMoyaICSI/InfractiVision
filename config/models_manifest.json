@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "base_dir": "models",
+  "models": [
+    {
+      "filename": "yolov8n.pt",
+      "gcs_path": "models/yolov8n.pt",
+      "size": 6534387,
+      "sha256": "31e20dde3def09e2cf938c7be6fe23d9150bbbe503982af13345706515f2ef95",
+      "required": true,
+      "description": "YOLOv8n vehiculos (car/bus/truck)"
+    },
+    {
+      "filename": "license_plate_detector.pt",
+      "gcs_path": "models/license_plate_detector.pt",
+      "size": 6241454,
+      "sha256": "8ec3b254a6c87610f037a90957462cafa11a9c03224e33a28c6a1d1ac2ac51b0",
+      "required": true,
+      "description": "YOLO detector de placas"
+    },
+    {
+      "filename": "LPRNet_V4_CORREGIDO.pth",
+      "gcs_path": "models/LPRNet_V4_CORREGIDO.pth",
+      "size": 2104766,
+      "sha256": "e5c89b8253ef1aa35cfe4f0dd071232f6d6b15439e7f367148756c21c98ea5a0",
+      "required": true,
+      "description": "LPRNet V4 CORREGIDO (78.86% precision)"
+    },
+    {
+      "filename": "LPRNet_V3_ESPECIALISTA.pth",
+      "gcs_path": "models/LPRNet_V3_ESPECIALISTA.pth",
+      "size": 2105007,
+      "sha256": "436b03d292d4ec80506e6024f21f7dc358a93edbeafc58e92682e2c15e9ca160",
+      "required": false,
+      "fallback_for": "LPRNet_V4_CORREGIDO.pth",
+      "description": "LPRNet V3 ESPECIALISTA fallback"
+    },
+    {
+      "filename": "LPRNet_CONSENSO_V2.pth",
+      "gcs_path": "models/LPRNet_CONSENSO_V2.pth",
+      "size": 2104707,
+      "sha256": "92d2b6982697761ffee1a9d8fc0edc1a8f7a639f0a33217447fb732e28219707",
+      "required": false,
+      "fallback_for": "LPRNet_V4_CORREGIDO.pth",
+      "description": "LPRNet CONSENSO V2 fallback"
+    },
+    {
+      "filename": "LPRNet_Peru_MASTER_FINAL.pth",
+      "gcs_path": "models/LPRNet_Peru_MASTER_FINAL.pth",
+      "size": 2105125,
+      "sha256": "1274c1ab87148c00889f1af6d4da2adac4681f722344be913253cf63cc2caad5",
+      "required": false,
+      "fallback_for": "LPRNet_V4_CORREGIDO.pth",
+      "description": "LPRNet MASTER FINAL fallback"
+    },
+    {
+      "filename": "FSRCNN_x3.pb",
+      "gcs_path": "models/FSRCNN_x3.pb",
+      "size": 40093,
+      "sha256": "efd38655a815908c6c8954db6052f128e76a735f1de657894c477d0dc0b64481",
+      "required": false,
+      "description": "FSRCNN x3 super-resolucion placas"
+    }
+  ]
+}

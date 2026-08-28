@@ -84,19 +84,29 @@ class LPRNet(nn.Module):
 class LPRNetPredictor:
     @serialized
     def __init__(self, model_path=None):
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        from src.core.utils import get_default_device
+
+        self.device = get_default_device()
+        if self.device is None:
+            self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.class_num = len(CHARS)
         self.model = LPRNet(class_num=self.class_num, dropout_rate=0)
         
         if model_path is None:
+            # Descarga selectiva: usa get_model_path (APPDATA) con fallback a resource_path
+            try:
+                from src.infrastructure.storage.model_downloader import get_model_path as _gmp
+            except ImportError:
+                _gmp = resource_path  # type: ignore
+                _gmp = lambda f: resource_path(f"models/{f}")  # noqa
             # PRIORIDAD 1: Modelo V4 CORREGIDO (78.86% validación, 4X mejor en difíciles)
-            v4_path = resource_path("models/LPRNet_V4_CORREGIDO.pth")
+            v4_path = _gmp("LPRNet_V4_CORREGIDO.pth")
             # PRIORIDAD 2: Modelo V3 Especialista (Fallback si V4 no disponible)
-            v3_path = resource_path("models/LPRNet_V3_ESPECIALISTA.pth")
-            # PRIORIDAD 3: Modelo CONSENSO_V2 
-            v2_path = resource_path("models/LPRNet_CONSENSO_V2.pth")
+            v3_path = _gmp("LPRNet_V3_ESPECIALISTA.pth")
+            # PRIORIDAD 3: Modelo CONSENSO_V2
+            v2_path = _gmp("LPRNet_CONSENSO_V2.pth")
             # PRIORIDAD 4: Modelo Master Final como reserva
-            master_path = resource_path("models/LPRNet_Peru_MASTER_FINAL.pth")
+            master_path = _gmp("LPRNet_Peru_MASTER_FINAL.pth")
             
             if os.path.exists(v4_path):
                 model_path = v4_path
@@ -115,18 +125,43 @@ class LPRNetPredictor:
                 print("[LPRNet] No se encontro ningun archivo de pesos.")
             
         if model_path and os.path.exists(model_path):
-            self.model.load_state_dict(torch.load(model_path, map_location=self.device))
-            print(f"[LPRNet] Pesos cargados desde {os.path.basename(model_path)}")
+            try:
+                self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+                print(f"[LPRNet] Pesos cargados desde {os.path.basename(model_path)}")
+            except Exception as e:
+                if self.device.type == 'cuda':
+                    print(f"[LPRNet] Falló cargar pesos en {self.device}: {e} | Reintentando en CPU")
+                    self.device = torch.device('cpu')
+                    self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+                else:
+                    raise
         else:
             print(f"[LPRNet] No se encontro ningun archivo de pesos.")
-            
-        self.model.to(self.device)
+
+        try:
+            self.model.to(self.device)
+        except Exception as e:
+            if self.device.type == 'cuda':
+                print(f"[LPRNet] Falló mover modelo a GPU: {e} | Fallback a CPU")
+                self.device = torch.device('cpu')
+                try:
+                    self.model.to(self.device)
+                except Exception as inner:
+                    print(f"[LPRNet] Error al mover modelo a CPU: {inner}")
+            else:
+                print(f"[LPRNet] Error al mover modelo a CPU: {e}")
         self.model.eval()
 
         # 🎯 DETECTOR DE PLACA INTEGRADO (YOLO) PARA GUIAR EL RECORTE
         try:
             from src.core.detection.plate_detector import PlateDetector
-            plate_model_path = resource_path("models/license_plate_detector.pt")
+
+            try:
+                from src.infrastructure.storage.model_downloader import get_model_path as _gmp2
+            except ImportError:
+                _gmp2 = lambda f: resource_path(f"models/{f}")  # noqa
+
+            plate_model_path = _gmp2("license_plate_detector.pt")
             self.plate_detector = PlateDetector(plate_model_path)
             print("[LPRNet] Detector YOLO-Plate cargado como guia.")
         except Exception as e:

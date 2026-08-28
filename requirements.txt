@@ -8,10 +8,11 @@
 #   NO subir numpy a 2.x ni opencv a 5.x: rompe la inferencia (YOLO/OCR)
 #   con "RuntimeError: Numpy is not available".
 #
-# Instalar con soporte CUDA 11.7 (GPU NVIDIA, driver >= 450, GTX 1650 Ti OK):
+# Instalar con soporte CUDA 12.4 (GPU NVIDIA, driver >= 550, RTX 5050/40xx OK):
 #   pip install -r requirements.txt
-# El índice extra resuelve torch/torchvision +cu117. Sin él, pip baja el
-# wheel CPU-only de PyPI y la app nunca usa la GPU.
+# El índice extra resuelve torch/torchvision +cu124 (CUDA 12.4, sm_120 Blackwell
+# incluido). Sin él, pip baja el wheel CPU-only y la app nunca usa la GPU.
+# Para máquinas SIN GPU usa: pip install -r requirements-cpu.txt
 #
 # Notas multiplataforma:
 #   - Tkinter viene incluido con el instalador de Python en Windows y macOS.
@@ -32,13 +33,16 @@
 #   - opcionales (NO en este archivo): easyocr/paddleocr (requirements-ocr.txt),
 #     mysql (instalar mysql-connector-python>=8.0 si se activa el repo MySQL).
 
---extra-index-url https://download.pytorch.org/whl/cu117
+--extra-index-url https://download.pytorch.org/whl/cu124
 
 # === NÚCLEO (pins críticos de compatibilidad) ===
+# RTX 5050 (Blackwell sm_120) requiere CUDA 12.4+ → torch 2.6+cu124.
+# Se mantiene numpy 1.26.4 + opencv 4.9.0.80 (torch 2.6 sigue compatible con numpy 1.x,
+# y opencv 5.x rompería con "Numpy is not available").
 numpy==1.26.4
 scipy==1.11.4
-torch==1.13.1+cu117
-torchvision==0.14.1+cu117
+torch==2.6.0+cu124
+torchvision==0.21.0+cu124
 scikit-learn==1.4.2
 scikit-image==0.23.2
 

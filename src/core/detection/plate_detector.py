@@ -55,18 +55,35 @@ class PlateDetector:
             print(f"Error al cargar modelo de detección de placas: {e}")
             self.model = None
         
-        # 🚀 CONFIGURACIÓN EDGE TURBO (GPU + FP16)
+        # Configuración con probe real (port windows_machine_owner: RTX 5050 sm_120)
         import torch
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.half = torch.cuda.is_available()
-        
-        if self.model and torch.cuda.is_available():
-            self.model.to(self.device)
-            # NO llamar a model.half() aquí: ultralytics fusiona conv+BN en la
-            # primera inferencia y un modelo ya en FP16 lanza
-            # "expected scalar type Half but found Float". Se pasa half=... a la
-            # llamada de inferencia y ultralytics hace half() tras el fuse.
-            print(f"[PlateDetector] MODO TURBO ACTIVADO ({self.device})")
+        from src.core.utils import get_default_device
+
+        self.device = get_default_device()
+        if self.device is None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.half = self.device.type == 'cuda'
+
+        if self.model:
+            try:
+                self.model.to(self.device)
+                # NO llamar a model.half() aquí: ultralytics fusiona conv+BN en la
+                # primera inferencia y un modelo ya en FP16 lanza Half/Float.
+                if self.device.type == 'cuda':
+                    print(f"[PlateDetector] MODO TURBO ACTIVADO ({self.device})")
+                else:
+                    print("[PlateDetector] CUDA no disponible; usando CPU")
+            except Exception as e:
+                if self.device.type == 'cuda':
+                    print(f"[PlateDetector] Falló mover modelo a GPU: {e} | Fallback a CPU")
+                    self.device = torch.device('cpu')
+                    self.half = False
+                    try:
+                        self.model.to(self.device)
+                    except Exception as inner:
+                        print(f"[PlateDetector] Error al mover modelo a CPU: {inner}")
+                else:
+                    print(f"[PlateDetector] Error al mover modelo a CPU: {e}")
         
         # Estadísticas de rendimiento
         self.detection_stats = {

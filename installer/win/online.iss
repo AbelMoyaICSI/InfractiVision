@@ -1,5 +1,9 @@
-; InfractiVision ONLINE Installer - Inno Setup 6
-; Stub 8MB: detecta GPU y descarga artefacto correcto desde GitHub Releases
+; InfractiVision ONLINE Installer - Inno Setup 6 (ligero / descarga selectiva)
+; Stub ~8MB: detecta GPU y descarga artefacto correcto desde GitHub Releases.
+; ONLINE ligero: exe NO bundlea modelos (21MB) ni videos (2GB). Los modelos
+; (yolov8n, license_plate_detector, LPRNet V4) se descargan on-demand al primer
+; arranque via src/infrastructure/storage/model_downloader.py a
+; %APPDATA%\InfractiVision\models (idempotente, sha256+size).
 ; Uso: iscc installer/win/online.iss
 
 #define MyAppName "InfractiVision"
@@ -134,15 +138,80 @@ end;
 
 procedure DownloadDemoVideos(AppPath: String);
 var
-  I: Integer;
-  VDir: String;
+  I, Added: Integer;
+  VDir, TmpFile, DestFile: String;
 begin
   VDir := AppPath + '\videos';
   if not ForceDirectories(VDir) then
     Log('No se pudo crear ' + VDir);
-  for I := 0 to 4 do
-    if not DownloadFile(DemoURLs[I], VDir + '\' + DemoFiles[I]) then
-      Log('Fallo descarga demo ' + DemoFiles[I] + ' (la app la reintentara al primer inicio)');
+
+  // Descarga visible como assets: cada video aparece en el wizard con barra.
+  // Usa TDownloadWizardPage (mismo que el artefacto) para que el usuario vea
+  // "Descargando assets (3/5) — VID2COLISEO.MOV".
+  DownloadPage.Clear;
+  Added := 0;
+  for I := 0 to GetArrayLength(DemoFiles)-1 do
+  begin
+    DestFile := VDir + '\' + DemoFiles[I];
+    // Idempotente: si ya existe y tiene size >0, skip (la app valida sha256 al iniciar)
+    if FileExists(DestFile) then
+    begin
+      Log('Video ya existe, skip asset: ' + DemoFiles[I]);
+      Continue;
+    end;
+    Log('Queue asset: ' + DemoFiles[I]);
+    DownloadPage.Add(DemoURLs[I], DemoFiles[I], '');
+    Inc(Added);
+  end;
+
+  if Added = 0 then
+  begin
+    Log('Todos los videos demo ya existen — no hay assets que descargar');
+    Exit;
+  end;
+
+  DownloadPage.Msg1LabelCaption := 'Descargando vídeos demo...';
+  DownloadPage.Msg2LabelCaption := 'Esto puede tardar varios minutos (2.6 GB total)';
+  DownloadPage.Show;
+  try
+    DownloadPage.Download;
+  except
+    if DownloadPage.AbortedByUser then
+      Log('Descarga de videos abortada por usuario')
+    else
+      SuppressibleMsgBox('Error descargando videos: ' + GetExceptionMessage + #13#10 + 'La app los reintentará al primer inicio.', mbError, MB_OK, IDOK);
+    // No bloquea la instalacion: la app reintenta en main.py:86
+    Exit;
+  finally
+    DownloadPage.Hide;
+  end;
+
+  // TDownloadWizardPage descarga a {tmp}\<filename>. Mover a {app}\videos.
+  for I := 0 to GetArrayLength(DemoFiles)-1 do
+  begin
+    TmpFile := ExpandConstant('{tmp}\' + DemoFiles[I]);
+    DestFile := VDir + '\' + DemoFiles[I];
+    if FileExists(TmpFile) then
+    begin
+      if not FileCopy(TmpFile, DestFile, False) then
+        Log('Fallo moviendo asset ' + DemoFiles[I] + ' de {tmp} a videos/')
+      else
+        Log('Asset listo: ' + DestFile);
+      DeleteFile(TmpFile);
+    end;
+  end;
+end;
+
+procedure EnsureModelsPreFetched(AppPath: String);
+var
+  MDir: String;
+begin
+  // Prefetch opcional de modelos al instalar (ahorra espera en primer arranque).
+  // Si falla la red, la app lo reintenta al iniciar via model_downloader.
+  MDir := AppPath + '\models';
+  if not ForceDirectories(MDir) then
+    Log('No se pudo crear ' + MDir);
+  Log('Modelos se descargaran on-demand al primer arranque a %APPDATA%\InfractiVision\models');
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -175,7 +244,8 @@ begin
       MsgBox('No se pudo crear ' + ExePath, mbError, MB_OK);
       Result := False; Exit;
     end;
-    // Usa ExpandConstant + ShellExec con powershell Expand-Archive
+    // ONEDIR: el zip contiene la carpeta InfractiVision/ (COLLECT). Expand-Archive la deja en {app}\InfractiVision\
+    // ONEFILE legacy: el zip contiene solo InfractiVision.exe en la raiz. Ambos se manejan.
     if not Exec('powershell.exe', '-NoProfile -Command "Expand-Archive -Force ''' + ZipPath + ''' ''' + ExePath + '''"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then begin
       MsgBox('Fallo extrayendo artefacto', mbError, MB_OK);
       Result := False;
@@ -183,8 +253,16 @@ begin
       MsgBox('Descompresion fallo (codigo ' + IntToStr(ResultCode) + '). Intenta de nuevo.', mbError, MB_OK);
       Result := False;
     end else begin
-      // Artefacto extraido OK: descarga los videos demo a {app}\videos.
+      // Si es ONEDIR, el exe quedo en {app}\InfractiVision\InfractiVision.exe -> mover al root {app} para los [Icons]/[Run] existentes
+      if FileExists(ExePath + '\InfractiVision\InfractiVision.exe') then
+      begin
+        // Mover contenido de subcarpeta al root (para mantener {app}\InfractiVision.exe como antes)
+        Exec('powershell.exe', '-NoProfile -Command "Move-Item -Force ''' + ExePath + '\InfractiVision\*'' ''' + ExePath + '''"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+        RemoveDir(ExePath + '\InfractiVision');
+      end;
+      // Artefacto extraido OK: descarga los videos demo a {app}\videos (visible como assets) + prefetch modelos.
       DownloadDemoVideos(ExePath);
+      EnsureModelsPreFetched(ExePath);
     end;
     if NeedsVCRedist() then
       SuppressibleMsgBox('Falta Microsoft Visual C++ 2015-2022 Redistributable (x64). La app puede fallar al iniciar. Descargalo desde https://aka.ms/vs/17/release/vc_redist.x64.exe', mbInformation, MB_OK, IDOK);

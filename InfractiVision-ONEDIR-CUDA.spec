@@ -1,51 +1,33 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-InfractiVision - Especificacion PyInstaller ONLINE (CUDA 12.4 / RTX 5050 sm_120)
+InfractiVision - Especificacion PyInstaller ONEDIR (Setup-Online)
 Autor: InfractiVision Team - 2025/2026
-Modo: ONEFILE, recursos minimos. Videos y datasets NO se empaquetan.
-      Este spec BUNDLEA libs CUDA (nvidia-* cu124) y requiere
-      requirements.txt con torch==2.6.0+cu124. Ver requirements-cpu.txt para
-      el spec CPU que NO bundlea CUDA.
+ONEDIR = arranque instantáneo (sin extracción a _MEIPASS). Para Setup-Online.
+Este spec NO es ONEFILE: genera dist/InfractiVision/InfractiVision.exe + _internal/
 """
-
 import sys
 import os
 from pathlib import Path
 
-BASE_DIR = Path(os.getcwd())
+BASE_DIR = Path(__file__).resolve().parent
 SRC_DIR = BASE_DIR / 'src'
 main_script = str(BASE_DIR / 'main.py')
 
-# ---- Datas con verificacion de existencia (evita crash si falta archivo) ----
 def _add_data(src: Path, dst: str, datas_list: list):
     if src.exists():
         datas_list.append((str(src), dst))
     else:
-        print(f"[spec] skip missing: {src}")
+        print(f"[spec ONEDIR-CUDA] skip missing: {src}")
 
 datas: list[tuple[str, str]] = []
-# ONLINE ligero: modelos NO se bundlean (descarga selectiva via model_downloader).
-# Se incluye solo el manifest para que el downloader sepa que bajar.
-# Los 21MB de .pt se descargan on-demand a APPDATA/InfractiVision/models.
 for img in ["welcome_bg.png", "icon.ico", "InfractiVision-logo.png"]:
     _add_data(BASE_DIR / "img" / img, "img", datas)
-
-# Configs por defecto (solo JSON, no secrets/data/videos)
 for cfg in ["avenue_config.json", "camera_config.json", "polygon_config.json",
             "time_presets.json", "zones.json", "demo_videos.json", "models_manifest.json"]:
     _add_data(BASE_DIR / "config" / cfg, "config", datas)
-
-# Preset de BD (seed versionable con video_configs de los videos demo)
 _add_data(BASE_DIR / "presets" / "infractions_preset.db", "presets", datas)
-
-# Secretos necesarios POST-instalacion (migraciones Firestore + Plate Recognizer).
-# Se empaquetan SOLO si existen al compilar (el CI sin secrets no rompe).
-# ADVERTENCIA: quedan extraibles del onefile; rotar keys requiere re-build.
 _add_data(BASE_DIR / "infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json", ".", datas)
 _add_data(BASE_DIR / ".env", ".", datas)
-
-# Nota: data/, videos/ se excluyen a proposito para instalador ONLINE
-#       (los videos demo se descargan al instalar desde config/demo_videos.json)
 
 hiddenimports = [
     'tkinter', 'tkinter.messagebox', 'tkinter.filedialog', 'tkinter.ttk',
@@ -69,7 +51,6 @@ hiddenimports = [
     'psutil', 'matplotlib', 'matplotlib.pyplot', 'matplotlib.backends', 'matplotlib.backends.backend_agg',
     'scipy', 'scipy.spatial', 'scipy.spatial.distance', 'scipy.cluster', 'scipy.cluster.hierarchy',
     'scipy.cluster._hierarchy', 'scipy.linalg', 'scipy.optimize', 'scipy.stats', 'scipy.ndimage',
-    # InfractiVision
     'src.path_helper',
     'src.composition_root',
     'src.presentation.gui.main_window',
@@ -92,12 +73,9 @@ hiddenimports = [
 
 pathex = [str(BASE_DIR), str(SRC_DIR)]
 binaries = []
-# CUDA build: intentar bundlear libs nvidia si están instaladas (torch 2.6+cu124).
-# En CI cuda estos paquetes existen (pip install -r requirements.txt); en dev sin cuda se ignora.
 try:
     from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
-    _nvidia_datas = []
-    _nvidia_bins = []
+    _nvidia_datas, _nvidia_bins = [], []
     for _pkg in ["nvidia", "nvidia.cublas", "nvidia.cuda_runtime", "nvidia.cudnn",
                  "nvidia.cusparse", "nvidia.cufft", "nvidia.curand", "nvidia.cusolver",
                  "nvidia.nccl", "nvidia.nvjitlink", "nvidia.nvtx", "triton"]:
@@ -109,15 +87,13 @@ try:
     datas += _nvidia_datas
     binaries += _nvidia_bins
     if _nvidia_bins:
-        print(f"[spec CUDA] nvidia/triton libs bundled: {len(_nvidia_bins)} binaries, {len(_nvidia_datas)} datas")
+        print(f"[spec ONEDIR-CUDA] nvidia/triton: {len(_nvidia_bins)} bins")
 except Exception as e:
-    print(f"[spec CUDA] nvidia collect skipped (no cuda venv): {e}")
+    print(f"[spec ONEDIR-CUDA] nvidia collect skipped: {e}")
 
 excludes = [
     'IPython', 'jupyter', 'notebook', 'sphinx', 'pytest', 'setuptools', 'pip', 'wheel',
     'docstring_parser', 'coverage', 'black', 'mypy', 'flake8', 'pylint', 'autopep8', 'isort', 'bandit', 'safety',
-    # Mantener tensorflow/onnx excluidos, PERO triton NO se excluye en CUDA
-    # (torch 2.6 Inductor lo usa si está; si no está, torch hace fallback sin error).
     'tensorboard', 'tensorflow', 'keras', 'onnx', 'numba', 'jax', 'cupy', 'dask', 'xarray',
     'bokeh', 'plotly', 'seaborn', 'statsmodels', 'networkx',
     'gensim', 'nltk', 'spacy', 'transformers', 'datasets', 'huggingface_hub',
@@ -145,10 +121,8 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=None)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='InfractiVision',
     debug=False,
     bootloader_ignore_signals=False,
@@ -168,4 +142,15 @@ exe = EXE(
     uac_uiaccess=False,
 )
 
-print("InfractiVision-CUDA.spec ONLINE listo (CUDA 12.4 / RTX 5050 sm_120, nvidia libs bundled si disponible)")
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='InfractiVision',
+)
+
+print("InfractiVision-ONEDIR-CUDA.spec listo (ONEDIR Setup-Online, sin extracción)")

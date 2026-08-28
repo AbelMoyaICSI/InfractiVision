@@ -49,17 +49,23 @@ def _user_data_root() -> Path:
     return base / "InfractiVision"
 
 
-# Dirs de datos del usuario (no requieren admin)
+# Dirs de datos del usuario (no requieren admin) — lazy mkdir, no en import
 APPDATA_DIR = _user_data_root()
-CONFIG_DIR  = APPDATA_DIR / "config"
-OUTPUT_DIR  = APPDATA_DIR / "output"
-LOGS_DIR    = APPDATA_DIR / "logs"
-for d in (CONFIG_DIR, OUTPUT_DIR, LOGS_DIR):
-    d.mkdir(parents=True, exist_ok=True)
+CONFIG_DIR = APPDATA_DIR / "config"
+OUTPUT_DIR = APPDATA_DIR / "output"
+LOGS_DIR = APPDATA_DIR / "logs"
 
-# Archivos clave
-ICONO_APP   = resource_path("img/icon.ico")
-YOLO_MODEL  = resource_path("models/yolov8n.pt")  # ajusta el nombre si usas otro
+def ensure_user_dirs() -> None:
+    """Crea dirs de usuario bajo demanda (llamar desde main/settings, no en import)."""
+    for d in (CONFIG_DIR, OUTPUT_DIR, LOGS_DIR):
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+# Archivos clave (SETTINGS_JSON usa CONFIG_DIR pero no crea dirs en import)
+ICONO_APP = resource_path("img/icon.ico")
+YOLO_MODEL = resource_path("models/yolov8n.pt")  # ajusta el nombre si usas otro
 SETTINGS_JSON = CONFIG_DIR / "settings.json"
 
 # Copia inicial de configs por defecto (solo si no existen en APPDATA)

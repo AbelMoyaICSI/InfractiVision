@@ -15,19 +15,37 @@ class VehicleDetector:
 
         # Cargar modelo con configuración optimizada
         self.model = YOLO(model_path)
-        
-        # Dispositivo óptimo (GPU/CPU) con MODO TURBO (FP16)
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.using_gpu = torch.cuda.is_available()
-        # FP16 (Half Precision) - Dobla la velocidad en GPUs modernas, igual que en cámaras ANPR
-        self.half = self.using_gpu 
-        
-        if self.using_gpu:
+
+        # Dispositivo óptimo con probe real (RTX 5050 sm_120 Blackwell incluido)
+        # Usa get_default_device() que hace tensor*1.0 + synchronize en vez de solo is_available()
+        from src.core.utils import get_default_device
+
+        self.device = get_default_device()
+        # Fallback defensivo si el probe falló o torch no está importado aún
+        if self.device is None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.using_gpu = self.device.type == 'cuda'
+        # FP16 solo si realmente hay GPU usable (port de windows_machine_owner)
+        self.half = self.using_gpu
+
+        try:
             self.model.to(self.device)
             # NO llamar a model.half() aquí: ultralytics ejecuta model.fuse()
             # (conv+BN) en predict(), y un modelo ya en FP16 provoca
             # "expected scalar type Half but found Float". Se pasa half=... a
             # cada predict() y ultralytics hace half() después del fuse.
+        except Exception as e:
+            if self.device.type == 'cuda':
+                print(f"[VehicleDetector] Falló mover modelo a GPU: {e} | Fallback a CPU temporal")
+                self.device = torch.device('cpu')
+                self.using_gpu = False
+                self.half = False
+                try:
+                    self.model.to(self.device)
+                except Exception as inner:
+                    print(f"[VehicleDetector] Error al mover modelo a CPU: {inner}")
+            else:
+                print(f"[VehicleDetector] Error al mover modelo a CPU: {e}")
         
         # MEJORA: Detección avanzada de hardware y configuración ultra-adaptativa
         self.hardware_info = self._detect_hardware_capabilities()
@@ -53,21 +71,25 @@ class VehicleDetector:
         import torch
         start_time = time.time()
         
-        # Información de GPU
+        # Información de GPU — usa estado real del device (probe) no solo is_available()
+        gpu_available = self.device.type == 'cuda' and torch.cuda.is_available()
         gpu_info = {
-            'available': torch.cuda.is_available(),
-            'count': torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            'available': gpu_available,
+            'count': torch.cuda.device_count() if gpu_available else 0,
             'memory': 0,
-            'compute_capability': None
+            'compute_capability': None,
+            'name': None,
         }
-        
+
         if gpu_info['available']:
             try:
-                gpu_info['memory'] = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
-                gpu_info['compute_capability'] = torch.cuda.get_device_properties(0).major
-                gpu_info['name'] = torch.cuda.get_device_properties(0).name
-            except:
-                pass
+                props = torch.cuda.get_device_properties(self.device)
+                gpu_info['memory'] = props.total_memory / (1024**3)  # GB
+                gpu_info['compute_capability'] = float(f"{props.major}.{props.minor}")
+                gpu_info['name'] = props.name
+            except Exception:
+                gpu_info['available'] = False
+                gpu_info['count'] = 0
         
         # Información de CPU
         cpu_info = {
@@ -82,11 +104,10 @@ class VehicleDetector:
         description = ""
         
         if gpu_info['available'] and gpu_info['memory'] > 0:
-            # GPU disponible - calcular score basado en memoria y compute capability
-            gpu_score = min(50, gpu_info['memory'] * 5)  # Hasta 50 puntos por memoria
-            if gpu_info['compute_capability'] and gpu_info['compute_capability'] >= 6:
+            gpu_score = min(50, gpu_info['memory'] * 5)
+            if gpu_info['compute_capability'] and gpu_info['compute_capability'] >= 6.0:
                 gpu_score += 20  # +20 para compute capability moderna
-            if gpu_info['compute_capability'] and gpu_info['compute_capability'] >= 8:
+            if gpu_info['compute_capability'] and gpu_info['compute_capability'] >= 8.0:
                 gpu_score += 10  # +10 para última generación
             score += gpu_score
             description = f"GPU {gpu_info.get('name', 'CUDA')} ({gpu_info['memory']:.1f}GB) + CPU {cpu_info['cores']}C"
@@ -112,8 +133,7 @@ class VehicleDetector:
         """Configura parámetros adaptativos según hardware detectado"""
         score = self.hardware_info['score']
         
-        # 🔧 AJUSTE: Si NO hay GPU, forzar configuración CPU optimizada
-        has_gpu = self.hardware_info['gpu']['available']
+        has_gpu = self.using_gpu and self.hardware_info['gpu']['available']
         
         if not has_gpu:
             # 🖥️ MODO CPU - Optimización agresiva para CPUs sin GPU
