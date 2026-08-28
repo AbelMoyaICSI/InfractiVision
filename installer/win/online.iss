@@ -115,8 +115,6 @@ begin
     Log('Todos los videos demo ya existen — no hay assets que descargar');
     Exit;
   end;
-  DownloadPage.Msg1LabelCaption := 'Descargando vídeos demo...';
-  DownloadPage.Msg2LabelCaption := 'Esto puede tardar varios minutos (2.6 GB total)';
   DownloadPage.Show;
   try
     DownloadPage.Download;
