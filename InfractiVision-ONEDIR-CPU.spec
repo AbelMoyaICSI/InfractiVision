@@ -7,7 +7,7 @@ import sys
 import os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(os.getcwd())
 SRC_DIR = BASE_DIR / 'src'
 main_script = str(BASE_DIR / 'main.py')
 

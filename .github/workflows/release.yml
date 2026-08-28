@@ -17,16 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Setup-Online ONEDIR (prioritario, arranque <1.5s sin extraccion)
-          - os: windows-latest
-            variant: cpu
-            req: requirements-cpu.txt
-            spec: InfractiVision-ONEDIR-CPU.spec
-          - os: windows-latest
-            variant: cuda
-            req: requirements.txt
-            spec: InfractiVision-ONEDIR-CUDA.spec
-          # ONEFILE portable (secundario, para USB)
+          # ONEFILE portable Windows (solo para USB; Setup-Online usa ONEDIR)
           - os: windows-latest
             variant: cpu-onefile
             req: requirements-cpu.txt
@@ -112,7 +103,7 @@ jobs:
             ls -lh "dist/$NAME" 2>/dev/null || ls -lh dist/*.zip dist/*.tar.gz 2>/dev/null || true
           fi
       - name: Upload to GCS (zip >2GB no cabe en GitHub Releases)
-        if: ${{ matrix.os == 'windows-latest' && matrix.variant == 'cuda' }}
+        if: ${{ matrix.os == 'windows-latest' && contains(matrix.variant, 'cuda') }}
         shell: bash
         env:
           FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
