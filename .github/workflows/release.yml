@@ -131,7 +131,12 @@ jobs:
           ls -lhR release-assets
           echo "--- Tamaños ---"
           ls -lh release-assets/*.zip release-assets/*.exe 2>/dev/null || true
-          for f in release-assets/*.zip; do [ -f "$f" ] && SZ=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f") && echo "$f: $SZ bytes" && [ "$SZ" -gt 2147483647 ] && echo "::error::$f >2GB" && exit 1; done
+          for f in release-assets/*.zip; do
+            [ -f "$f" ] || continue
+            SZ=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
+            echo "$f: $SZ bytes"
+            if [ "$SZ" -gt 2147483647 ]; then echo "::error::$f >2GB"; exit 1; fi
+          done
       - name: Publish GitHub Release (stub + cpu — sin GCS)
         uses: softprops/action-gh-release@v2
         with:
