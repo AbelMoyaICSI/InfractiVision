@@ -99,10 +99,10 @@ jobs:
 
             **Single-file 177M (lzma2): sin zip separado.**
             - `InfractiVision-Setup-Online.exe` embebe ONEDIR CPU completo (`dist/InfractiVision/*`) comprimido con lzma2 — no necesita descargar `InfractiVision-cpu-Win-x64.zip` (evita 404 y 275M duplicados).
-            - GPU NVIDIA detectada en instalador (informativa) → si hay GPU, el instalador intenta `pip install torch==2.6.0+cu124` sobre el CPU embebido (requiere internet + Python del sistema). Si falla o no hay GPU, queda CPU + fallback `torch.cuda.is_available()`.
+            - GPU NVIDIA detectada → checkbox CUDA **autoseleccionado** (puedes desmarcar para forzar CPU) → si queda marcado, el instalador intenta `pip install torch==2.6.0+cu124` sobre el CPU embebido (requiere internet + Python del sistema). Si falla o no hay GPU, queda CPU + fallback `torch.cuda.is_available()`. Linux: `--no-cuda-pip` desactiva, `--with-cuda-pip` fuerza.
             - Vídeos demo (5) y modelos (21 MB) on-demand.
 
             ### Instalación Windows
             1. Descarga `InfractiVision-Setup-Online.exe` abajo
-            2. Doble click → ventana GPU informativa → elige carpeta → instalación sin descarga extra (offline-capable)
+            2. Doble click → ventana GPU muestra `✅ CUDA autoseleccionado` (checkbox marcado, desmarcable) → elige carpeta → instalación sin descarga extra (offline-capable)
             3. Si falta VC++ Redist: https://aka.ms/vs/17/release/vc_redist.x64.exe

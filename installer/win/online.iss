@@ -1,8 +1,8 @@
-; InfractiVision Setup Online - Windows single-file (opcion 3 sin GCS + CUDA via pip)
+; InfractiVision Setup Online - Windows single-file (opcion 3 sin GCS + CUDA via pip autoseleccionado)
 ; Modo: single-file 177M (lzma2) — embebe ONEDIR CPU completo, sin zip separado.
-; - Detecta nvidia-smi -> Get-CimInstance -> wmic (solo informativo)
+; - Detecta nvidia-smi -> Get-CimInstance -> wmic y autoselecciona checkbox CUDA si hay NVIDIA
 ; - No descarga InfractiVision-cpu-Win-x64.zip (ya embebido) — evita 404 y 275M duplicados.
-; - Si hay NVIDIA, intenta pip install torch==2.6.0+cu124 vía Python del sistema (requiere internet).
+; - Si checkbox CUDA marcado (autoseleccionado con NVIDIA), intenta pip install torch==2.6.0+cu124 vía Python del sistema (requiere internet).
 ; - Modelos 21 MB no se bundlean, se descargan on-demand a %APPDATA%\InfractiVision\models
 ; Uso: iscc installer/win/online.iss  (requiere dist/InfractiVision/ previo)
 
@@ -65,10 +65,11 @@ var
   GpuLabelTitle: TNewStaticText;
   GpuLabelDetail: TNewStaticText;
   GpuLabelVariant: TNewStaticText;
+  GpuCudaCheckBox: TNewCheckBox;
   GpuDetected: Boolean;
   GpuName: String;
   GpuDriverOk: Boolean;
-  SelectedVariant: String; // 'cuda' o 'cpu'
+  SelectedVariant: String; // 'cuda' o 'cpu' (cpu+pip-cuda cuando checkbox marcado)
   DemoFiles: array of String;
   DemoURLs: array of String;
 
@@ -229,27 +230,40 @@ begin
   Result := True;
 end;
 
+procedure GpuCudaCheckBoxClick(Sender: TObject);
+begin
+  if GpuCudaCheckBox.Checked then
+    SelectedVariant := 'cpu+pip-cuda'
+  else
+    SelectedVariant := 'cpu';
+  Log('GpuCudaCheckBoxClick: Checked=' + BoolToStr(GpuCudaCheckBox.Checked, True) + ' SelectedVariant=' + SelectedVariant);
+end;
+
 procedure UpdateGpuPageUI;
 begin
-  // Opcion 3 sin GCS: siempre CPU (no hay cuda zip en Releases). GPU solo informativa.
+  // Opcion 3 sin GCS: base siempre CPU embebida; CUDA via pip autoseleccionado si hay NVIDIA
   if GpuDetected then
   begin
     GpuLabelTitle.Caption := '✅ GPU NVIDIA dedicada detectada';
     if GpuName <> '' then
-      GpuLabelDetail.Caption := '   ' + GpuName + ' (instalando variante CPU — CUDA deshabilitada sin GCS)'
+      GpuLabelDetail.Caption := '   ' + GpuName + ' — ✅ aceleración CUDA autoseleccionada (puedes desmarcar)'
     else
-      GpuLabelDetail.Caption := '   GPU detectada — se instalará variante CPU (estable, sin GCS)';
-    GpuLabelVariant.Caption := '→ Variante seleccionada: CPU — 900 MB (única disponible)';
-    SelectedVariant := 'cpu';
-    Log('UI GPU: NVIDIA detectada pero opcion 3 fuerza CPU - ' + GpuName);
+      GpuLabelDetail.Caption := '   GPU detectada — aceleración CUDA autoseleccionada';
+    GpuLabelVariant.Caption := '→ Variante base: CPU — 900 MB + CUDA vía pip si está marcado';
+    GpuCudaCheckBox.Checked := True; // autoselección cuando detecta NVIDIA
+    GpuCudaCheckBox.Enabled := True;
+    SelectedVariant := 'cpu+pip-cuda';
+    Log('UI GPU: NVIDIA detectada -> CUDA autoseleccionado - ' + GpuName);
   end
   else
   begin
     GpuLabelTitle.Caption := '❌ No se detectó GPU NVIDIA dedicada';
     GpuLabelDetail.Caption := '   Se instalará la variante CPU (compatible con todos los equipos)';
     GpuLabelVariant.Caption := '→ Variante seleccionada: CPU — 900 MB';
+    GpuCudaCheckBox.Checked := False;
+    GpuCudaCheckBox.Enabled := True; // permitir forzar CUDA manualmente si el usuario quiere
     SelectedVariant := 'cpu';
-    Log('UI GPU: CPU seleccionada (opcion 3)');
+    Log('UI GPU: CPU seleccionada (sin NVIDIA, checkbox desmarcado)');
   end;
 end;
 
@@ -288,6 +302,17 @@ begin
   GpuLabelVariant.Height := 20;
   GpuLabelVariant.Caption := '';
   GpuLabelVariant.Font.Style := [fsBold];
+
+  GpuCudaCheckBox := TNewCheckBox.Create(GpuPage);
+  GpuCudaCheckBox.Parent := GpuPage.Surface;
+  GpuCudaCheckBox.Left := 16;
+  GpuCudaCheckBox.Top := 112;
+  GpuCudaCheckBox.Width := 400;
+  GpuCudaCheckBox.Height := 17;
+  GpuCudaCheckBox.Caption := 'Instalar aceleración CUDA (requiere Python 3.10 + internet, ~2 GB)';
+  GpuCudaCheckBox.Checked := False;
+  GpuCudaCheckBox.Enabled := True;
+  GpuCudaCheckBox.OnClick := @GpuCudaCheckBoxClick;
 
   // Valores iniciales (se actualizan en CurPageChanged)
   GpuDetected := False;
@@ -383,11 +408,14 @@ var
   ResultCode: Integer;
 begin
   Result := False;
-  if not GpuDetected then
+  // Respeta autoselección del checkbox: si está desmarcado, no instalar CUDA
+  if not GpuCudaCheckBox.Checked then
   begin
-    Log('TryPipInstallCuda: no GPU, skip pip');
+    Log('TryPipInstallCuda: checkbox desmarcado, skip pip (SelectedVariant=' + SelectedVariant + ')');
     Exit;
   end;
+  if not GpuDetected then
+    Log('TryPipInstallCuda: checkbox marcado sin GPU detectada (forzado manual), intentando pip igual');
   if not FindSystemPython(PythonExe) then
   begin
     Log('TryPipInstallCuda: sin Python del sistema, se queda CPU (app fallback torch.cuda.is_available)');

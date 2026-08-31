@@ -1,12 +1,12 @@
 # InfractiVision - Instalador ONLINE single-file (opcion 3 sin GCS + CUDA via pip)
 
 ## Resumen
-Single-file 177M (lzma2) sin zip separado. Stub = ONEDIR CPU embebido; si hay NVIDIA instala CUDA vía pip del sistema.
+Single-file 177M (lzma2) sin zip separado. Stub = ONEDIR CPU embebido; CUDA vía pip **autoseleccionado** si hay NVIDIA (checkbox desmarcable).
 
 | SO | Instalador | Tamaño | Que descarga | GPU |
 |---|---|---|---|---|
-| Windows 10+ | `InfractiVision-Setup-Online.exe` (Inno Setup 6) | 177M single-file (embebe ONEDIR lzma2) | 5 videos demo (CUDA vía `pip install torch==2.6.0+cu124` si hay NVIDIA) | **Ventana GPU**: `nvidia-smi` → `Get-CimInstance` → `wmic` → `✅ NVIDIA ... (pip CUDA)` o `❌ → CPU`; sin 404 |
-| Linux | `installer/linux/install.sh` | 4 KB | `InfractiVision-cpu-Linux-x64.zip` + 5 videos demo | Detecta pero fuerza CPU (cuda via pip futuro) |
+| Windows 10+ | `InfractiVision-Setup-Online.exe` (Inno Setup 6) | 177M single-file (embebe ONEDIR lzma2) | 5 videos demo (CUDA vía `pip install torch==2.6.0+cu124` si checkbox marcado) | **Ventana GPU**: `nvidia-smi` → `Get-CimInstance` → `wmic` → `✅ NVIDIA ... — ✅ CUDA autoseleccionado` (checkbox `Instalar aceleración CUDA` marcado por defecto, desmarcable) o `❌ → CPU`; sin 404 |
+| Linux | `installer/linux/install.sh` | ~6 KB | `InfractiVision-cpu-Linux-x64.zip` + 5 videos demo | **Autoselección**: `nvidia-smi`/`lspci` → `pip CUDA autoseleccionado` (`--auto` detecta, `--no-cuda-pip` desactiva, `--with-cuda-pip` fuerza) |
 | macOS | `installer/mac/install.sh` / `.pkg` | 3 KB | `InfractiVision-cpu-Mac-x64/arm64.zip` + 5 videos demo | Siempre CPU |
 
 Los 5 videos demo se descargan al **directorio de datos del usuario**:
@@ -31,14 +31,16 @@ Como fallback, la app también lee el token desde `APPDATA_DIR/plate_recognizer.
 
 ### Windows
 1. Descarga `InfractiVision-Setup-Online.exe` (177M) desde Releases
-2. Doble click → **ventana "Detección de hardware"** muestra `🔍 Detectando...` → `✅ NVIDIA GeForce RTX ... detectada (pip CUDA)` o `❌ No detectada → CPU` y continúa solo → elige carpeta (default `%APPDATA%\InfractiVision`) → sin descarga zip (single-file embebido); si hay NVIDIA intenta `pip install torch==2.6.0+cu124` vía Python del sistema
+2. Doble click → **ventana "Detección de hardware"** muestra `🔍 Detectando...` → `✅ NVIDIA GeForce RTX ... — ✅ aceleración CUDA autoseleccionada` (checkbox **Instalar aceleración CUDA** viene **marcado**, puedes desmarcar para forzar CPU) o `❌ No detectada → CPU` (checkbox desmarcado, puedes marcar para forzar) → Next → elige carpeta (default `%APPDATA%\InfractiVision`) → sin descarga zip (single-file embebido); si el checkbox queda marcado intenta `pip install torch==2.6.0+cu124` vía Python del sistema
 3. Si falta VC++ Redist, el instalador avisa con link a `https://aka.ms/vs/17/release/vc_redist.x64.exe`
 
 ### Linux
 ```bash
 curl -fsSL https://github.com/AbelMoyaICSI/InfractiVision/releases/latest/download/install.sh | bash
 # o local:
-bash installer/linux/install.sh --auto
+bash installer/linux/install.sh --auto                          # autoselecciona pip CUDA si hay NVIDIA
+bash installer/linux/install.sh --auto --no-cuda-pip            # fuerza CPU aunque haya NVIDIA
+bash installer/linux/install.sh --with-cuda-pip                 # fuerza pip CUDA (aunque lspci falle)
 bash installer/linux/install.sh --cpu --prefix ~/.local/share/InfractiVision
 bash installer/linux/install.sh --no-demo   # sin descargar videos demo
 ```
@@ -70,7 +72,7 @@ bash installer/mac/build-pkg.sh --version 2.1.0
 ```
 
 ## CI/CD
-- `release.yml` single-file: on tag `v*` construye ONEDIR CPU (`InfractiVision-ONEDIR-CPU.spec` + `requirements-cpu.txt`) → `iscc online.iss` embebe con lzma2 → publica solo `InfractiVision-Setup-Online.exe` (177M, sin zip, sin GCS). CUDA vía pip en instalador si hay NVIDIA.
+- `release.yml` single-file: on tag `v*` construye ONEDIR CPU (`InfractiVision-ONEDIR-CPU.spec` + `requirements-cpu.txt`) → `iscc online.iss` embebe con lzma2 → publica solo `InfractiVision-Setup-Online.exe` (177M, sin zip, sin GCS). CUDA vía pip **autoseleccionado** si hay NVIDIA (checkbox marcado por defecto, desmarcable; Linux `--no-cuda-pip` desactiva).
 - `deps.yml`: verifica `requirements*.txt` con `scripts/ci_smoke_test.py`.
 
 ## Firma de codigo (diferida a v1.1)
