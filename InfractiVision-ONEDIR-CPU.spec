@@ -77,6 +77,12 @@ excludes = [
     'tensorboard', 'tensorflow', 'keras', 'onnx', 'triton', 'numba', 'jax', 'cupy', 'dask', 'xarray',
     'bokeh', 'plotly', 'seaborn', 'statsmodels', 'networkx',
     'gensim', 'nltk', 'spacy', 'transformers', 'datasets', 'huggingface_hub',
+    # Recorte peso para mantener zip <2GB sin GCS
+    'matplotlib.tests', 'mpl_toolkits.tests', 'numpy.tests', 'scipy.tests',
+    'sklearn.tests', 'sklearn.datasets', 'sklearn.experimental',
+    'pandas.tests', 'PIL.tests', 'tkinter.test', 'test', 'tests',
+    'unittest', 'distutils.tests', 'email.tests',
+    'PyQt5', 'PyQt6', 'PySide2', 'PySide6',
 ]
 
 a = Analysis(
@@ -127,8 +133,8 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
-    strip=False,
-    upx=False,
+    strip=True,
+    upx=True,
     upx_exclude=[],
     name='InfractiVision',
 )

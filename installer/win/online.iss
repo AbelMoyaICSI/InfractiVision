@@ -334,7 +334,7 @@ end;
 
 function GetVariantZipUrl(Variant: String): String;
 begin
-  // Artefactos publicados en GitHub Releases (latest)
+  // Artefactos publicados en GitHub Releases (latest) — sin GCS mientras zip <2GB (ver release.yml guarda).
   // Ej: InfractiVision-cuda-Win-x64.zip / InfractiVision-cpu-Win-x64.zip
   Result := 'https://github.com/{#MyRepo}/releases/latest/download/InfractiVision-' + Variant + '-Win-x64.zip';
 end;

@@ -59,8 +59,15 @@ jobs:
         shell: bash
         run: |
           cd dist
-          7z a -tzip InfractiVision-${{ matrix.variant }}-Win-x64.zip InfractiVision -mx=5
+          7z a -tzip InfractiVision-${{ matrix.variant }}-Win-x64.zip InfractiVision -mx=9
           ls -lh InfractiVision-${{ matrix.variant }}-Win-x64.zip
+          # Guarda <2GB sin GCS: fallo temprano si excede límite GitHub Releases
+          SZ=$(stat -c%s "InfractiVision-${{ matrix.variant }}-Win-x64.zip" 2>/dev/null || stat -f%z "InfractiVision-${{ matrix.variant }}-Win-x64.zip")
+          echo "ZIP size bytes: $SZ"
+          if [ "$SZ" -gt 2147483647 ]; then
+            echo "::error::Zip $SZ bytes >2GB — excede límite GitHub Releases sin GCS. Optimiza excludes/strip o usa split."
+            exit 1
+          fi
       - name: Smoke test ONEDIR (${{ matrix.variant }})
         shell: bash
         run: |
@@ -140,7 +147,11 @@ jobs:
           name: InfractiVision-cuda-Win-x64
           path: release-assets
       - name: List assets
-        run: ls -lhR release-assets
+        run: |
+          ls -lhR release-assets
+          echo "--- Tamaños ---"
+          ls -lh release-assets/*.zip release-assets/*.exe 2>/dev/null || true
+          for f in release-assets/*.zip; do [ -f "$f" ] && SZ=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f") && echo "$f: $SZ bytes" && [ "$SZ" -gt 2147483647 ] && echo "::error::$f >2GB" && exit 1; done
       - name: Publish GitHub Release (stub + variantes)
         uses: softprops/action-gh-release@v2
         with:

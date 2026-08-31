@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""upload_release_asset.py — Sube zips de release a GCS público (releases/latest).
+"""upload_release_asset.py — (LEGACY) Sube zips de release a GCS público (releases/latest).
+Solo se usa si zip >2GB (límite GitHub Releases). Con la optimización actual (<2GB)
+no es necesario; se mantiene como fallback manual.
 
 Los assets >2GB no caben en GitHub Releases; se sirven desde el bucket
 Firebase `infractivision-e8c03.firebasestorage.app`. Los zips se suben con
