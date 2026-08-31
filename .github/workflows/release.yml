@@ -12,25 +12,16 @@ on:
         default: "2.1.0"
 
 jobs:
-  build-variants-win:
-    name: Build Win variants (cpu + cuda) + stub
+  build-cpu-win:
+    name: Build Win CPU + stub (opcion 3 sin GCS)
     runs-on: windows-latest
-    strategy:
-      matrix:
-        variant: [cpu, cuda]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - name: Install deps (${{ matrix.variant }})
-        shell: bash
-        run: |
-          if [[ "${{ matrix.variant }}" == "cuda" ]]; then
-            pip install -r requirements.txt
-          else
-            pip install -r requirements-cpu.txt
-          fi
+      - name: Install deps (CPU sin GCS)
+        run: pip install -r requirements-cpu.txt
       - name: Inject secrets (migraciones + Plate Recognizer)
         shell: bash
         env:
@@ -47,44 +38,37 @@ jobs:
             printf '%s\n' "PLATE_RECOGNIZER_API_TOKEN=$PLATE_RECOGNIZER_TOKEN" > .env
             ls -l .env
           fi
-      - name: Build PyInstaller ONEDIR (${{ matrix.variant }})
-        shell: bash
-        run: |
-          if [[ "${{ matrix.variant }}" == "cuda" ]]; then
-            python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CUDA.spec
-          else
-            python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CPU.spec
-          fi
-      - name: Zip variant (${{ matrix.variant }})
+      - name: Build PyInstaller ONEDIR CPU
+        run: python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CPU.spec
+      - name: Zip variant CPU
         shell: bash
         run: |
           cd dist
-          7z a -tzip InfractiVision-${{ matrix.variant }}-Win-x64.zip InfractiVision -mx=9
-          ls -lh InfractiVision-${{ matrix.variant }}-Win-x64.zip
-          # Guarda <2GB sin GCS: fallo temprano si excede límite GitHub Releases
-          SZ=$(stat -c%s "InfractiVision-${{ matrix.variant }}-Win-x64.zip" 2>/dev/null || stat -f%z "InfractiVision-${{ matrix.variant }}-Win-x64.zip")
+          7z a -tzip InfractiVision-cpu-Win-x64.zip InfractiVision -mx=9
+          ls -lh InfractiVision-cpu-Win-x64.zip
+          SZ=$(stat -c%s "InfractiVision-cpu-Win-x64.zip" 2>/dev/null || stat -f%z "InfractiVision-cpu-Win-x64.zip")
           echo "ZIP size bytes: $SZ"
           if [ "$SZ" -gt 2147483647 ]; then
-            echo "::error::Zip $SZ bytes >2GB — excede límite GitHub Releases sin GCS. Optimiza excludes/strip o usa split."
+            echo "::error::Zip $SZ bytes >2GB — excede límite GitHub Releases. Revisa excludes."
             exit 1
           fi
-      - name: Smoke test ONEDIR (${{ matrix.variant }})
+      - name: Smoke test ONEDIR CPU
         shell: bash
         run: |
           ls -lh dist/
           test -f dist/InfractiVision/InfractiVision.exe || (echo "ERROR: ONEDIR exe no generado" && ls -R dist | head -n 80 && exit 1)
-          echo "Smoke ONEDIR ${{ matrix.variant }} OK"
+          echo "Smoke ONEDIR cpu OK"
           ls -lh dist/InfractiVision/ | head -n 20
       - uses: actions/upload-artifact@v4
         with:
-          name: InfractiVision-${{ matrix.variant }}-Win-x64
-          path: dist/InfractiVision-${{ matrix.variant }}-Win-x64.zip
+          name: InfractiVision-cpu-Win-x64
+          path: dist/InfractiVision-cpu-Win-x64.zip
           if-no-files-found: error
 
   build-setup-win:
     name: Build Setup Online (stub con detección GPU)
     runs-on: windows-latest
-    needs: build-variants-win
+    needs: build-cpu-win
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -127,8 +111,8 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Publish Release (stub + zips cpu/cuda)
-    needs: [build-variants-win, build-setup-win]
+    name: Publish Release (stub + cpu — opcion 3 sin GCS)
+    needs: [build-cpu-win, build-setup-win]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -142,38 +126,32 @@ jobs:
         with:
           name: InfractiVision-cpu-Win-x64
           path: release-assets
-      - uses: actions/download-artifact@v4
-        with:
-          name: InfractiVision-cuda-Win-x64
-          path: release-assets
       - name: List assets
         run: |
           ls -lhR release-assets
           echo "--- Tamaños ---"
           ls -lh release-assets/*.zip release-assets/*.exe 2>/dev/null || true
           for f in release-assets/*.zip; do [ -f "$f" ] && SZ=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f") && echo "$f: $SZ bytes" && [ "$SZ" -gt 2147483647 ] && echo "::error::$f >2GB" && exit 1; done
-      - name: Publish GitHub Release (stub + variantes)
+      - name: Publish GitHub Release (stub + cpu — sin GCS)
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release-assets/InfractiVision-Setup-Online.exe
             release-assets/InfractiVision-cpu-Win-x64.zip
-            release-assets/InfractiVision-cuda-Win-x64.zip
           generate_release_notes: true
           body: |
-            ## InfractiVision ${{ github.ref_name }} — Instalador Online (stub con detección GPU)
+            ## InfractiVision ${{ github.ref_name }} — Instalador Online (opcion 3 sin GCS)
 
-            **Stub ~8 MB con detección automática NVIDIA:**
-            - Nueva ventana informativa: detecta GPU dedicada NVIDIA (`nvidia-smi` → `Get-CimInstance` → `wmic`) y muestra `✅ RTX ... → CUDA` o `❌ No NVIDIA → CPU`, continúa solo.
-            - Descarga selectiva: `InfractiVision-cuda-Win-x64.zip` (1.4GB, `torch 2.6+cu124` + `nvidia-*` bundeadas) si hay NVIDIA, sino `InfractiVision-cpu-Win-x64.zip` (900MB). Fallback offline a ONEDIR CPU embebido si falla red.
+            **Opcion 3: sin GCS, solo CPU (~900MB), sin almacenamiento externo.**
+            - Stub ~8 MB detecta GPU NVIDIA (informativo) pero **siempre descarga `InfractiVision-cpu-Win-x64.zip`** — no hay `cuda-Win-x64.zip` (evita >2GB y costo GCS).
+            - Si el equipo tiene NVIDIA, la app lo detecta en runtime y usa CPU fallback (`torch.cuda.is_available()`); aceleración CUDA on-demand si el usuario instala torch CUDA manual.
             - Embebe ONEDIR CPU fallback — arranque <1.5s sin extracción `_MEIPASS`.
             - Vídeos demo (5) vía `installer/win/online.iss` → `%APPDATA%\InfractiVision\videos`, con reintento en primer arranque.
             - Modelos AI (21 MB) on-demand a `%APPDATA%\InfractiVision\models`.
 
             ### Instalación Windows
             1. Descarga `InfractiVision-Setup-Online.exe` abajo
-            2. Doble click → verás la ventana de detección GPU (continúa solo) → elige carpeta
+            2. Doble click → verás la ventana de detección GPU (informativa) → elige carpeta → descarga automática CPU
             3. Si falta VC++ Redist: https://aka.ms/vs/17/release/vc_redist.x64.exe
-            4. Sin NVIDIA o sin red: instala CPU y la app hace fallback automático (`torch.cuda.is_available()`).
 
-            > Zips variantes también publicados abajo para instalación manual/offline.
+            > Sin GCS: `InfractiVision-cpu-Win-x64.zip` cabe en GitHub Releases (0 costo). Variante CUDA deshabilitada en esta release.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# InfractiVision ONLINE installer - Linux (per-user, XDG)
+# InfractiVision ONLINE installer - Linux (per-user, XDG) — opcion 3 sin GCS (solo CPU)
 # Uso: curl -fsSL https://github.com/AbelMoyaICSI/InfractiVision/releases/latest/download/install.sh | bash
 #   o: bash installer/linux/install.sh [--cpu|--cuda|--auto] [--prefix ~/.local/share/InfractiVision]
 set -euo pipefail
@@ -65,8 +65,17 @@ check_deps(){
 }
 
 resolve_variant(){
+  # Opcion 3 sin GCS: solo cpu en Releases (no hay cuda zip). Forzar cpu aunque haya NVIDIA.
+  if [[ "$VARIANT" == "cuda" ]]; then
+    echo "[!] Variante cuda deshabilitada (opcion 3 sin GCS) — usando cpu" >&2
+    echo "cpu"
+    return
+  fi
   if [[ "$VARIANT" == "auto" ]]; then
-    if has_nvidia_gpu; then echo "cuda"; else echo "cpu"; fi
+    if has_nvidia_gpu; then
+      echo "[*] GPU NVIDIA detectada pero opcion 3 fuerza cpu (sin GCS)" >&2
+    fi
+    echo "cpu"
   else echo "$VARIANT"; fi
 }
 
@@ -140,8 +149,8 @@ DESKTOP
   echo "  Ejecuta: $PREFIX/InfractiVision"
   echo "  O busca 'InfractiVision' en tu menu"
   echo "  Desinstalar: rm -rf $PREFIX $app_dir/infractivision.desktop"
-  # Probe GPU runtime info
-  if has_nvidia_gpu; then echo "  GPU: NVIDIA detectada -> variante cuda (si falla driver, app hace fallback a CPU)"
+  # Probe GPU runtime info (opcion 3: siempre cpu)
+  if has_nvidia_gpu; then echo "  GPU: NVIDIA detectada -> variante cpu (opcion 3 sin GCS, CUDA deshabilitada)"
   else echo "  GPU: No detectada -> variante cpu"; fi
 }
 

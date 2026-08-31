@@ -1,9 +1,8 @@
-; InfractiVision Setup Online - Windows con detección GPU NVIDIA + ventana informativa
-; Modo: stub online (~8 MB) con detección automática de GPU dedicada NVIDIA.
-; - Detecta nvidia-smi -> wmic -> powershell Get-CimInstance
-; - Muestra ventana informativa con resultado y continúa solo (sin intervención)
-; - Descarga variante CUDA (1.4GB) si hay NVIDIA, sino CPU (900MB) desde GitHub Releases
-; - Fallback offline: si no hay red, usa ONEDIR embebido si existe (CI/local)
+; InfractiVision Setup Online - Windows (opcion 3 sin GCS)
+; Modo: stub online (~8 MB) con detección GPU informativa pero solo variante CPU.
+; - Detecta nvidia-smi -> Get-CimInstance -> wmic (solo informativo)
+; - Siempre descarga InfractiVision-cpu-Win-x64.zip (~900MB) desde GitHub Releases — no hay CUDA zip (evita >2GB/GCS)
+; - Fallback offline: si no hay red, usa ONEDIR embebido (CI/local)
 ; - Modelos 21 MB no se bundlean, se descargan on-demand a %APPDATA%\InfractiVision\models
 ; Uso: iscc installer/win/online.iss  (requiere dist/InfractiVision/ previo para fallback offline)
 
@@ -232,19 +231,17 @@ end;
 
 procedure UpdateGpuPageUI;
 begin
+  // Opcion 3 sin GCS: siempre CPU (no hay cuda zip en Releases). GPU solo informativa.
   if GpuDetected then
   begin
     GpuLabelTitle.Caption := '✅ GPU NVIDIA dedicada detectada';
     if GpuName <> '' then
-      GpuLabelDetail.Caption := '   ' + GpuName
+      GpuLabelDetail.Caption := '   ' + GpuName + ' (instalando variante CPU — CUDA deshabilitada sin GCS)'
     else
-      GpuLabelDetail.Caption := '   Se instalará la variante con aceleración CUDA';
-    if GpuDriverOk then
-      GpuLabelVariant.Caption := '→ Variante seleccionada: CUDA 12.4 (GPU) — 1.4 GB'
-    else
-      GpuLabelVariant.Caption := '→ Variante seleccionada: CUDA 12.4 (driver desactualizado, fallback a CPU si falla)';
-    SelectedVariant := 'cuda';
-    Log('UI GPU: CUDA seleccionada - ' + GpuName);
+      GpuLabelDetail.Caption := '   GPU detectada — se instalará variante CPU (estable, sin GCS)';
+    GpuLabelVariant.Caption := '→ Variante seleccionada: CPU — 900 MB (única disponible)';
+    SelectedVariant := 'cpu';
+    Log('UI GPU: NVIDIA detectada pero opcion 3 fuerza CPU - ' + GpuName);
   end
   else
   begin
@@ -252,7 +249,7 @@ begin
     GpuLabelDetail.Caption := '   Se instalará la variante CPU (compatible con todos los equipos)';
     GpuLabelVariant.Caption := '→ Variante seleccionada: CPU — 900 MB';
     SelectedVariant := 'cpu';
-    Log('UI GPU: CPU seleccionada');
+    Log('UI GPU: CPU seleccionada (opcion 3)');
   end;
 end;
 
@@ -334,9 +331,8 @@ end;
 
 function GetVariantZipUrl(Variant: String): String;
 begin
-  // Artefactos publicados en GitHub Releases (latest) — sin GCS mientras zip <2GB (ver release.yml guarda).
-  // Ej: InfractiVision-cuda-Win-x64.zip / InfractiVision-cpu-Win-x64.zip
-  Result := 'https://github.com/{#MyRepo}/releases/latest/download/InfractiVision-' + Variant + '-Win-x64.zip';
+  // Opcion 3 sin GCS: solo CPU en GitHub Releases (latest). Se ignora Variant y se fuerza cpu para evitar 404 cuda.
+  Result := 'https://github.com/{#MyRepo}/releases/latest/download/InfractiVision-cpu-Win-x64.zip';
 end;
 
 procedure DownloadAndExtractVariant(AppPath: String);
@@ -345,10 +341,9 @@ var
   ResultCode: Integer;
   PsCmd: String;
 begin
-  // Si ya hay ONEDIR embebido (fallback offline) y no hay red, esta descarga es opcional.
-  // Intentamos descargar la variante correcta; si falla, dejamos el embebido y logueamos.
+  // Opcion 3 sin GCS: siempre CPU. SelectedVariant ya es 'cpu' (ver UpdateGpuPageUI).
   ZipUrl := GetVariantZipUrl(SelectedVariant);
-  ZipTmp := ExpandConstant('{tmp}\InfractiVision-' + SelectedVariant + '-Win-x64.zip');
+  ZipTmp := ExpandConstant('{tmp}\InfractiVision-cpu-Win-x64.zip');
   ExtractTmp := ExpandConstant('{tmp}\iv_extract');
 
   Log('Variante elegida: ' + SelectedVariant + ' URL: ' + ZipUrl);
@@ -356,12 +351,12 @@ begin
   // Solo descargar si la variante no coincide con lo embebido o si AppPath está vacío
   // Heurística: siempre intentar descargar (para tener CUDA si corresponde). Si falla, fallback.
   DownloadPage.Clear;
-  DownloadPage.Add(ZipUrl, 'InfractiVision-' + SelectedVariant + '-Win-x64.zip', '');
+  DownloadPage.Add(ZipUrl, 'InfractiVision-cpu-Win-x64.zip', '');
   DownloadPage.Show;
   try
     try
       DownloadPage.Download;
-      Log('Descarga variante OK: ' + SelectedVariant);
+      Log('Descarga variante OK: cpu (opcion 3)');
     except
       if DownloadPage.AbortedByUser then
       begin
@@ -370,8 +365,8 @@ begin
       end
       else
       begin
-        Log('Error descargando variante ' + SelectedVariant + ': ' + GetExceptionMessage + ' — usando fallback embebido');
-        SuppressibleMsgBox('No se pudo descargar la variante ' + SelectedVariant + ' (' + GetExceptionMessage + ').' + #13#10 + 'Se usará la versión embebida (CPU) y la app hará fallback automático. Verifica tu conexión.', mbInformation, MB_OK, IDOK);
+        Log('Error descargando variante cpu: ' + GetExceptionMessage + ' — usando fallback embebido');
+        SuppressibleMsgBox('No se pudo descargar la variante cpu (' + GetExceptionMessage + ').' + #13#10 + 'Se usará la versión embebida (CPU) y la app hará fallback automático. Verifica tu conexión.', mbInformation, MB_OK, IDOK);
         Exit;
       end;
     end;
@@ -380,7 +375,7 @@ begin
   end;
 
   // Verificar que el zip se descargó a {tmp}
-  ZipTmp := ExpandConstant('{tmp}\InfractiVision-' + SelectedVariant + '-Win-x64.zip');
+  ZipTmp := ExpandConstant('{tmp}\InfractiVision-cpu-Win-x64.zip');
   if not FileExists(ZipTmp) then
   begin
     Log('Zip no encontrado en tmp tras DownloadPage: ' + ZipTmp + ' — fallback embebido');
@@ -483,7 +478,7 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
-    // 1. Intenta descargar variante correcta (cuda/cpu) según detección GPU
+    // 1. Opcion 3 sin GCS: siempre descarga CPU (no hay cuda zip)
     DownloadAndExtractVariant(ExpandConstant('{app}'));
     // 2. Videos demo
     DownloadDemoVideos(ExpandConstant('{app}'));
