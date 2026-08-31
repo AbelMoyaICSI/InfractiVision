@@ -12,16 +12,25 @@ on:
         default: "2.1.0"
 
 jobs:
-  build-setup-win:
-    name: Build Setup Online (Win) - stub online
+  build-variants-win:
+    name: Build Win variants (cpu + cuda) + stub
     runs-on: windows-latest
+    strategy:
+      matrix:
+        variant: [cpu, cuda]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - name: Install deps (CPU, online ligero)
-        run: pip install -r requirements-cpu.txt
+      - name: Install deps (${{ matrix.variant }})
+        shell: bash
+        run: |
+          if [[ "${{ matrix.variant }}" == "cuda" ]]; then
+            pip install -r requirements.txt
+          else
+            pip install -r requirements-cpu.txt
+          fi
       - name: Inject secrets (migraciones + Plate Recognizer)
         shell: bash
         env:
@@ -38,23 +47,71 @@ jobs:
             printf '%s\n' "PLATE_RECOGNIZER_API_TOKEN=$PLATE_RECOGNIZER_TOKEN" > .env
             ls -l .env
           fi
-      - name: Build PyInstaller ONEDIR (offline embebido)
-        run: python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CPU.spec
-      - name: Smoke test ONEDIR
+      - name: Build PyInstaller ONEDIR (${{ matrix.variant }})
+        shell: bash
+        run: |
+          if [[ "${{ matrix.variant }}" == "cuda" ]]; then
+            python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CUDA.spec
+          else
+            python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CPU.spec
+          fi
+      - name: Zip variant (${{ matrix.variant }})
+        shell: bash
+        run: |
+          cd dist
+          7z a -tzip InfractiVision-${{ matrix.variant }}-Win-x64.zip InfractiVision -mx=5
+          ls -lh InfractiVision-${{ matrix.variant }}-Win-x64.zip
+      - name: Smoke test ONEDIR (${{ matrix.variant }})
         shell: bash
         run: |
           ls -lh dist/
-          test -f dist/InfractiVision/InfractiVision.exe || (echo "ERROR: ONEDIR exe no generado" && ls -R dist | head -n 50 && exit 1)
-          echo "Smoke ONEDIR OK — fix APPDATA_DIR verificado"
+          test -f dist/InfractiVision/InfractiVision.exe || (echo "ERROR: ONEDIR exe no generado" && ls -R dist | head -n 80 && exit 1)
+          echo "Smoke ONEDIR ${{ matrix.variant }} OK"
           ls -lh dist/InfractiVision/ | head -n 20
+      - uses: actions/upload-artifact@v4
+        with:
+          name: InfractiVision-${{ matrix.variant }}-Win-x64
+          path: dist/InfractiVision-${{ matrix.variant }}-Win-x64.zip
+          if-no-files-found: error
+
+  build-setup-win:
+    name: Build Setup Online (stub con detección GPU)
+    runs-on: windows-latest
+    needs: build-variants-win
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install deps (CPU para fallback embebido)
+        run: pip install -r requirements-cpu.txt
+      - name: Inject secrets (migraciones + Plate Recognizer)
+        shell: bash
+        env:
+          FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
+          PLATE_RECOGNIZER_TOKEN: ${{ secrets.PLATE_RECOGNIZER_TOKEN }}
+        run: |
+          if [[ -z "$FIREBASE_SA_JSON" ]]; then
+            echo "::warning::Sin FIREBASE_SA_JSON: build sin Service Account."
+          else
+            printf '%s' "$FIREBASE_SA_JSON" > infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json
+            ls -l infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json
+          fi
+          if [[ -n "$PLATE_RECOGNIZER_TOKEN" ]]; then
+            printf '%s\n' "PLATE_RECOGNIZER_API_TOKEN=$PLATE_RECOGNIZER_TOKEN" > .env
+            ls -l .env
+          fi
+      - name: Build PyInstaller ONEDIR CPU (fallback embebido)
+        run: python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CPU.spec
       - name: Install Inno Setup
         run: choco install innosetup -y
-      - name: Build Setup-Online.exe (stub ~8 MB)
+      - name: Build Setup-Online.exe (stub ~8 MB con ventana GPU)
         run: iscc installer/win/online.iss
       - name: Smoke Setup
         shell: bash
         run: |
           ls -lh dist/InfractiVision-Setup-Online.exe
+          ls -lh dist/InfractiVision/ | head -n 20
           test -f dist/InfractiVision-Setup-Online.exe || (echo "ERROR: Setup-Online no generado" && exit 1)
       - uses: actions/upload-artifact@v4
         with:
@@ -63,8 +120,8 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Publish Release (solo stub online)
-    needs: build-setup-win
+    name: Publish Release (stub + zips cpu/cuda)
+    needs: [build-variants-win, build-setup-win]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -74,26 +131,38 @@ jobs:
         with:
           name: InfractiVision-Setup-Online-Win
           path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: InfractiVision-cpu-Win-x64
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: InfractiVision-cuda-Win-x64
+          path: release-assets
       - name: List assets
         run: ls -lhR release-assets
-      - name: Publish GitHub Release (solo stub)
+      - name: Publish GitHub Release (stub + variantes)
         uses: softprops/action-gh-release@v2
         with:
-          files: release-assets/InfractiVision-Setup-Online.exe
+          files: |
+            release-assets/InfractiVision-Setup-Online.exe
+            release-assets/InfractiVision-cpu-Win-x64.zip
+            release-assets/InfractiVision-cuda-Win-x64.zip
           generate_release_notes: true
           body: |
-            ## InfractiVision ${{ github.ref_name }} — Instalador Online (stub)
+            ## InfractiVision ${{ github.ref_name }} — Instalador Online (stub con detección GPU)
 
-            **Solo stub online**: `InfractiVision-Setup-Online.exe` (~8 MB).
-            - Embebe ONEDIR CPU (`dist/InfractiVision/`) — arranque <1.5s sin extracción `_MEIPASS`.
-            - Descarga vídeos demo al instalar (5 vídeos via `installer/win/online.iss` → `%APPDATA%\InfractiVision\videos`), con reintento en primer arranque si falla la red.
-            - Modelos AI (21 MB) se descargan on-demand al primer arranque a `%APPDATA%\InfractiVision\models`.
-
-            **Fix incluido**: `NameError: APPDATA_DIR is not defined` en `main.py:28` (stub anterior crasheaba en Win11).
+            **Stub ~8 MB con detección automática NVIDIA:**
+            - Nueva ventana informativa: detecta GPU dedicada NVIDIA (`nvidia-smi` → `Get-CimInstance` → `wmic`) y muestra `✅ RTX ... → CUDA` o `❌ No NVIDIA → CPU`, continúa solo.
+            - Descarga selectiva: `InfractiVision-cuda-Win-x64.zip` (1.4GB, `torch 2.6+cu124` + `nvidia-*` bundeadas) si hay NVIDIA, sino `InfractiVision-cpu-Win-x64.zip` (900MB). Fallback offline a ONEDIR CPU embebido si falla red.
+            - Embebe ONEDIR CPU fallback — arranque <1.5s sin extracción `_MEIPASS`.
+            - Vídeos demo (5) vía `installer/win/online.iss` → `%APPDATA%\InfractiVision\videos`, con reintento en primer arranque.
+            - Modelos AI (21 MB) on-demand a `%APPDATA%\InfractiVision\models`.
 
             ### Instalación Windows
             1. Descarga `InfractiVision-Setup-Online.exe` abajo
-            2. Doble click → elige carpeta (default `%APPDATA%\InfractiVision`) → descarga automática
+            2. Doble click → verás la ventana de detección GPU (continúa solo) → elige carpeta
             3. Si falta VC++ Redist: https://aka.ms/vs/17/release/vc_redist.x64.exe
+            4. Sin NVIDIA o sin red: instala CPU y la app hace fallback automático (`torch.cuda.is_available()`).
 
-            > Artefactos pesados (Linux/Mac/CUDA) no se publican en esta release online; se generan bajo demanda via `workflow_dispatch` o build local `scripts/build_online.py`.
+            > Zips variantes también publicados abajo para instalación manual/offline.

@@ -5,7 +5,7 @@ Instalador 100% online por SO con deteccion automatica de GPU.
 
 | SO | Instalador | Tamaño stub | Que descarga | GPU |
 |---|---|---|---|---|
-| Windows 10+ | `InfractiVision-Setup-Online.exe` (Inno Setup 6) | ~8 MB | `InfractiVision-cpu-Win-x64.zip` (900MB) o `cuda-Win-x64.zip` (1.4GB) + 5 videos demo | Detecta `nvidia-smi` / `wmic` → CUDA else CPU |
+| Windows 10+ | `InfractiVision-Setup-Online.exe` (Inno Setup 6) | ~8 MB | `InfractiVision-cpu-Win-x64.zip` (900MB) o `cuda-Win-x64.zip` (1.4GB) + 5 videos demo | **Ventana GPU**: detecta `nvidia-smi` → `Get-CimInstance` → `wmic` → muestra `✅ NVIDIA RTX → CUDA` o `❌ → CPU`, sigue solo; descarga selectiva + fallback offline CPU |
 | Linux | `installer/linux/install.sh` | 4 KB | `InfractiVision-cpu/cuda-Linux-x64.zip` + 5 videos demo | `lspci` + `nvidia-smi -L` |
 | macOS | `installer/mac/install.sh` / `.pkg` | 3 KB | `InfractiVision-cpu-Mac-x64/arm64.zip` + 5 videos demo | Siempre CPU (CUDA no existe) |
 
@@ -31,7 +31,7 @@ Como fallback, la app también lee el token desde `APPDATA_DIR/plate_recognizer.
 
 ### Windows
 1. Descarga `InfractiVision-Setup-Online.exe` desde Releases
-2. Doble click → elige carpeta (default `%APPDATA%\InfractiVision`) → descarga automatica (requiere internet)
+2. Doble click → **ventana "Detección de hardware"** muestra `🔍 Detectando...` → `✅ NVIDIA GeForce RTX ... detectada → CUDA 12.4` o `❌ No detectada → CPU` y continúa solo → elige carpeta (default `%APPDATA%\InfractiVision`) → descarga automática de la variante correcta (900MB/1.4GB)
 3. Si falta VC++ Redist, el instalador avisa con link a `https://aka.ms/vs/17/release/vc_redist.x64.exe`
 
 ### Linux
@@ -70,7 +70,7 @@ bash installer/mac/build-pkg.sh --version 2.1.0
 ```
 
 ## CI/CD
-- `release.yml`: on tag `v*` construye 5 artefactos (Win cpu/cuda, Linux cpu/cuda, Mac cpu) + `Setup-Online.exe` + publica Release.
+- `release.yml`: on tag `v*` construye matrix `cpu/cuda` (`InfractiVision-ONEDIR-CPU/CUDA.spec` + `requirements*.txt`) → zips `InfractiVision-cpu/cuda-Win-x64.zip` + `Setup-Online.exe` con ventana GPU y descarga selectiva + publica los 3 artefactos.
 - `deps.yml`: verifica `requirements*.txt` con `scripts/ci_smoke_test.py`.
 
 ## Firma de codigo (diferida a v1.1)
