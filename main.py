@@ -18,6 +18,7 @@ import uuid
 from pathlib import Path
 
 from src.core.logger import get_logger
+from src.core.utils.paths import APPDATA_DIR
 
 log = get_logger("main")
 
@@ -67,7 +68,7 @@ def main() -> None:
     import tkinter as tk
 
     from src.core.utils.icon import set_window_icon
-    from src.core.utils.paths import APPDATA_DIR, ensure_user_dirs
+    from src.core.utils.paths import ensure_user_dirs
 
     ensure_user_dirs()
 
