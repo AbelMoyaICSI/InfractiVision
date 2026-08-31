@@ -8,9 +8,17 @@ Modo: ONEFILE, recursos minimos. Videos y datasets NO se empaquetan.
       el spec CPU que NO bundlea CUDA.
 """
 
+import struct
 import sys
 import os
 from pathlib import Path
+
+if struct.calcsize("P") * 8 != 64:
+    raise SystemExit(
+        "[spec CUDA] ERROR: Se requiere Python 3.10 64-bit. "
+        f"Detectado: {struct.calcsize('P')*8}-bit ({sys.version}). "
+        "Reinstala Python x64."
+    )
 
 BASE_DIR = Path(os.getcwd())
 SRC_DIR = BASE_DIR / 'src'
@@ -159,7 +167,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch="64bit",
     codesign_identity=None,
     entitlements_file=None,
     icon=str(BASE_DIR / 'img' / 'icon.ico'),
@@ -168,4 +176,4 @@ exe = EXE(
     uac_uiaccess=False,
 )
 
-print("InfractiVision-CUDA.spec ONLINE listo (CUDA 12.4 / RTX 5050 sm_120, nvidia libs bundled si disponible)")
+print("InfractiVision-CUDA.spec ONLINE listo (CUDA 12.4 / RTX 5050 sm_120, nvidia libs bundled si disponible) [64bit]")

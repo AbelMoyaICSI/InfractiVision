@@ -11,9 +11,13 @@ from __future__ import annotations
 
 import getpass
 import json
+import platform
 import socket
+import struct
+import sys
 import threading
 import tkinter as tk
+import traceback
 import uuid
 from pathlib import Path
 
@@ -21,6 +25,26 @@ from src.core.logger import get_logger
 from src.core.utils.paths import APPDATA_DIR
 
 log = get_logger("main")
+
+
+def _show_startup_error(title: str, message: str) -> None:
+    """Muestra un error de arranque con GUI si es posible, o consola como fallback."""
+    try:
+        import tkinter as _tk
+        from tkinter import messagebox as _mb
+
+        _r = _tk.Tk()
+        _r.withdraw()
+        _r.attributes("-topmost", True)
+        _mb.showerror(title, message)
+        _r.destroy()
+    except Exception:
+        pass
+    # Siempre loguea a consola también (visible si console=True o en log file)
+    try:
+        print(f"[FATAL] {title}: {message}", file=sys.stderr)  # type: ignore[name-defined]
+    except Exception:
+        pass
 
 
 # ─── IDs de usuario / dispositivo (config persistente) ─────────────────────
@@ -120,11 +144,61 @@ def main() -> None:
     # crea su panel `Semaforo`. Por ahora, valor por defecto "green".
     traffic_light_state: dict[str, str] = {"value": "green"}
 
-    from src.composition_root import build_container
+    try:
+        from src.composition_root import build_container
+    except ImportError as exc:
+        # Caso crítico: DLL load failed while importing cv2 (arquitectura 32 vs 64
+        # o falta de VC++ Redist). Antes mostraba "Failed to execute script 'main'".
+        msg = str(exc)
+        is_cv2_dll = "cv2" in msg or "DLL load failed" in msg or "Win32" in msg or "no es una aplicaci" in msg
+        bits = struct.calcsize("P") * 8
+        log.error("Fallo importando composition_root (cv2/DLL): %s", exc, exc_info=True)
+        if is_cv2_dll:
+            detail = (
+                f"Error cargando OpenCV (cv2): {exc}\n\n"
+                f"Detectado: Python {bits}-bit ({platform.architecture()[0]}) en {platform.machine()} — {sys.version.split()[0]}\n"
+                "Causas más probables en PC 64-bit:\n"
+                "  1) Compilaste con Python 32-bit en una PC 64-bit. Reinstala Python 3.10 64-bit (x64) y recompila.\n"
+                "  2) Falta Microsoft Visual C++ Redistributable 2015-2022 x64.\n"
+                "     Instálalo: https://aka.ms/vs/17/release/vc_redist.x64.exe y reinicia.\n"
+                "  3) Conflicto opencv-python vs opencv-python-headless. Ejecuta:\n"
+                "     pip uninstall opencv-python-headless opencv-python -y && pip install --no-cache --force-reinstall opencv-python==4.9.0.80\n"
+                "  4) Antivirus bloqueó la extracción. Desactiva temporalmente o añade excepción para InfractiVision.\n"
+                f"\nDetalle técnico: {traceback.format_exc()[-1200:]}"
+            )
+            _show_startup_error("InfractiVision — Error de OpenCV (cv2)", detail)
+            try:
+                root.destroy()
+            except Exception:
+                pass
+            sys.exit(1)
+        # Otro ImportError no relacionado a cv2: re-lanzar con mensaje genérico
+        _show_startup_error("InfractiVision — Error de arranque", f"No se pudo iniciar la aplicación:\n{exc}\n\n{traceback.format_exc()[-1000:]}")
+        raise
 
-    container = build_container(
-        traffic_light_state_provider=lambda: traffic_light_state["value"]
-    )
+    try:
+        container = build_container(
+            traffic_light_state_provider=lambda: traffic_light_state["value"]
+        )
+    except ImportError as exc:
+        msg = str(exc)
+        is_cv2_dll = "cv2" in msg or "DLL load failed" in msg or "Win32" in msg or "no es una aplicaci" in msg
+        bits = struct.calcsize("P") * 8
+        log.error("Fallo en build_container: %s", exc, exc_info=True)
+        if is_cv2_dll:
+            detail = (
+                f"Error inicializando OpenCV/cv2: {exc}\n\n"
+                f"Python {bits}-bit — {sys.version.split()[0]}\n"
+                "Instala VC++ Redist x64: https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
+                f"{traceback.format_exc()[-1000:]}"
+            )
+            _show_startup_error("InfractiVision — Error de OpenCV (cv2)", detail)
+            try:
+                root.destroy()
+            except Exception:
+                pass
+            sys.exit(1)
+        raise
     log.info("Container listo (modelos lazy). Iniciando MainWindow.")
 
     # Presentación: usamos MainWindow que monta la GUI legacy (AppManager).
@@ -150,4 +224,29 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ImportError as exc:
+        # Fallback global para el caso "DLL load failed while importing cv2" antes de que Tk exista
+        msg = str(exc)
+        if "cv2" in msg or "DLL load failed" in msg or "Win32" in msg or "no es una aplicaci" in msg:
+            import struct as _st
+            bits = _st.calcsize("P") * 8
+            detail = (
+                f"Error cargando OpenCV (cv2): {exc}\n\n"
+                f"Python {bits}-bit — {sys.version.split()[0] if 'sys' in dir() else ''}\n"
+                "Causa probable en PC 64-bit: Python 32-bit o falta VC++ Redist x64.\n"
+                "Instala: https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
+                "Y recompila con Python 3.10 x64 + requirements-cpu.txt (opencv==4.9.0.80).\n"
+            )
+            _show_startup_error("InfractiVision — Error de OpenCV (cv2)", detail)
+            sys.exit(1)
+        raise
+    except Exception as exc:
+        # Cualquier otra excepción no controlada: log + mensaje amigable antes de salir
+        try:
+            log.error("Fallo no controlado en main: %s", exc, exc_info=True)
+        except Exception:
+            pass
+        _show_startup_error("InfractiVision — Error inesperado", f"{exc}\n\n{traceback.format_exc()[-1200:]}")
+        raise

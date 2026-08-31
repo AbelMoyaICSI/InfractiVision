@@ -7,9 +7,17 @@ Modo: ONEFILE ligero, SIN libs CUDA. Para GPU usa InfractiVision-CUDA.spec
       (torch 1.13.1 CPU) y bundlea solo CPU.
 """
 
+import struct
 import sys
 import os
 from pathlib import Path
+
+if struct.calcsize("P") * 8 != 64:
+    raise SystemExit(
+        "[spec CPU] ERROR: Se requiere Python 3.10 64-bit. "
+        f"Detectado: {struct.calcsize('P')*8}-bit ({sys.version}). "
+        "Reinstala Python x64."
+    )
 
 BASE_DIR = Path(os.getcwd())
 SRC_DIR = BASE_DIR / 'src'
@@ -132,7 +140,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch="64bit",
     codesign_identity=None,
     entitlements_file=None,
     icon=str(BASE_DIR / 'img' / 'icon.ico'),
@@ -141,4 +149,4 @@ exe = EXE(
     uac_uiaccess=False,
 )
 
-print("InfractiVision-CPU.spec ONLINE listo (CPU-only, sin nvidia libs)")
+print("InfractiVision-CPU.spec ONLINE listo (CPU-only, sin nvidia libs) [64bit]")

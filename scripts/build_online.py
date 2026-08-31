@@ -20,7 +20,25 @@ def run(cmd: list[str], **kw):
     print(f"$ {' '.join(cmd)}")
     subprocess.run(cmd, check=True, **kw)
 
+def _assert_64bit_build_env() -> None:
+    """InfractiVision solo soporta Windows 64-bit. Falla rapido si el intérprete es 32-bit."""
+    import struct
+    import platform
+    bits = struct.calcsize("P") * 8
+    if bits != 64:
+        raise SystemExit(
+            f"[build] ERROR: Se requiere Python 64-bit para compilar (detectado {bits}-bit: {sys.version}).\n"
+            f"       python={sys.executable} arch={platform.architecture()[0]} machine={platform.machine()}\n"
+            "       Reinstala Python 3.10 x64 (mise.toml) y recrea el venv con requirements-cpu.txt.\n"
+            "       Ese desajuste produce 'DLL load failed while importing cv2: %1 no es una aplicacion Win32 valida.'"
+        )
+    # Advertir si se compila en Linux/Mac y se espera distribución Windows
+    if platform.system() != "Windows":
+        print(f"[build] ADVERTENCIA: Compilando en {platform.system()} ({platform.machine()}) — el EXE solo correrá en {platform.system()}. Para Windows usa un runner Windows.")
+
+
 def build_variant(variant: str, do_zip: bool, onedir: bool = True):
+    _assert_64bit_build_env()
     # Prioridad Setup-Online: ONEDIR (sin extraccion). ONEFILE solo si --onefile.
     suffix = "-ONEDIR" if onedir else ""
     spec = ROOT / f"InfractiVision{suffix}-{variant.upper()}.spec"

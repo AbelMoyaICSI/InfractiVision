@@ -8,9 +8,20 @@ Modo: ONEFILE, recursos minimos. Videos y datasets NO se empaquetan.
         - InfractiVision-CUDA.spec + requirements.txt (CUDA 12.4 / RTX 5050)
 """
 
+import struct
 import sys
 import os
 from pathlib import Path
+
+# InfractiVision solo soporta Windows 64-bit. Abortamos si el intérprete es 32-bit
+# (PC 64-bit != Python 64-bit). Este error es el que produce "DLL load failed while
+# importing cv2: %1 no es una aplicación Win32 válida".
+if struct.calcsize("P") * 8 != 64:
+    raise SystemExit(
+        "[spec] ERROR: Se requiere Python 3.10 64-bit para compilar InfractiVision. "
+        f"Detectado: {struct.calcsize('P')*8}-bit ({sys.version}). "
+        "Reinstala Python x64 y recrea el venv con requirements-cpu.txt."
+    )
 
 BASE_DIR = Path(os.getcwd())
 SRC_DIR = BASE_DIR / 'src'
@@ -133,7 +144,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch="64bit",
     codesign_identity=None,
     entitlements_file=None,
     icon=str(BASE_DIR / 'img' / 'icon.ico'),
@@ -142,4 +153,4 @@ exe = EXE(
     uac_uiaccess=False,
 )
 
-print("InfractiVision.spec ONLINE listo (sin videos/secrets/data, modelos verificados)")
+print("InfractiVision.spec ONLINE listo (sin videos/secrets/data, modelos verificados) [64bit]")

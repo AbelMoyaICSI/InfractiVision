@@ -5,9 +5,17 @@ Autor: InfractiVision Team - 2025/2026
 ONEDIR = arranque instantáneo (sin extracción a _MEIPASS). Para Setup-Online.
 Este spec NO es ONEFILE: genera dist/InfractiVision/InfractiVision.exe + _internal/
 """
+import struct
 import sys
 import os
 from pathlib import Path
+
+if struct.calcsize("P") * 8 != 64:
+    raise SystemExit(
+        "[spec ONEDIR-CUDA] ERROR: Se requiere Python 3.10 64-bit. "
+        f"Detectado: {struct.calcsize('P')*8}-bit ({sys.version}). "
+        "Reinstala Python x64."
+    )
 
 BASE_DIR = Path(os.getcwd())
 SRC_DIR = BASE_DIR / 'src'
@@ -139,7 +147,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch="64bit",
     codesign_identity=None,
     entitlements_file=None,
     icon=str(BASE_DIR / 'img' / 'icon.ico'),

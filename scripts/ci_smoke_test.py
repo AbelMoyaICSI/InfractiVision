@@ -11,6 +11,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def main() -> int:
+    import struct
+    import platform
+    bits = struct.calcsize("P") * 8
+    print(f"arch   : {bits}-bit ({platform.architecture()[0]}, {platform.machine()})")
+    if bits != 64:
+        print(f"ERROR: Se requiere Python 64-bit (detectado {bits}-bit). Ese desajuste produce 'DLL load failed while importing cv2: %1 no es una aplicacion Win32 valida.'", file=sys.stderr)
+        return 1
+
     import numpy
     import cv2
     import torch
@@ -19,6 +27,11 @@ def main() -> int:
     print(f"numpy  : {numpy.__version__}")
     print(f"opencv : {cv2.__version__}")
     print(f"torch  : {torch.__version__} (cuda: {torch.cuda.is_available()})")
+    # Verificar que opencv realmente es win_amd64 / 64-bit (no win32 headless corrupto)
+    try:
+        print(f"cv2    : {cv2.__file__}")
+    except Exception:
+        pass
 
     # Pines críticos de compatibilidad (no mover: rompen la inferencia)
     assert numpy.__version__.startswith("1.26"), \
