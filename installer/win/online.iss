@@ -231,12 +231,20 @@ begin
 end;
 
 procedure GpuCudaCheckBoxClick(Sender: TObject);
+var
+  CheckedStr: String;
 begin
   if GpuCudaCheckBox.Checked then
-    SelectedVariant := 'cpu+pip-cuda'
+  begin
+    SelectedVariant := 'cpu+pip-cuda';
+    CheckedStr := 'True';
+  end
   else
+  begin
     SelectedVariant := 'cpu';
-  Log('GpuCudaCheckBoxClick: Checked=' + BoolToStr(GpuCudaCheckBox.Checked, True) + ' SelectedVariant=' + SelectedVariant);
+    CheckedStr := 'False';
+  end;
+  Log('GpuCudaCheckBoxClick: Checked=' + CheckedStr + ' SelectedVariant=' + SelectedVariant);
 end;
 
 procedure UpdateGpuPageUI;
