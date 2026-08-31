@@ -1,10 +1,10 @@
-; InfractiVision Setup Online - Windows (opcion 3 sin GCS)
-; Modo: stub online (~8 MB) con detección GPU informativa pero solo variante CPU.
+; InfractiVision Setup Online - Windows single-file (opcion 3 sin GCS + CUDA via pip)
+; Modo: single-file 177M (lzma2) — embebe ONEDIR CPU completo, sin zip separado.
 ; - Detecta nvidia-smi -> Get-CimInstance -> wmic (solo informativo)
-; - Siempre descarga InfractiVision-cpu-Win-x64.zip (~900MB) desde GitHub Releases — no hay CUDA zip (evita >2GB/GCS)
-; - Fallback offline: si no hay red, usa ONEDIR embebido (CI/local)
+; - No descarga InfractiVision-cpu-Win-x64.zip (ya embebido) — evita 404 y 275M duplicados.
+; - Si hay NVIDIA, intenta pip install torch==2.6.0+cu124 vía Python del sistema (requiere internet).
 ; - Modelos 21 MB no se bundlean, se descargan on-demand a %APPDATA%\InfractiVision\models
-; Uso: iscc installer/win/online.iss  (requiere dist/InfractiVision/ previo para fallback offline)
+; Uso: iscc installer/win/online.iss  (requiere dist/InfractiVision/ previo)
 
 #define MyAppName "InfractiVision"
 #define MyAppVersion "2.1.0"
@@ -45,7 +45,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Fallback offline: ONEDIR embebido si existe (local/CI sin red). Online lo sobreescribe si descarga.
+; Single-file: ONEDIR embebido completo (177M lzma2), instalación offline-capable
 Source: "..\..\dist\InfractiVision\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Permissions: users-modify
 Source: "..\..\img\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -327,87 +327,105 @@ begin
   Result := False;
 end;
 
-// ---- Descargas ----
+// ---- Pip CUDA on-demand (opcion 3 single-file: stub CPU + pip si hay NVIDIA) ----
 
-function GetVariantZipUrl(Variant: String): String;
-begin
-  // Opcion 3 sin GCS: solo CPU en GitHub Releases (latest). Se ignora Variant y se fuerza cpu para evitar 404 cuda.
-  Result := 'https://github.com/{#MyRepo}/releases/latest/download/InfractiVision-cpu-Win-x64.zip';
-end;
-
-procedure DownloadAndExtractVariant(AppPath: String);
+function FindSystemPython(var PythonExe: String): Boolean;
 var
-  ZipUrl, ZipTmp, ExtractTmp: String;
-  ResultCode: Integer;
-  PsCmd: String;
+  OutStr, Candidate, RegPath: String;
 begin
-  // Opcion 3 sin GCS: siempre CPU. SelectedVariant ya es 'cpu' (ver UpdateGpuPageUI).
-  ZipUrl := GetVariantZipUrl(SelectedVariant);
-  ZipTmp := ExpandConstant('{tmp}\InfractiVision-cpu-Win-x64.zip');
-  ExtractTmp := ExpandConstant('{tmp}\iv_extract');
-
-  Log('Variante elegida: ' + SelectedVariant + ' URL: ' + ZipUrl);
-
-  // Solo descargar si la variante no coincide con lo embebido o si AppPath está vacío
-  // Heurística: siempre intentar descargar (para tener CUDA si corresponde). Si falla, fallback.
-  DownloadPage.Clear;
-  DownloadPage.Add(ZipUrl, 'InfractiVision-cpu-Win-x64.zip', '');
-  DownloadPage.Show;
-  try
-    try
-      DownloadPage.Download;
-      Log('Descarga variante OK: cpu (opcion 3)');
-    except
-      if DownloadPage.AbortedByUser then
-      begin
-        Log('Descarga abortada por usuario - usando fallback embebido (CPU)');
-        Exit;
-      end
-      else
-      begin
-        Log('Error descargando variante cpu: ' + GetExceptionMessage + ' — usando fallback embebido');
-        SuppressibleMsgBox('No se pudo descargar la variante cpu (' + GetExceptionMessage + ').' + #13#10 + 'Se usará la versión embebida (CPU) y la app hará fallback automático. Verifica tu conexión.', mbInformation, MB_OK, IDOK);
-        Exit;
-      end;
-    end;
-  finally
-    DownloadPage.Hide;
-  end;
-
-  // Verificar que el zip se descargó a {tmp}
-  ZipTmp := ExpandConstant('{tmp}\InfractiVision-cpu-Win-x64.zip');
-  if not FileExists(ZipTmp) then
+  Result := False;
+  PythonExe := '';
+  // 1. py launcher
+  if TryExecAndCapture('py', '-3 --version', OutStr) and ContainsText(OutStr, 'Python') then
   begin
-    Log('Zip no encontrado en tmp tras DownloadPage: ' + ZipTmp + ' — fallback embebido');
+    PythonExe := 'py';
+    Log('FindSystemPython: py -3 -> ' + Trim(OutStr));
+    Result := True;
     Exit;
   end;
+  // 2. python
+  if TryExecAndCapture('python', '--version', OutStr) and ContainsText(OutStr, 'Python') then
+  begin
+    PythonExe := 'python';
+    Log('FindSystemPython: python -> ' + Trim(OutStr));
+    Result := True;
+    Exit;
+  end;
+  // 3. python3
+  if TryExecAndCapture('python3', '--version', OutStr) and ContainsText(OutStr, 'Python') then
+  begin
+    PythonExe := 'python3';
+    Log('FindSystemPython: python3 -> ' + Trim(OutStr));
+    Result := True;
+    Exit;
+  end;
+  // 4. Registry fallback
+  if RegQueryStringValue(HKLM, 'SOFTWARE\Python\PythonCore\3.10\InstallPath', '', Candidate) and FileExists(Candidate + '\python.exe') then
+  begin
+    PythonExe := Candidate + '\python.exe';
+    Log('FindSystemPython: HKLM 3.10 -> ' + PythonExe);
+    Result := True;
+    Exit;
+  end;
+  if RegQueryStringValue(HKCU, 'SOFTWARE\Python\PythonCore\3.10\InstallPath', '', Candidate) and FileExists(Candidate + '\python.exe') then
+  begin
+    PythonExe := Candidate + '\python.exe';
+    Log('FindSystemPython: HKCU 3.10 -> ' + PythonExe);
+    Result := True;
+    Exit;
+  end;
+  Log('FindSystemPython: no Python del sistema encontrado');
+end;
 
-  // Extraer con PowerShell Expand-Archive (robusto en Win10+)
-  if not ForceDirectories(ExtractTmp) then
-    Log('No se pudo crear ' + ExtractTmp);
-
-  PsCmd := '-NoProfile -ExecutionPolicy Bypass -Command "try { Expand-Archive -Path ''' + ZipTmp + ''' -DestinationPath ''' + ExtractTmp + ''' -Force; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"';
-  Log('Extrayendo zip con PowerShell: ' + ZipTmp + ' -> ' + ExtractTmp);
-  if Exec('powershell', PsCmd, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+function TryPipInstallCuda(AppPath: String): Boolean;
+var
+  PythonExe, PipArgs, PipLog: String;
+  ResultCode: Integer;
+begin
+  Result := False;
+  if not GpuDetected then
+  begin
+    Log('TryPipInstallCuda: no GPU, skip pip');
+    Exit;
+  end;
+  if not FindSystemPython(PythonExe) then
+  begin
+    Log('TryPipInstallCuda: sin Python del sistema, se queda CPU (app fallback torch.cuda.is_available)');
+    SuppressibleMsgBox('No se encontró Python del sistema para instalar aceleración CUDA.' + #13#10 + 'La app funcionará en modo CPU. Instala Python 3.10 y re-ejecuta el instalador para CUDA.', mbInformation, MB_OK, IDOK);
+    Exit;
+  end;
+  Log('TryPipInstallCuda: Python=' + PythonExe + ' AppPath=' + AppPath);
+  PipLog := ExpandConstant('{tmp}\pip_cuda.log');
+  // Upgrade pip silencioso
+  PipArgs := '-3 -m pip install --upgrade pip --disable-pip-version-check > "' + PipLog + '" 2>&1';
+  if Pos('py', PythonExe) = 1 then
+    PipArgs := '-3 -m pip install --upgrade pip --disable-pip-version-check > "' + PipLog + '" 2>&1'
+  else
+    PipArgs := '-m pip install --upgrade pip --disable-pip-version-check > "' + PipLog + '" 2>&1';
+  Log('Pip upgrade: ' + PythonExe + ' ' + PipArgs);
+  Exec(ExpandConstant('{cmd}'), '/C "' + PythonExe + ' ' + PipArgs + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // Instalar torch CUDA sobre el embebido: --target {app}\_internal para que el bootloader lo vea
+  // Usa --no-warn-script-location y --disable-pip-version-check para evitar prompts
+  if PythonExe = 'py' then
+    PipArgs := '-3 -m pip install torch==2.6.0+cu124 torchvision==0.21.0+cu124 --extra-index-url https://download.pytorch.org/whl/cu124 --target "' + AppPath + '\_internal" --no-warn-script-location --disable-pip-version-check --no-input >> "' + PipLog + '" 2>&1'
+  else
+    PipArgs := '-m pip install torch==2.6.0+cu124 torchvision==0.21.0+cu124 --extra-index-url https://download.pytorch.org/whl/cu124 --target "' + AppPath + '\_internal" --no-warn-script-location --disable-pip-version-check --no-input >> "' + PipLog + '" 2>&1';
+  Log('Pip CUDA: ' + PythonExe + ' ' + PipArgs);
+  if Exec(ExpandConstant('{cmd}'), '/C "' + PythonExe + ' ' + PipArgs + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     if ResultCode = 0 then
     begin
-      Log('Expand-Archive OK, copiando a {app}: ' + AppPath);
-      // Copiar contenido extraído a {app} sobreescribiendo
-      PsCmd := '-NoProfile -ExecutionPolicy Bypass -Command "Copy-Item -Path ''' + ExtractTmp + '\*'' -Destination ''' + AppPath + ''' -Recurse -Force; exit $LASTEXITCODE"';
-      if Exec('powershell', PsCmd, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
-        Log('Copia a {app} OK')
-      else
-        Log('Fallo copiando a {app}, code=' + IntToStr(ResultCode));
+      Log('TryPipInstallCuda OK resultCode=0 log=' + PipLog);
+      Result := True;
     end
     else
-      Log('Expand-Archive fallo code=' + IntToStr(ResultCode));
+    begin
+      Log('TryPipInstallCuda fallo resultCode=' + IntToStr(ResultCode) + ' log=' + PipLog + ' — queda CPU');
+      SuppressibleMsgBox('No se pudo instalar CUDA vía pip (código ' + IntToStr(ResultCode) + ').' + #13#10 + 'La app funcionará en CPU. Revisa ' + PipLog, mbInformation, MB_OK, IDOK);
+    end;
   end
   else
-    Log('No se pudo ejecutar PowerShell para extraer');
-
-  DeleteFile(ZipTmp);
-  // No borrar ExtractTmp inmediatamente por si el usuario reinstala
+    Log('TryPipInstallCuda: Exec fallo');
 end;
 
 procedure DownloadDemoVideos(AppPath: String);
@@ -478,8 +496,10 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
-    // 1. Opcion 3 sin GCS: siempre descarga CPU (no hay cuda zip)
-    DownloadAndExtractVariant(ExpandConstant('{app}'));
+    // Single-file: ONEDIR ya embebido en {app}, no descarga zip redundante (evita 404 + 275M)
+    Log('Single-file: ONEDIR ya en {app}, salto descarga zip');
+    // 1. Si hay GPU, intenta pip CUDA sobre el embebido
+    TryPipInstallCuda(ExpandConstant('{app}'));
     // 2. Videos demo
     DownloadDemoVideos(ExpandConstant('{app}'));
     EnsureModelsPreFetched(ExpandConstant('{app}'));

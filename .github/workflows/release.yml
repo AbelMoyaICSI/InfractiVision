@@ -12,69 +12,15 @@ on:
         default: "2.1.0"
 
 jobs:
-  build-cpu-win:
-    name: Build Win CPU + stub (opcion 3 sin GCS)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-      - name: Install deps (CPU sin GCS)
-        run: pip install -r requirements-cpu.txt
-      - name: Inject secrets (migraciones + Plate Recognizer)
-        shell: bash
-        env:
-          FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
-          PLATE_RECOGNIZER_TOKEN: ${{ secrets.PLATE_RECOGNIZER_TOKEN }}
-        run: |
-          if [[ -z "$FIREBASE_SA_JSON" ]]; then
-            echo "::warning::Sin FIREBASE_SA_JSON: build sin Service Account (la app funciona, sin migraciones bundladas)."
-          else
-            printf '%s' "$FIREBASE_SA_JSON" > infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json
-            ls -l infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json
-          fi
-          if [[ -n "$PLATE_RECOGNIZER_TOKEN" ]]; then
-            printf '%s\n' "PLATE_RECOGNIZER_API_TOKEN=$PLATE_RECOGNIZER_TOKEN" > .env
-            ls -l .env
-          fi
-      - name: Build PyInstaller ONEDIR CPU
-        run: python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CPU.spec
-      - name: Zip variant CPU
-        shell: bash
-        run: |
-          cd dist
-          7z a -tzip InfractiVision-cpu-Win-x64.zip InfractiVision -mx=9
-          ls -lh InfractiVision-cpu-Win-x64.zip
-          SZ=$(stat -c%s "InfractiVision-cpu-Win-x64.zip" 2>/dev/null || stat -f%z "InfractiVision-cpu-Win-x64.zip")
-          echo "ZIP size bytes: $SZ"
-          if [ "$SZ" -gt 2147483647 ]; then
-            echo "::error::Zip $SZ bytes >2GB — excede límite GitHub Releases. Revisa excludes."
-            exit 1
-          fi
-      - name: Smoke test ONEDIR CPU
-        shell: bash
-        run: |
-          ls -lh dist/
-          test -f dist/InfractiVision/InfractiVision.exe || (echo "ERROR: ONEDIR exe no generado" && ls -R dist | head -n 80 && exit 1)
-          echo "Smoke ONEDIR cpu OK"
-          ls -lh dist/InfractiVision/ | head -n 20
-      - uses: actions/upload-artifact@v4
-        with:
-          name: InfractiVision-cpu-Win-x64
-          path: dist/InfractiVision-cpu-Win-x64.zip
-          if-no-files-found: error
-
   build-setup-win:
-    name: Build Setup Online (stub con detección GPU)
+    name: Build Setup Online single-file (177M)
     runs-on: windows-latest
-    needs: build-cpu-win
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - name: Install deps (CPU para fallback embebido)
+      - name: Install deps (CPU)
         run: pip install -r requirements-cpu.txt
       - name: Inject secrets (migraciones + Plate Recognizer)
         shell: bash
@@ -92,18 +38,28 @@ jobs:
             printf '%s\n' "PLATE_RECOGNIZER_API_TOKEN=$PLATE_RECOGNIZER_TOKEN" > .env
             ls -l .env
           fi
-      - name: Build PyInstaller ONEDIR CPU (fallback embebido)
+      - name: Build PyInstaller ONEDIR CPU
         run: python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CPU.spec
+      - name: Smoke test ONEDIR CPU
+        shell: bash
+        run: |
+          ls -lh dist/
+          test -f dist/InfractiVision/InfractiVision.exe || (echo "ERROR: ONEDIR exe no generado" && ls -R dist | head -n 80 && exit 1)
+          echo "Smoke ONEDIR cpu OK"
+          ls -lh dist/InfractiVision/ | head -n 20
       - name: Install Inno Setup
         run: choco install innosetup -y
-      - name: Build Setup-Online.exe (stub ~8 MB con ventana GPU)
+      - name: Build Setup-Online.exe single-file (embebe ONEDIR lzma2)
         run: iscc installer/win/online.iss
-      - name: Smoke Setup
+      - name: Smoke Setup single-file
         shell: bash
         run: |
           ls -lh dist/InfractiVision-Setup-Online.exe
           ls -lh dist/InfractiVision/ | head -n 20
           test -f dist/InfractiVision-Setup-Online.exe || (echo "ERROR: Setup-Online no generado" && exit 1)
+          SZ=$(stat -c%s "dist/InfractiVision-Setup-Online.exe" 2>/dev/null || stat -f%z "dist/InfractiVision-Setup-Online.exe" || echo 0)
+          echo "Setup single-file bytes: $SZ"
+          if [ "$SZ" -gt 2147483647 ]; then echo "::error::Setup >2GB"; exit 1; fi
       - uses: actions/upload-artifact@v4
         with:
           name: InfractiVision-Setup-Online-Win
@@ -111,8 +67,8 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Publish Release (stub + cpu — opcion 3 sin GCS)
-    needs: [build-cpu-win, build-setup-win]
+    name: Publish Release single-file
+    needs: [build-setup-win]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -122,41 +78,31 @@ jobs:
         with:
           name: InfractiVision-Setup-Online-Win
           path: release-assets
-      - uses: actions/download-artifact@v4
-        with:
-          name: InfractiVision-cpu-Win-x64
-          path: release-assets
       - name: List assets
         run: |
           ls -lhR release-assets
           echo "--- Tamaños ---"
-          ls -lh release-assets/*.zip release-assets/*.exe 2>/dev/null || true
-          for f in release-assets/*.zip; do
+          ls -lh release-assets/*.exe 2>/dev/null || true
+          for f in release-assets/*.exe; do
             [ -f "$f" ] || continue
             SZ=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
             echo "$f: $SZ bytes"
             if [ "$SZ" -gt 2147483647 ]; then echo "::error::$f >2GB"; exit 1; fi
           done
-      - name: Publish GitHub Release (stub + cpu — sin GCS)
+      - name: Publish GitHub Release single-file
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release-assets/InfractiVision-Setup-Online.exe
-            release-assets/InfractiVision-cpu-Win-x64.zip
+          files: release-assets/InfractiVision-Setup-Online.exe
           generate_release_notes: true
           body: |
-            ## InfractiVision ${{ github.ref_name }} — Instalador Online (opcion 3 sin GCS)
+            ## InfractiVision ${{ github.ref_name }} — Instalador single-file (opcion 3 sin GCS)
 
-            **Opcion 3: sin GCS, solo CPU (~900MB), sin almacenamiento externo.**
-            - Stub ~8 MB detecta GPU NVIDIA (informativo) pero **siempre descarga `InfractiVision-cpu-Win-x64.zip`** — no hay `cuda-Win-x64.zip` (evita >2GB y costo GCS).
-            - Si el equipo tiene NVIDIA, la app lo detecta en runtime y usa CPU fallback (`torch.cuda.is_available()`); aceleración CUDA on-demand si el usuario instala torch CUDA manual.
-            - Embebe ONEDIR CPU fallback — arranque <1.5s sin extracción `_MEIPASS`.
-            - Vídeos demo (5) vía `installer/win/online.iss` → `%APPDATA%\InfractiVision\videos`, con reintento en primer arranque.
-            - Modelos AI (21 MB) on-demand a `%APPDATA%\InfractiVision\models`.
+            **Single-file 177M (lzma2): sin zip separado.**
+            - `InfractiVision-Setup-Online.exe` embebe ONEDIR CPU completo (`dist/InfractiVision/*`) comprimido con lzma2 — no necesita descargar `InfractiVision-cpu-Win-x64.zip` (evita 404 y 275M duplicados).
+            - GPU NVIDIA detectada en instalador (informativa) → si hay GPU, el instalador intenta `pip install torch==2.6.0+cu124` sobre el CPU embebido (requiere internet + Python del sistema). Si falla o no hay GPU, queda CPU + fallback `torch.cuda.is_available()`.
+            - Vídeos demo (5) y modelos (21 MB) on-demand.
 
             ### Instalación Windows
             1. Descarga `InfractiVision-Setup-Online.exe` abajo
-            2. Doble click → verás la ventana de detección GPU (informativa) → elige carpeta → descarga automática CPU
+            2. Doble click → ventana GPU informativa → elige carpeta → instalación sin descarga extra (offline-capable)
             3. Si falta VC++ Redist: https://aka.ms/vs/17/release/vc_redist.x64.exe
-
-            > Sin GCS: `InfractiVision-cpu-Win-x64.zip` cabe en GitHub Releases (0 costo). Variante CUDA deshabilitada en esta release.

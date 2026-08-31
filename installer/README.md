@@ -1,12 +1,12 @@
-# InfractiVision - Instalador ONLINE (opcion 3 sin GCS)
+# InfractiVision - Instalador ONLINE single-file (opcion 3 sin GCS + CUDA via pip)
 
 ## Resumen
-Instalador 100% online por SO. Opcion 3: sin GCS, solo CPU (0 costo almacenamiento).
+Single-file 177M (lzma2) sin zip separado. Stub = ONEDIR CPU embebido; si hay NVIDIA instala CUDA vía pip del sistema.
 
-| SO | Instalador | Tamaño stub | Que descarga | GPU |
+| SO | Instalador | Tamaño | Que descarga | GPU |
 |---|---|---|---|---|
-| Windows 10+ | `InfractiVision-Setup-Online.exe` (Inno Setup 6) | ~8 MB | `InfractiVision-cpu-Win-x64.zip` (900MB) + 5 videos demo | **Ventana GPU**: detecta `nvidia-smi` → `Get-CimInstance` → `wmic` → muestra `✅ NVIDIA ... (CPU forzado)` o `❌ → CPU`; siempre descarga CPU |
-| Linux | `installer/linux/install.sh` | 4 KB | `InfractiVision-cpu-Linux-x64.zip` + 5 videos demo | Detecta pero fuerza CPU (cuda deshabilitado sin GCS) |
+| Windows 10+ | `InfractiVision-Setup-Online.exe` (Inno Setup 6) | 177M single-file (embebe ONEDIR lzma2) | 5 videos demo (CUDA vía `pip install torch==2.6.0+cu124` si hay NVIDIA) | **Ventana GPU**: `nvidia-smi` → `Get-CimInstance` → `wmic` → `✅ NVIDIA ... (pip CUDA)` o `❌ → CPU`; sin 404 |
+| Linux | `installer/linux/install.sh` | 4 KB | `InfractiVision-cpu-Linux-x64.zip` + 5 videos demo | Detecta pero fuerza CPU (cuda via pip futuro) |
 | macOS | `installer/mac/install.sh` / `.pkg` | 3 KB | `InfractiVision-cpu-Mac-x64/arm64.zip` + 5 videos demo | Siempre CPU |
 
 Los 5 videos demo se descargan al **directorio de datos del usuario**:
@@ -30,8 +30,8 @@ Como fallback, la app también lee el token desde `APPDATA_DIR/plate_recognizer.
 ## Uso usuario final (sin compilar)
 
 ### Windows
-1. Descarga `InfractiVision-Setup-Online.exe` desde Releases
-2. Doble click → **ventana "Detección de hardware"** muestra `🔍 Detectando...` → `✅ NVIDIA GeForce RTX ... detectada (CPU forzado)` o `❌ No detectada → CPU` y continúa solo → elige carpeta (default `%APPDATA%\InfractiVision`) → descarga automática CPU (900MB, sin GCS)
+1. Descarga `InfractiVision-Setup-Online.exe` (177M) desde Releases
+2. Doble click → **ventana "Detección de hardware"** muestra `🔍 Detectando...` → `✅ NVIDIA GeForce RTX ... detectada (pip CUDA)` o `❌ No detectada → CPU` y continúa solo → elige carpeta (default `%APPDATA%\InfractiVision`) → sin descarga zip (single-file embebido); si hay NVIDIA intenta `pip install torch==2.6.0+cu124` vía Python del sistema
 3. Si falta VC++ Redist, el instalador avisa con link a `https://aka.ms/vs/17/release/vc_redist.x64.exe`
 
 ### Linux
@@ -70,7 +70,7 @@ bash installer/mac/build-pkg.sh --version 2.1.0
 ```
 
 ## CI/CD
-- `release.yml` (opcion 3 sin GCS): on tag `v*` construye solo `cpu` (`InfractiVision-ONEDIR-CPU.spec` + `requirements-cpu.txt`) → zip `InfractiVision-cpu-Win-x64.zip` + `Setup-Online.exe` con ventana GPU informativa + publica 2 artefactos (sin GCS, CUDA deshabilitada).
+- `release.yml` single-file: on tag `v*` construye ONEDIR CPU (`InfractiVision-ONEDIR-CPU.spec` + `requirements-cpu.txt`) → `iscc online.iss` embebe con lzma2 → publica solo `InfractiVision-Setup-Online.exe` (177M, sin zip, sin GCS). CUDA vía pip en instalador si hay NVIDIA.
 - `deps.yml`: verifica `requirements*.txt` con `scripts/ci_smoke_test.py`.
 
 ## Firma de codigo (diferida a v1.1)
