@@ -46,13 +46,13 @@ class WelcomeFrame(tk.Frame):
             max_width, max_height = 1920, 1080
             if img.width > max_width or img.height > max_height:
                 img.thumbnail((max_width, max_height), Image.LANCZOS)
-                print(f"🖼️ Imagen reducida preventivamente a {img.width}x{img.height}")
+                print(f"[IMG] Imagen reducida preventivamente a {img.width}x{img.height}")
             self._pil_image_original = img
-            print(f"✅ Imagen original cargada desde: {bg_path}")
+            print(f"[OK] Imagen original cargada desde: {bg_path}")
             # Realizar el primer redimensionado
             self.redimensionar_imagen()
         except Exception as e:
-            print(f"❌ Error cargando imagen: {e}")
+            print(f"[ERROR] Error cargando imagen: {e}")
             self._pil_image_original = None
             if self.winfo_exists() and hasattr(self, 'left_frame'):
                 tk.Label(self.left_frame, text="InfractiVision", font=("Arial", 28, "bold"),

@@ -24,11 +24,24 @@ from pathlib import Path
 from src.core.logger import get_logger
 from src.core.utils.paths import APPDATA_DIR
 
+# Windows cp1252 (Spanish) can't encode emoji/em-dash -> force UTF-8 for stdout/stderr
+# to avoid UnicodeEncodeError in welcome_window and _show_startup_error.
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 log = get_logger("main")
 
 
 def _show_startup_error(title: str, message: str) -> None:
     """Muestra un error de arranque con GUI si es posible, o consola como fallback."""
+    # Sanitize for cp1252 console: replace emojis/em-dash with ASCII to avoid encode error
+    safe_title = title.replace("—", "-").replace("✅", "[OK]").replace("❌", "[ERROR]")
+    safe_msg = message.replace("—", "-").replace("✅", "[OK]").replace("❌", "[ERROR]").replace("🖼️", "[IMG]")
     try:
         import tkinter as _tk
         from tkinter import messagebox as _mb
@@ -36,15 +49,25 @@ def _show_startup_error(title: str, message: str) -> None:
         _r = _tk.Tk()
         _r.withdraw()
         _r.attributes("-topmost", True)
-        _mb.showerror(title, message)
+        _mb.showerror(safe_title, safe_msg)
         _r.destroy()
     except Exception:
         pass
     # Siempre loguea a consola también (visible si console=True o en log file)
-    try:
-        print(f"[FATAL] {title}: {message}", file=sys.stderr)  # type: ignore[name-defined]
-    except Exception:
-        pass
+    # Use buffer with utf-8 to survive cp1252 stderr
+    for t, m in [(title, message), (safe_title, safe_msg)]:
+        try:
+            print(f"[FATAL] {t}: {m}", file=sys.stderr)  # type: ignore[name-defined]
+            break
+        except UnicodeEncodeError:
+            try:
+                sys.stderr.buffer.write(f"[FATAL] {t}: {m}\n".encode("utf-8", errors="replace"))  # type: ignore[attr-defined]
+                sys.stderr.flush()
+                break
+            except Exception:
+                continue
+        except Exception:
+            pass
 
 
 # ─── IDs de usuario / dispositivo (config persistente) ─────────────────────
@@ -156,24 +179,24 @@ def main() -> None:
         if is_cv2_dll:
             detail = (
                 f"Error cargando OpenCV (cv2): {exc}\n\n"
-                f"Detectado: Python {bits}-bit ({platform.architecture()[0]}) en {platform.machine()} — {sys.version.split()[0]}\n"
-                "Causas más probables en PC 64-bit:\n"
+                f"Detectado: Python {bits}-bit ({platform.architecture()[0]}) en {platform.machine()} - {sys.version.split()[0]}\n"
+                "Causas mas probables en PC 64-bit:\n"
                 "  1) Compilaste con Python 32-bit en una PC 64-bit. Reinstala Python 3.10 64-bit (x64) y recompila.\n"
                 "  2) Falta Microsoft Visual C++ Redistributable 2015-2022 x64.\n"
-                "     Instálalo: https://aka.ms/vs/17/release/vc_redist.x64.exe y reinicia.\n"
+                "     Instalalo: https://aka.ms/vs/17/release/vc_redist.x64.exe y reinicia.\n"
                 "  3) Conflicto opencv-python vs opencv-python-headless. Ejecuta:\n"
                 "     pip uninstall opencv-python-headless opencv-python -y && pip install --no-cache --force-reinstall opencv-python==4.9.0.80\n"
-                "  4) Antivirus bloqueó la extracción. Desactiva temporalmente o añade excepción para InfractiVision.\n"
-                f"\nDetalle técnico: {traceback.format_exc()[-1200:]}"
+                "  4) Antivirus bloqueo la extraccion. Desactiva temporalmente o anade excepcion para InfractiVision.\n"
+                f"\nDetalle tecnico: {traceback.format_exc()[-1200:]}"
             )
-            _show_startup_error("InfractiVision — Error de OpenCV (cv2)", detail)
+            _show_startup_error("InfractiVision - Error de OpenCV (cv2)", detail)
             try:
                 root.destroy()
             except Exception:
                 pass
             sys.exit(1)
         # Otro ImportError no relacionado a cv2: re-lanzar con mensaje genérico
-        _show_startup_error("InfractiVision — Error de arranque", f"No se pudo iniciar la aplicación:\n{exc}\n\n{traceback.format_exc()[-1000:]}")
+        _show_startup_error("InfractiVision - Error de arranque", f"No se pudo iniciar la aplicacion:\n{exc}\n\n{traceback.format_exc()[-1000:]}")
         raise
 
     try:
@@ -188,11 +211,11 @@ def main() -> None:
         if is_cv2_dll:
             detail = (
                 f"Error inicializando OpenCV/cv2: {exc}\n\n"
-                f"Python {bits}-bit — {sys.version.split()[0]}\n"
+                f"Python {bits}-bit - {sys.version.split()[0]}\n"
                 "Instala VC++ Redist x64: https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
                 f"{traceback.format_exc()[-1000:]}"
             )
-            _show_startup_error("InfractiVision — Error de OpenCV (cv2)", detail)
+            _show_startup_error("InfractiVision - Error de OpenCV (cv2)", detail)
             try:
                 root.destroy()
             except Exception:
@@ -234,12 +257,12 @@ if __name__ == "__main__":
             bits = _st.calcsize("P") * 8
             detail = (
                 f"Error cargando OpenCV (cv2): {exc}\n\n"
-                f"Python {bits}-bit — {sys.version.split()[0] if 'sys' in dir() else ''}\n"
+                f"Python {bits}-bit - {sys.version.split()[0] if 'sys' in dir() else ''}\n"
                 "Causa probable en PC 64-bit: Python 32-bit o falta VC++ Redist x64.\n"
                 "Instala: https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
                 "Y recompila con Python 3.10 x64 + requirements-cpu.txt (opencv==4.9.0.80).\n"
             )
-            _show_startup_error("InfractiVision — Error de OpenCV (cv2)", detail)
+            _show_startup_error("InfractiVision - Error de OpenCV (cv2)", detail)
             sys.exit(1)
         raise
     except Exception as exc:
@@ -248,5 +271,5 @@ if __name__ == "__main__":
             log.error("Fallo no controlado en main: %s", exc, exc_info=True)
         except Exception:
             pass
-        _show_startup_error("InfractiVision — Error inesperado", f"{exc}\n\n{traceback.format_exc()[-1200:]}")
+        _show_startup_error("InfractiVision - Error inesperado", f"{exc}\n\n{traceback.format_exc()[-1200:]}")
         raise
