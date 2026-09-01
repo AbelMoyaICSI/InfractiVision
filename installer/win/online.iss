@@ -100,8 +100,28 @@ begin
 end;
 
 function NeedsVCRedist(): Boolean;
+var
+  HasFiles: Boolean;
 begin
-  Result := not RegKeyExists(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64');
+  // Chequeo robusto: archivos + ambas ramas del registro (nativo y WOW6432Node)
+  // En muchos equipos el registro está en WOW6432Node o no existe pero los DLLs sí están
+  HasFiles := FileExists(ExpandConstant('{sys}\VCRUNTIME140.dll')) and FileExists(ExpandConstant('{sys}\MSVCP140.dll'));
+  // VCRUNTIME140_1.dll solo existe en 2015-2022 >=14.20, no exigirlo para considerar instalado
+  if HasFiles then
+  begin
+    if RegKeyExists(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64') then begin Result := False; Exit; end;
+    if RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64') then begin Result := False; Exit; end;
+    // Si los DLLs existen pero no hay registro, consideramos instalado (evita falsos positivos)
+    if RegKeyExists(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64') then begin Result := False; Exit; end;
+    if RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X64') then begin Result := False; Exit; end;
+    Result := False;
+    Exit;
+  end;
+  // Sin archivos, verificar registro en ambas ramas
+  Result := not (RegKeyExists(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64')
+    or RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64')
+    or RegKeyExists(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64')
+    or RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\X64'));
 end;
 
 function InstallVCRedist(): Boolean;
@@ -152,17 +172,19 @@ begin
   else
     Log('InstallVCRedist: vc_redist embebido encontrado en {tmp}');
 
-  // Instalación silenciosa /quiet /norestart (requiere elevación UAC — el EXE de MS lo pide)
+  // Instalación silenciosa /quiet /norestart (requiere elevación UAC — se intenta con runas)
   Log('InstallVCRedist: Ejecutando ' + VcPath + ' /install /quiet /norestart');
-  if Exec(VcPath, '/install /quiet /norestart', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+  // Intentar con ShellExec runas para elevar UAC aunque el Setup sea lowest
+  if ShellExec('runas', VcPath, '/install /quiet /norestart', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
   begin
-    Log('InstallVCRedist: Exec terminó ResultCode=' + IntToStr(ResultCode));
-    // 0 = OK, 1638 = ya instalado, 3010 = requiere reinicio — todos se consideran éxito para cv2
-    if (ResultCode = 0) or (ResultCode = 1638) or (ResultCode = 3010) then
+    Log('InstallVCRedist: ShellExec runas terminó ResultCode=' + IntToStr(ResultCode));
+    if (ResultCode = 0) or (ResultCode = 1638) or (ResultCode = 3010) or (ResultCode = 1641) then
     begin
       Log('InstallVCRedist: VC++ instalado correctamente (ResultCode=' + IntToStr(ResultCode) + ')');
       if ResultCode = 3010 then
         Log('InstallVCRedist: Reinicio pendiente para VC++ (3010), cv2 debería funcionar igual sin reiniciar');
+      if ResultCode = 1641 then
+        Log('InstallVCRedist: Reinicio pendiente 1641, cv2 debería funcionar igual');
       Result := True;
       Exit;
     end
@@ -172,8 +194,23 @@ begin
       Result := False;
     end;
   end
+  else if Exec(VcPath, '/install /quiet /norestart', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Log('InstallVCRedist: Exec fallback terminó ResultCode=' + IntToStr(ResultCode));
+    if (ResultCode = 0) or (ResultCode = 1638) or (ResultCode = 3010) or (ResultCode = 1641) then
+    begin
+      Log('InstallVCRedist: VC++ instalado correctamente via Exec (ResultCode=' + IntToStr(ResultCode) + ')');
+      Result := True;
+      Exit;
+    end
+    else
+    begin
+      Log('InstallVCRedist: VC++ Exec falló ResultCode=' + IntToStr(ResultCode));
+      Result := False;
+    end;
+  end
   else
-    Log('InstallVCRedist: Exec falló al lanzar vc_redist');
+    Log('InstallVCRedist: Exec/ShellExec falló al lanzar vc_redist — posible UAC cancelado');
 end;
 
 // ---- Detección GPU NVIDIA dedicada ----
