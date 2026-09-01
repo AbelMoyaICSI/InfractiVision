@@ -16,6 +16,17 @@ if struct.calcsize("P") * 8 != 64:
         f"Detectado: {struct.calcsize('P')*8}-bit ({sys.version}). "
         "Reinstala Python x64."
     )
+try:
+    import importlib.metadata as _md
+    _md.version("opencv-python-headless")
+    raise SystemExit(
+        "[spec ONEDIR-CUDA] ERROR: opencv-python-headless detectado. EasyOCR solo en tests, no en build prod. "
+        "Ejecuta: pip uninstall opencv-python-headless opencv-python -y && pip install --no-cache --force-reinstall opencv-python==4.9.0.80"
+    )
+except Exception as _e:
+    if isinstance(_e, SystemExit):
+        raise
+    pass
 
 BASE_DIR = Path(os.getcwd())
 SRC_DIR = BASE_DIR / 'src'

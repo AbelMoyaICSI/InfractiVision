@@ -21,9 +21,11 @@ def run(cmd: list[str], **kw):
     subprocess.run(cmd, check=True, **kw)
 
 def _assert_64bit_build_env() -> None:
-    """InfractiVision solo soporta Windows 64-bit. Falla rapido si el intérprete es 32-bit."""
+    """InfractiVision solo soporta Windows 64-bit. Falla rapido si el intérprete es 32-bit
+    o si hay opencv-headless contaminando el venv (easy_ocr solo para tests, no prod)."""
     import struct
     import platform
+    import importlib.metadata as _md
     bits = struct.calcsize("P") * 8
     if bits != 64:
         raise SystemExit(
@@ -32,6 +34,19 @@ def _assert_64bit_build_env() -> None:
             "       Reinstala Python 3.10 x64 (mise.toml) y recrea el venv con requirements-cpu.txt.\n"
             "       Ese desajuste produce 'DLL load failed while importing cv2: %1 no es una aplicacion Win32 valida.'"
         )
+    # easy_ocr / paddle_ocr son solo para tests (requirements-ocr.txt) — nunca en prod.
+    # Si queda opencv-python-headless, PyInstaller empaqueta la DLL equivocada y el EXE
+    # falla con el mismo DLL load failed aunque sea 64-bit.
+    try:
+        _md.version("opencv-python-headless")
+        raise SystemExit(
+            "[build] ERROR: Detectado opencv-python-headless instalado. "
+            "EasyOCR/PaddleOCR solo se usan en tests (requirements-ocr.txt), NO en prod.\n"
+            "       Ese paquete colisiona con opencv-python y produce 'DLL load failed while importing cv2'.\n"
+            "       Ejecuta: pip uninstall opencv-python-headless opencv-python -y && pip install --no-cache --force-reinstall opencv-python==4.9.0.80"
+        )
+    except _md.PackageNotFoundError:
+        pass
     # Advertir si se compila en Linux/Mac y se espera distribución Windows
     if platform.system() != "Windows":
         print(f"[build] ADVERTENCIA: Compilando en {platform.system()} ({platform.machine()}) — el EXE solo correrá en {platform.system()}. Para Windows usa un runner Windows.")

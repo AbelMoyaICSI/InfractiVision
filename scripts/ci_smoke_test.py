@@ -13,11 +13,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 def main() -> int:
     import struct
     import platform
+    import importlib.metadata as _md
     bits = struct.calcsize("P") * 8
     print(f"arch   : {bits}-bit ({platform.architecture()[0]}, {platform.machine()})")
     if bits != 64:
         print(f"ERROR: Se requiere Python 64-bit (detectado {bits}-bit). Ese desajuste produce 'DLL load failed while importing cv2: %1 no es una aplicacion Win32 valida.'", file=sys.stderr)
         return 1
+    # easy_ocr / paddle_ocr solo para tests — nunca en prod. headless contamina el build.
+    try:
+        _md.version("opencv-python-headless")
+        print("ERROR: opencv-python-headless detectado. EasyOCR solo en tests, no en build prod. Desinstala headless.", file=sys.stderr)
+        print("  pip uninstall opencv-python-headless opencv-python -y && pip install --no-cache --force-reinstall opencv-python==4.9.0.80", file=sys.stderr)
+        return 1
+    except _md.PackageNotFoundError:
+        pass
 
     import numpy
     import cv2
