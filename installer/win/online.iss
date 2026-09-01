@@ -48,6 +48,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; Single-file: ONEDIR embebido completo (177M lzma2), instalación offline-capable
 Source: "..\..\dist\InfractiVision\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Permissions: users-modify
 Source: "..\..\img\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
+; VC++ Redist 2015-2022 x64 embebido si existe al compilar (offline-capable, ~24MB extra)
+; release.yml lo descarga a installer/win/vc_redist.x64.exe antes de iscc
+#ifexist "vc_redist.x64.exe"
+Source: "vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall
+#endif
 
 [Icons]
 Name: "{group}\InfractiVision"; Filename: "{app}\InfractiVision.exe"; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"
@@ -89,9 +94,86 @@ begin
   DemoURLs[4] := 'https://firebasestorage.googleapis.com/v0/b/infractivision-e8c03.firebasestorage.app/o/VID4EDIT%20%E2%80%90%20Hecho%20con%20Clipchamp.mp4?alt=media&token=520a3110-d499-4a9e-b43d-cb054ca48e0a';
 end;
 
+function BoolToStrCustom(B: Boolean): String;
+begin
+  if B then Result := 'True' else Result := 'False';
+end;
+
 function NeedsVCRedist(): Boolean;
 begin
   Result := not RegKeyExists(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64');
+end;
+
+function InstallVCRedist(): Boolean;
+var
+  VcPath, VcUrl, Cmd: String;
+  ResultCode: Integer;
+  VcDownloaded: Boolean;
+begin
+  Result := True; // ya instalado -> éxito
+  if not NeedsVCRedist() then
+  begin
+    Log('InstallVCRedist: VC++ Redist x64 ya instalado, skip');
+    Exit;
+  end;
+  Log('InstallVCRedist: VC++ Redist x64 NO detectado — intentando instalación (requerido para cv2)');
+  VcPath := ExpandConstant('{tmp}\vc_redist.x64.exe');
+  VcUrl := 'https://aka.ms/vs/17/release/vc_redist.x64.exe';
+  VcDownloaded := FileExists(VcPath);
+
+  // Si no estaba embebido, intentar descarga via PowerShell/curl (requiere internet)
+  if not VcDownloaded then
+  begin
+    Log('InstallVCRedist: vc_redist no embebido en {tmp}, intentando descarga desde ' + VcUrl);
+    // Método directo: Exec powershell sin captura
+    if not FileExists(VcPath) then
+    begin
+      Cmd := '-NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri ''' + VcUrl + ''' -OutFile ''''' + VcPath + ''''' -UseBasicParsing"';
+      if Exec('powershell', Cmd, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      begin
+        Log('InstallVCRedist: powershell download ResultCode=' + IntToStr(ResultCode) + ' FileExists=' + BoolToStrCustom(FileExists(VcPath)));
+      end;
+    end;
+    // Fallback: curl si existe (Win10 1803+)
+    if not FileExists(VcPath) then
+    begin
+      Cmd := '-L -o "' + VcPath + '" ' + VcUrl;
+      if Exec('curl', Cmd, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+        Log('InstallVCRedist: curl download ResultCode=' + IntToStr(ResultCode));
+    end;
+    VcDownloaded := FileExists(VcPath);
+    if not VcDownloaded then
+    begin
+      Log('InstallVCRedist: No se pudo obtener vc_redist.x64.exe (sin internet o bloqueado). Se dejará mensaje manual.');
+      Result := False;
+      Exit;
+    end;
+  end
+  else
+    Log('InstallVCRedist: vc_redist embebido encontrado en {tmp}');
+
+  // Instalación silenciosa /quiet /norestart (requiere elevación UAC — el EXE de MS lo pide)
+  Log('InstallVCRedist: Ejecutando ' + VcPath + ' /install /quiet /norestart');
+  if Exec(VcPath, '/install /quiet /norestart', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Log('InstallVCRedist: Exec terminó ResultCode=' + IntToStr(ResultCode));
+    // 0 = OK, 1638 = ya instalado, 3010 = requiere reinicio — todos se consideran éxito para cv2
+    if (ResultCode = 0) or (ResultCode = 1638) or (ResultCode = 3010) then
+    begin
+      Log('InstallVCRedist: VC++ instalado correctamente (ResultCode=' + IntToStr(ResultCode) + ')');
+      if ResultCode = 3010 then
+        Log('InstallVCRedist: Reinicio pendiente para VC++ (3010), cv2 debería funcionar igual sin reiniciar');
+      Result := True;
+      Exit;
+    end
+    else
+    begin
+      Log('InstallVCRedist: VC++ installer falló ResultCode=' + IntToStr(ResultCode) + ' — se mostrará mensaje manual');
+      Result := False;
+    end;
+  end
+  else
+    Log('InstallVCRedist: Exec falló al lanzar vc_redist');
 end;
 
 // ---- Detección GPU NVIDIA dedicada ----
@@ -529,18 +611,27 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  VcOk: Boolean;
 begin
   if CurStep = ssPostInstall then
   begin
     // Single-file: ONEDIR ya embebido en {app}, no descarga zip redundante (evita 404 + 275M)
     Log('Single-file: ONEDIR ya en {app}, salto descarga zip');
+    // 0. VC++ Redist x64 — requerido para cv2 (DLL load failed si falta). Auto-instala si no está.
+    VcOk := True;
+    if NeedsVCRedist() then
+    begin
+      Log('CurStepChanged: VC++ faltante detectado, lanzando InstallVCRedist');
+      VcOk := InstallVCRedist();
+      if not VcOk and NeedsVCRedist() then
+        SuppressibleMsgBox('No se pudo instalar Microsoft Visual C++ 2015-2022 Redistributable (x64) automáticamente.' + #13#10 + 'La app fallará con "DLL load failed while importing cv2".' + #13#10 + 'Instálalo manualmente desde https://aka.ms/vs/17/release/vc_redist.x64.exe y reinicia.', mbInformation, MB_OK, IDOK);
+    end;
     // 1. Si hay GPU, intenta pip CUDA sobre el embebido
     TryPipInstallCuda(ExpandConstant('{app}'));
     // 2. Videos demo
     DownloadDemoVideos(ExpandConstant('{app}'));
     EnsureModelsPreFetched(ExpandConstant('{app}'));
-    if NeedsVCRedist() then
-      SuppressibleMsgBox('Falta Microsoft Visual C++ 2015-2022 Redistributable (x64). La app puede fallar al iniciar. Descargalo desde https://aka.ms/vs/17/release/vc_redist.x64.exe', mbInformation, MB_OK, IDOK);
   end;
 end;
 

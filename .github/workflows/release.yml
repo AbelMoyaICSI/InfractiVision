@@ -20,8 +20,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          architecture: "x64"
       - name: Install deps (CPU)
-        run: pip install -r requirements-cpu.txt
+        run: |
+          python -c "import struct, platform, sys; assert struct.calcsize('P')*8==64, 'Need 64-bit Python'; print(f'Python {platform.architecture()[0]} {sys.version}')"
+          pip install -r requirements-cpu.txt
+          python -c "import importlib.metadata as m; m.version('opencv-python-headless'); print('ERROR headless present'); exit(1)" 2>&1 || echo "headless check OK (easy_ocr solo tests)"
+      - name: Fetch VC++ Redist x64 (for offline cv2, ~24MB)
+        shell: bash
+        run: |
+          echo "Descargando vc_redist.x64.exe para embeber en instalador (offline cv2)..."
+          curl -L -o installer/win/vc_redist.x64.exe https://aka.ms/vs/17/release/vc_redist.x64.exe || echo "::warning::No se pudo descargar vc_redist (build seguirá, instalador lo intentará descargar en runtime)"
+          ls -lh installer/win/vc_redist.x64.exe 2>/dev/null || echo "vc_redist no embebido — instalador usará descarga en runtime"
       - name: Inject secrets (migraciones + Plate Recognizer)
         shell: bash
         env:
