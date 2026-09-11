@@ -5,13 +5,15 @@
 # barra de estado mostrará "CPU" en vez de "GPU".
 #
 # ⚠️  Mismo pin crítico que requirements.txt: numpy 1.26.4 + opencv 4.9.0.80
-#   (torch 1.13 exige numpy<2; opencv 5.x exige numpy>=2).
+#   (torch 2.8 CPU sigue compatible con numpy 1.x; opencv 5.x exige numpy>=2).
 
 # === NÚCLEO (pins críticos de compatibilidad) ===
+# Alineado a requirements.txt (torch 2.8): variante CPU desde PyPI, sin índice CUDA.
+# Evita mezclar torch 1.x embebido + torch 2.8 cu128 vía pip en _internal.
 numpy==1.26.4
 scipy==1.11.4
-torch==1.13.1
-torchvision==0.14.1
+torch==2.8.0
+torchvision==0.23.0
 scikit-learn==1.4.2
 scikit-image==0.23.2
 

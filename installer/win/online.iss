@@ -2,7 +2,7 @@
 ; Modo: single-file 177M (lzma2) — embebe ONEDIR CPU completo, sin zip separado.
 ; - Detecta nvidia-smi -> Get-CimInstance -> wmic y autoselecciona checkbox CUDA si hay NVIDIA
 ; - No descarga InfractiVision-cpu-Win-x64.zip (ya embebido) — evita 404 y 275M duplicados.
-; - Si checkbox CUDA marcado (autoseleccionado con NVIDIA), intenta pip install torch==2.6.0+cu124 vía Python del sistema (requiere internet).
+; - Si checkbox CUDA marcado (autoseleccionado con NVIDIA), intenta pip install torch==2.8.0+cu128 vía Python del sistema (requiere internet, driver >= 570, Blackwell sm_120).
 ; - Modelos 21 MB no se bundlean, se descargan on-demand a %APPDATA%\InfractiVision\models
 ; Uso: iscc installer/win/online.iss  (requiere dist/InfractiVision/ previo)
 
@@ -337,7 +337,7 @@ function GetDriverVersionCheck(): Boolean;
 var
   OutStr: String;
 begin
-  // Intento de verificar driver >= 550 (CUDA 12.4). Si no se puede, asumir OK.
+  // Intento de verificar driver >= 570 (CUDA 12.8, Blackwell sm_120). Si no se puede, asumir OK.
   if TryExecAndCapture('nvidia-smi', '--query-gpu=driver_version --format=csv,noheader', OutStr) then
   begin
     Log('Driver version raw: ' + Trim(OutStr));
@@ -436,7 +436,7 @@ begin
   GpuCudaCheckBox.Top := 112;
   GpuCudaCheckBox.Width := 400;
   GpuCudaCheckBox.Height := 17;
-  GpuCudaCheckBox.Caption := 'Instalar aceleración CUDA (requiere Python 3.10 + internet, ~2 GB)';
+  GpuCudaCheckBox.Caption := 'Instalar aceleración CUDA (requiere Python 3.10 + internet, ~3-4 GB)';
   GpuCudaCheckBox.Checked := False;
   GpuCudaCheckBox.Enabled := True;
   GpuCudaCheckBox.OnClick := @GpuCudaCheckBoxClick;
@@ -562,9 +562,9 @@ begin
   // Instalar torch CUDA sobre el embebido: --target {app}\_internal para que el bootloader lo vea
   // Usa --no-warn-script-location y --disable-pip-version-check para evitar prompts
   if PythonExe = 'py' then
-    PipArgs := '-3 -m pip install torch==2.6.0+cu124 torchvision==0.21.0+cu124 --extra-index-url https://download.pytorch.org/whl/cu124 --target "' + AppPath + '\_internal" --no-warn-script-location --disable-pip-version-check --no-input >> "' + PipLog + '" 2>&1'
+    PipArgs := '-3 -m pip install torch==2.8.0+cu128 torchvision==0.23.0+cu128 --extra-index-url https://download.pytorch.org/whl/cu128 --target "' + AppPath + '\_internal" --no-warn-script-location --disable-pip-version-check --no-input >> "' + PipLog + '" 2>&1'
   else
-    PipArgs := '-m pip install torch==2.6.0+cu124 torchvision==0.21.0+cu124 --extra-index-url https://download.pytorch.org/whl/cu124 --target "' + AppPath + '\_internal" --no-warn-script-location --disable-pip-version-check --no-input >> "' + PipLog + '" 2>&1';
+    PipArgs := '-m pip install torch==2.8.0+cu128 torchvision==0.23.0+cu128 --extra-index-url https://download.pytorch.org/whl/cu128 --target "' + AppPath + '\_internal" --no-warn-script-location --disable-pip-version-check --no-input >> "' + PipLog + '" 2>&1';
   Log('Pip CUDA: ' + PythonExe + ' ' + PipArgs);
   if Exec(ExpandConstant('{cmd}'), '/C "' + PythonExe + ' ' + PipArgs + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin

@@ -1861,36 +1861,15 @@ class VideoPlayerOpenCV:
                         current_time = frame_index / self.video_fps
 
                         if best_plate_crop is not None and confidence > 0.3:
-                            # MODO DIRECTO MASTER: LPRNet prefiere la imagen natural
+                            # MODO DETECCIÓN-ONLY (live): el OCR se hace por fuera
+                            # (preprocesamiento offline). Aquí solo se guarda el crop.
                             enhanced_plate = best_plate_crop
                             if best_plate_crop.shape[0] < 30:
                                 enhanced_plate = cv2.resize(best_plate_crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
 
-                            # 🔤 EXTRAER TEXTO DE LA PLACA CON OCR
+                            # Sin OCR en live: texto vacío, confianza = detección.
                             plate_text = ""
                             siiv_confidence = confidence
-                            try:
-                                from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
-                                plate_text, _ = recognize_plate(enhanced_plate, is_night=is_night)
-                                if plate_text:
-                                    siiv_confidence, siiv_details = calculate_siiv_confidence(plate_text, confidence)
-                                    print(f"📝 PLACA DETECTADA: '{plate_text}'")
-                                    print(f"   Confianza OCR: {confidence:.2f}")
-                                    print(f"   Confianza SIIV: {siiv_confidence:.2f}")
-                                    if siiv_details['valid_regional']:
-                                        region = siiv_details['region']
-                                        priority = siiv_details['priority']
-                                        if priority == 'very_high':
-                                            print(f"   ⭐ TRUJILLO - Prioridad MÁXIMA")
-                                        else:
-                                            print(f"   🌍 Región: {region}")
-                                    if siiv_details['vehicle_type']:
-                                        print(f"   🚗 Tipo: {siiv_details['vehicle_type']}")
-                                else:
-                                    print(f"⚠️ No se pudo extraer texto de la placa")
-                            except Exception as ocr_error:
-                                print(f"❌ Error en OCR: {ocr_error}")
-                                plate_text = ""
 
                             # 📊 Timestamp sincronizado (frame_index capturado al leer)
                             synchronized_timestamp = self._calculate_timestamp_with_time_range(current_time)
@@ -1899,10 +1878,10 @@ class VideoPlayerOpenCV:
                             if isinstance(synchronized_timestamp, str):
                                 self._pending_timestamp = synchronized_timestamp
 
-                            # 📤 Cola para OCR (consumida por plate_loop)
+                            # 📤 Cola para OCR offline (plate_loop la drena; el texto se extrae fuera del live)
                             if not self.plate_queue.full():
                                 self.plate_queue.put((frame.copy(), enhanced_plate, is_night, current_time, plate_text, siiv_confidence))
-                                print(f"🚨 Infracción detectada - Placa: '{plate_text}' - Confianza SIIV: {siiv_confidence:.3f}")
+                                print(f"🚨 Infracción detectada - crop placa guardado (OCR offline) - Conf detección: {siiv_confidence:.3f}")
 
                         # REGISTRAR VEHÍCULO INFRACTOR (tracking persistente)
                         vehicle_center = (int((x1 + x2) / 2), int((y1 + y2) / 2))

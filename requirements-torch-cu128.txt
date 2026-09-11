@@ -1,0 +1,6 @@
+# Upgrade mínimo Blackwell sm_120 (RTX 5050) — solo lo que reemplaza a cu124
+# Uso: .\.venv\Scripts\python.exe -m pip install -r requirements-torch-cu128.txt
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+torch==2.8.0+cu128
+torchvision==0.23.0+cu128
