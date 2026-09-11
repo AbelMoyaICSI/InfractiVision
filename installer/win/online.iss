@@ -1,10 +1,10 @@
-; InfractiVision Setup Online - Windows single-file (opcion 3 sin GCS + CUDA via pip autoseleccionado)
-; Modo: single-file 177M (lzma2) — embebe ONEDIR CPU completo, sin zip separado.
-; - Detecta nvidia-smi -> Get-CimInstance -> wmic y autoselecciona checkbox CUDA si hay NVIDIA
-; - No descarga InfractiVision-cpu-Win-x64.zip (ya embebido) — evita 404 y 275M duplicados.
-; - Si checkbox CUDA marcado (autoseleccionado con NVIDIA), intenta pip install torch==2.8.0+cu128 vía Python del sistema (requiere internet, driver >= 570, Blackwell sm_120).
+; InfractiVision Setup Online - Windows single-file (build unico CUDA con fallback CPU)
+; Modo: single-file — embebe ONEDIR CUDA completo (requirements.txt torch 2.6.0+cu124).
+; - Una sola version compilada: si hay NVIDIA usa GPU, si no hay hace fallback a CPU
+;   (torch.cuda.is_available() en vehicle_detector/plate_detector/lprnet_engine).
+; - La pagina GPU es solo informativa: no instala dependencias ni hace pip.
 ; - Modelos 21 MB no se bundlean, se descargan on-demand a %APPDATA%\InfractiVision\models
-; Uso: iscc installer/win/online.iss  (requiere dist/InfractiVision/ previo)
+; Uso: iscc installer/win/online.iss  (requiere dist/InfractiVision/ previo compilado con requirements.txt)
 
 #define MyAppName "InfractiVision"
 #define MyAppVersion "2.1.0"
@@ -70,11 +70,9 @@ var
   GpuLabelTitle: TNewStaticText;
   GpuLabelDetail: TNewStaticText;
   GpuLabelVariant: TNewStaticText;
-  GpuCudaCheckBox: TNewCheckBox;
   GpuDetected: Boolean;
   GpuName: String;
   GpuDriverOk: Boolean;
-  SelectedVariant: String; // 'cuda' o 'cpu' (cpu+pip-cuda cuando checkbox marcado)
   DemoFiles: array of String;
   DemoURLs: array of String;
 
@@ -349,48 +347,25 @@ begin
   Result := True;
 end;
 
-procedure GpuCudaCheckBoxClick(Sender: TObject);
-var
-  CheckedStr: String;
-begin
-  if GpuCudaCheckBox.Checked then
-  begin
-    SelectedVariant := 'cpu+pip-cuda';
-    CheckedStr := 'True';
-  end
-  else
-  begin
-    SelectedVariant := 'cpu';
-    CheckedStr := 'False';
-  end;
-  Log('GpuCudaCheckBoxClick: Checked=' + CheckedStr + ' SelectedVariant=' + SelectedVariant);
-end;
-
 procedure UpdateGpuPageUI;
 begin
-  // Opcion 3 sin GCS: base siempre CPU embebida; CUDA via pip autoseleccionado si hay NVIDIA
+  // Build unico CUDA con fallback CPU: la pagina es solo informativa, no instala nada.
   if GpuDetected then
   begin
     GpuLabelTitle.Caption := '✅ GPU NVIDIA dedicada detectada';
     if GpuName <> '' then
-      GpuLabelDetail.Caption := '   ' + GpuName + ' — ✅ aceleración CUDA autoseleccionada (puedes desmarcar)'
+      GpuLabelDetail.Caption := '   ' + GpuName + ' — la app usará aceleración GPU automáticamente'
     else
-      GpuLabelDetail.Caption := '   GPU detectada — aceleración CUDA autoseleccionada';
-    GpuLabelVariant.Caption := '→ Variante base: CPU — 900 MB + CUDA vía pip si está marcado';
-    GpuCudaCheckBox.Checked := True; // autoselección cuando detecta NVIDIA
-    GpuCudaCheckBox.Enabled := True;
-    SelectedVariant := 'cpu+pip-cuda';
-    Log('UI GPU: NVIDIA detectada -> CUDA autoseleccionado - ' + GpuName);
+      GpuLabelDetail.Caption := '   GPU detectada — la app usará aceleración GPU automáticamente';
+    GpuLabelVariant.Caption := '→ Versión única: CUDA incluido — con fallback a CPU si hace falta';
+    Log('UI GPU: NVIDIA detectada -> usará GPU - ' + GpuName);
   end
   else
   begin
     GpuLabelTitle.Caption := '❌ No se detectó GPU NVIDIA dedicada';
-    GpuLabelDetail.Caption := '   Se instalará la variante CPU (compatible con todos los equipos)';
-    GpuLabelVariant.Caption := '→ Variante seleccionada: CPU — 900 MB';
-    GpuCudaCheckBox.Checked := False;
-    GpuCudaCheckBox.Enabled := True; // permitir forzar CUDA manualmente si el usuario quiere
-    SelectedVariant := 'cpu';
-    Log('UI GPU: CPU seleccionada (sin NVIDIA, checkbox desmarcado)');
+    GpuLabelDetail.Caption := '   Se usará el mismo compilado en modo CPU (compatible con todos los equipos)';
+    GpuLabelVariant.Caption := '→ Versión única: CUDA incluido — corriendo en CPU';
+    Log('UI GPU: sin NVIDIA -> mismo build en modo CPU');
   end;
 end;
 
@@ -430,21 +405,9 @@ begin
   GpuLabelVariant.Caption := '';
   GpuLabelVariant.Font.Style := [fsBold];
 
-  GpuCudaCheckBox := TNewCheckBox.Create(GpuPage);
-  GpuCudaCheckBox.Parent := GpuPage.Surface;
-  GpuCudaCheckBox.Left := 16;
-  GpuCudaCheckBox.Top := 112;
-  GpuCudaCheckBox.Width := 400;
-  GpuCudaCheckBox.Height := 17;
-  GpuCudaCheckBox.Caption := 'Instalar aceleración CUDA (requiere Python 3.10 + internet, ~3-4 GB)';
-  GpuCudaCheckBox.Checked := False;
-  GpuCudaCheckBox.Enabled := True;
-  GpuCudaCheckBox.OnClick := @GpuCudaCheckBoxClick;
-
   // Valores iniciales (se actualizan en CurPageChanged)
   GpuDetected := False;
   GpuName := '';
-  SelectedVariant := 'cpu';
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -479,109 +442,7 @@ begin
   Result := False;
 end;
 
-// ---- Pip CUDA on-demand (opcion 3 single-file: stub CPU + pip si hay NVIDIA) ----
-
-function FindSystemPython(var PythonExe: String): Boolean;
-var
-  OutStr, Candidate, RegPath: String;
-begin
-  Result := False;
-  PythonExe := '';
-  // 1. py launcher
-  if TryExecAndCapture('py', '-3 --version', OutStr) and ContainsText(OutStr, 'Python') then
-  begin
-    PythonExe := 'py';
-    Log('FindSystemPython: py -3 -> ' + Trim(OutStr));
-    Result := True;
-    Exit;
-  end;
-  // 2. python
-  if TryExecAndCapture('python', '--version', OutStr) and ContainsText(OutStr, 'Python') then
-  begin
-    PythonExe := 'python';
-    Log('FindSystemPython: python -> ' + Trim(OutStr));
-    Result := True;
-    Exit;
-  end;
-  // 3. python3
-  if TryExecAndCapture('python3', '--version', OutStr) and ContainsText(OutStr, 'Python') then
-  begin
-    PythonExe := 'python3';
-    Log('FindSystemPython: python3 -> ' + Trim(OutStr));
-    Result := True;
-    Exit;
-  end;
-  // 4. Registry fallback
-  if RegQueryStringValue(HKLM, 'SOFTWARE\Python\PythonCore\3.10\InstallPath', '', Candidate) and FileExists(Candidate + '\python.exe') then
-  begin
-    PythonExe := Candidate + '\python.exe';
-    Log('FindSystemPython: HKLM 3.10 -> ' + PythonExe);
-    Result := True;
-    Exit;
-  end;
-  if RegQueryStringValue(HKCU, 'SOFTWARE\Python\PythonCore\3.10\InstallPath', '', Candidate) and FileExists(Candidate + '\python.exe') then
-  begin
-    PythonExe := Candidate + '\python.exe';
-    Log('FindSystemPython: HKCU 3.10 -> ' + PythonExe);
-    Result := True;
-    Exit;
-  end;
-  Log('FindSystemPython: no Python del sistema encontrado');
-end;
-
-function TryPipInstallCuda(AppPath: String): Boolean;
-var
-  PythonExe, PipArgs, PipLog: String;
-  ResultCode: Integer;
-begin
-  Result := False;
-  // Respeta autoselección del checkbox: si está desmarcado, no instalar CUDA
-  if not GpuCudaCheckBox.Checked then
-  begin
-    Log('TryPipInstallCuda: checkbox desmarcado, skip pip (SelectedVariant=' + SelectedVariant + ')');
-    Exit;
-  end;
-  if not GpuDetected then
-    Log('TryPipInstallCuda: checkbox marcado sin GPU detectada (forzado manual), intentando pip igual');
-  if not FindSystemPython(PythonExe) then
-  begin
-    Log('TryPipInstallCuda: sin Python del sistema, se queda CPU (app fallback torch.cuda.is_available)');
-    SuppressibleMsgBox('No se encontró Python del sistema para instalar aceleración CUDA.' + #13#10 + 'La app funcionará en modo CPU. Instala Python 3.10 y re-ejecuta el instalador para CUDA.', mbInformation, MB_OK, IDOK);
-    Exit;
-  end;
-  Log('TryPipInstallCuda: Python=' + PythonExe + ' AppPath=' + AppPath);
-  PipLog := ExpandConstant('{tmp}\pip_cuda.log');
-  // Upgrade pip silencioso
-  PipArgs := '-3 -m pip install --upgrade pip --disable-pip-version-check > "' + PipLog + '" 2>&1';
-  if Pos('py', PythonExe) = 1 then
-    PipArgs := '-3 -m pip install --upgrade pip --disable-pip-version-check > "' + PipLog + '" 2>&1'
-  else
-    PipArgs := '-m pip install --upgrade pip --disable-pip-version-check > "' + PipLog + '" 2>&1';
-  Log('Pip upgrade: ' + PythonExe + ' ' + PipArgs);
-  Exec(ExpandConstant('{cmd}'), '/C "' + PythonExe + ' ' + PipArgs + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  // Instalar torch CUDA sobre el embebido: --target {app}\_internal para que el bootloader lo vea
-  // Usa --no-warn-script-location y --disable-pip-version-check para evitar prompts
-  if PythonExe = 'py' then
-    PipArgs := '-3 -m pip install torch==2.8.0+cu128 torchvision==0.23.0+cu128 --extra-index-url https://download.pytorch.org/whl/cu128 --target "' + AppPath + '\_internal" --no-warn-script-location --disable-pip-version-check --no-input >> "' + PipLog + '" 2>&1'
-  else
-    PipArgs := '-m pip install torch==2.8.0+cu128 torchvision==0.23.0+cu128 --extra-index-url https://download.pytorch.org/whl/cu128 --target "' + AppPath + '\_internal" --no-warn-script-location --disable-pip-version-check --no-input >> "' + PipLog + '" 2>&1';
-  Log('Pip CUDA: ' + PythonExe + ' ' + PipArgs);
-  if Exec(ExpandConstant('{cmd}'), '/C "' + PythonExe + ' ' + PipArgs + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-  begin
-    if ResultCode = 0 then
-    begin
-      Log('TryPipInstallCuda OK resultCode=0 log=' + PipLog);
-      Result := True;
-    end
-    else
-    begin
-      Log('TryPipInstallCuda fallo resultCode=' + IntToStr(ResultCode) + ' log=' + PipLog + ' — queda CPU');
-      SuppressibleMsgBox('No se pudo instalar CUDA vía pip (código ' + IntToStr(ResultCode) + ').' + #13#10 + 'La app funcionará en CPU. Revisa ' + PipLog, mbInformation, MB_OK, IDOK);
-    end;
-  end
-  else
-    Log('TryPipInstallCuda: Exec fallo');
-end;
+// ---- Build unico CUDA: sin pip on-demand (todo ya compilado, fallback a CPU en runtime) ----
 
 procedure DownloadDemoVideos(AppPath: String);
 var
@@ -653,8 +514,9 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    // Single-file: ONEDIR ya embebido en {app}, no descarga zip redundante (evita 404 + 275M)
-    Log('Single-file: ONEDIR ya en {app}, salto descarga zip');
+    // Single-file: ONEDIR CUDA ya embebido en {app}, sin descarga ni pip.
+    // El mismo binario usa GPU si hay NVIDIA o fallback a CPU (torch.cuda.is_available()).
+    Log('Single-file: ONEDIR CUDA ya en {app}, sin pip on-demand');
     // 0. VC++ Redist x64 — requerido para cv2 (DLL load failed si falta). Auto-instala si no está.
     VcOk := True;
     if NeedsVCRedist() then
@@ -664,9 +526,11 @@ begin
       if not VcOk and NeedsVCRedist() then
         SuppressibleMsgBox('No se pudo instalar Microsoft Visual C++ 2015-2022 Redistributable (x64) automáticamente.' + #13#10 + 'La app fallará con "DLL load failed while importing cv2".' + #13#10 + 'Instálalo manualmente desde https://aka.ms/vs/17/release/vc_redist.x64.exe y reinicia.', mbInformation, MB_OK, IDOK);
     end;
-    // 1. Si hay GPU, intenta pip CUDA sobre el embebido
-    TryPipInstallCuda(ExpandConstant('{app}'));
-    // 2. Videos demo
+    if GpuDetected then
+      Log('CurStepChanged: NVIDIA detectada -> el build unico usará GPU')
+    else
+      Log('CurStepChanged: sin NVIDIA -> el mismo build correrá en CPU');
+    // 1. Videos demo
     DownloadDemoVideos(ExpandConstant('{app}'));
     EnsureModelsPreFetched(ExpandConstant('{app}'));
   end;

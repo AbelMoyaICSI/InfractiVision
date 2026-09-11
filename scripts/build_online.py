@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
 build_online.py — Build helper para instalador ONLINE (ONEDIR prioritario)
+Build unico CUDA con fallback CPU (requirements.txt torch 2.6.0+cu124).
 Uso:
-  python scripts/build_online.py --variant cpu        # ONEDIR CPU (dist/InfractiVision/)
-  python scripts/build_online.py --variant cuda       # ONEDIR CUDA (dist/InfractiVision/)
-  python scripts/build_online.py --variant cpu --onefile  # ONEFILE legacy portable
-  python scripts/build_online.py --variant all        # ambos ONEDIR (CI)
-  python scripts/build_online.py --variant cpu --zip  # + zip para Releases
+  python scripts/build_online.py --variant cuda       # ONEDIR CUDA canonico (dist/InfractiVision/)
+  python scripts/build_online.py --variant cuda --zip # + zip para Releases
+  python scripts/build_online.py --variant cpu        # legacy solo macOS/CPU (requirements-cpu.txt)
   Nota: Setup-Online ONEDIR arranca <1.5s (sin extraccion _MEIPASS).
 """
 from __future__ import annotations
@@ -104,7 +103,8 @@ def _platform_tag() -> str:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--variant", choices=["cpu", "cuda", "all"], default="cpu")
+    ap.add_argument("--variant", choices=["cpu", "cuda", "all"], default="cuda",
+                    help="cuda = build unico canonico (default); cpu = legacy macOS; all = ambos (legacy)")
     ap.add_argument("--zip", action="store_true", help="empaquetar zip para Releases")
     ap.add_argument("--onefile", action="store_true", help="usar spec ONEFILE portable en vez de ONEDIR")
     ap.add_argument("--onedir", action="store_true", help="forzar ONEDIR (default para Setup-Online)")

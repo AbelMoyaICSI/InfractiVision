@@ -1,13 +1,13 @@
-# InfractiVision - Instalador ONLINE single-file (opcion 3 sin GCS + CUDA via pip)
+# InfractiVision - Instalador ONLINE single-file (build unico CUDA con fallback CPU)
 
 ## Resumen
-Single-file 177M (lzma2) sin zip separado. Stub = ONEDIR CPU embebido; CUDA vía pip **autoseleccionado** si hay NVIDIA (checkbox desmarcable).
+Build unico compilado con CUDA (`requirements.txt` torch 2.6.0+cu124). Si hay NVIDIA usa GPU, si no hay corre en CPU (`torch.cuda.is_available()`). Sin versiones CPU/CUDA separadas, sin pip on-demand, sin checkbox.
 
-| SO | Instalador | Tamaño | Que descarga | GPU |
-|---|---|---|---|---|
-| Windows 10+ | `InfractiVision-Setup-Online.exe` (Inno Setup 6) | 177M single-file (embebe ONEDIR lzma2) | 5 videos demo (CUDA vía `pip install torch==2.6.0+cu124` si checkbox marcado) | **Ventana GPU**: `nvidia-smi` → `Get-CimInstance` → `wmic` → `✅ NVIDIA ... — ✅ CUDA autoseleccionado` (checkbox `Instalar aceleración CUDA` marcado por defecto, desmarcable) o `❌ → CPU`; sin 404 |
-| Linux | `installer/linux/install.sh` | ~6 KB | `InfractiVision-cpu-Linux-x64.zip` + 5 videos demo | **Autoselección**: `nvidia-smi`/`lspci` → `pip CUDA autoseleccionado` (`--auto` detecta, `--no-cuda-pip` desactiva, `--with-cuda-pip` fuerza) |
-| macOS | `installer/mac/install.sh` / `.pkg` | 3 KB | `InfractiVision-cpu-Mac-x64/arm64.zip` + 5 videos demo | Siempre CPU |
+| SO | Instalador | Que descarga | GPU |
+|---|---|---|---|
+| Windows 10+ | `InfractiVision-Setup-Online.exe` (Inno Setup 6) | ONEDIR CUDA embebido + 5 videos demo | **Ventana informativa**: `nvidia-smi` → `Get-CimInstance` → `wmic` → `✅ usará GPU` o `❌ correrá en CPU` (mismo binario) |
+| Linux | `installer/linux/install.sh` | `InfractiVision-cuda-Linux-x64.zip` + 5 videos demo | **Informativo**: `nvidia-smi`/`lspci` → mensaje `usará GPU` o `correrá en CPU` |
+| macOS | `installer/mac/install.sh` / `.pkg` | `InfractiVision-cpu-Mac-x64/arm64.zip` + 5 videos demo | Siempre CPU (macOS no tiene CUDA, build legacy CPU) |
 
 Los 5 videos demo se descargan al **directorio de datos del usuario**:
 - Win: `%APPDATA%\InfractiVision\videos`
@@ -16,7 +16,7 @@ Los 5 videos demo se descargan al **directorio de datos del usuario**:
 
 Esa es la carpeta `videos/` que el exe busca (persistente; `_MEIPASS` es temporal y no sirve). Si falla la red al instalar, la app **reintenta la descarga al primer inicio** (`src/infrastructure/storage/demo_video_downloader.py`, botón "⬇️ Descargar Demo" en el selector de videos). Videos y presets vienen del manifest `config/demo_videos.json` (hashes sha256 verificados).
 
-Runtime siempre hace fallback: `src/core/ocr/lprnet_engine.py:87` `torch.cuda.is_available()` → si stub eligio mal, la app corre en CPU.
+Runtime siempre hace fallback: `src/core/detection/vehicle_detector.py:26`, `plate_detector.py:64`, `src/core/ocr/lprnet_engine.py:91` `torch.cuda.is_available()` → el mismo binario corre en CPU si no hay GPU.
 
 ## Secretos incluidos en el artefacto
 El `.exe` empaqueta (solo si existen al compilar):
@@ -30,19 +30,17 @@ Como fallback, la app también lee el token desde `APPDATA_DIR/plate_recognizer.
 ## Uso usuario final (sin compilar)
 
 ### Windows
-1. Descarga `InfractiVision-Setup-Online.exe` (177M) desde Releases
-2. Doble click → **ventana "Detección de hardware"** muestra `🔍 Detectando...` → `✅ NVIDIA GeForce RTX ... — ✅ aceleración CUDA autoseleccionada` (checkbox **Instalar aceleración CUDA** viene **marcado**, puedes desmarcar para forzar CPU) o `❌ No detectada → CPU` (checkbox desmarcado, puedes marcar para forzar) → Next → elige carpeta (default `%APPDATA%\InfractiVision`) → sin descarga zip (single-file embebido); si el checkbox queda marcado intenta `pip install torch==2.6.0+cu124` vía Python del sistema
+1. Descarga `InfractiVision-Setup-Online.exe` desde Releases
+2. Doble click → **ventana "Detección de hardware"** muestra `✅ GPU NVIDIA ... — usará GPU` o `❌ No detectada → correrá en CPU` (informativo, mismo binario) → Next → elige carpeta (default `%APPDATA%\InfractiVision`)
 3. Si falta VC++ Redist, el instalador avisa con link a `https://aka.ms/vs/17/release/vc_redist.x64.exe`
 
 ### Linux
 ```bash
 curl -fsSL https://github.com/AbelMoyaICSI/InfractiVision/releases/latest/download/install.sh | bash
 # o local:
-bash installer/linux/install.sh --auto                          # autoselecciona pip CUDA si hay NVIDIA
-bash installer/linux/install.sh --auto --no-cuda-pip            # fuerza CPU aunque haya NVIDIA
-bash installer/linux/install.sh --with-cuda-pip                 # fuerza pip CUDA (aunque lspci falle)
-bash installer/linux/install.sh --cpu --prefix ~/.local/share/InfractiVision
+bash installer/linux/install.sh --prefix ~/.local/share/InfractiVision
 bash installer/linux/install.sh --no-demo   # sin descargar videos demo
+# Flags legacy --cpu/--cuda/--with-cuda-pip/--no-cuda-pip se aceptan como no-op
 ```
 
 ### macOS
@@ -55,10 +53,13 @@ xattr -dr com.apple.quarantine /Applications/InfractiVision.app
 ## Uso desarrollador (generar artefactos)
 
 ```bash
-# 1. Build local (requiere requirements instalados)
-python scripts/build_online.py --variant cpu
+# 1. Build local canonico (requiere requirements.txt con CUDA)
+pip install -r requirements.txt
 python scripts/build_online.py --variant cuda
-python scripts/build_online.py --variant all --zip  # genera zips en dist/
+python scripts/build_online.py --variant cuda --zip  # + zip para Releases (Linux: InfractiVision-cuda-Linux-x64.zip)
+# legacy solo macOS:
+pip install -r requirements-cpu.txt
+python scripts/build_online.py --variant cpu --zip
 
 # 2. Verificacion offline (sin red)
 python scripts/verify_installer.py
@@ -72,7 +73,7 @@ bash installer/mac/build-pkg.sh --version 2.1.0
 ```
 
 ## CI/CD
-- `release.yml` single-file: on tag `v*` construye ONEDIR CPU (`InfractiVision-ONEDIR-CPU.spec` + `requirements-cpu.txt`) → `iscc online.iss` embebe con lzma2 → publica solo `InfractiVision-Setup-Online.exe` (177M, sin zip, sin GCS). CUDA vía pip **autoseleccionado** si hay NVIDIA (checkbox marcado por defecto, desmarcable; Linux `--no-cuda-pip` desactiva).
+- `release.yml`: on tag `v*` instala `requirements.txt` → construye ONEDIR CUDA (`InfractiVision-ONEDIR-CUDA.spec`) → `iscc online.iss` embebe con lzma2 → publica solo `InfractiVision-Setup-Online.exe`. Sin pip en el instalador.
 - `deps.yml`: verifica `requirements*.txt` con `scripts/ci_smoke_test.py`.
 
 ## Firma de codigo (diferida a v1.1)
@@ -88,13 +89,13 @@ bash installer/mac/build-pkg.sh --version 2.1.0
 ## Estructura
 ```
 installer/
-  win/online.iss       # Inno Setup online stub
-  linux/install.sh     # bash per-user XDG
-  mac/install.sh       # macOS curl+unzip
+  win/online.iss       # Inno Setup single-file CUDA unico (pagina GPU informativa)
+  linux/install.sh     # bash per-user XDG (artefacto cuda unico)
+  mac/install.sh       # macOS curl+unzip (legacy CPU)
   mac/build-pkg.sh     # pkgbuild + dmg
 InfractiVision.spec          # spec ONLINE (sin videos/secrets/data)
-InfractiVision-CPU.spec
-InfractiVision-CUDA.spec
+InfractiVision-ONEDIR-CUDA.spec  # spec canonico (requirements.txt)
+InfractiVision-ONEDIR-CPU.spec   # spec legacy macOS (requirements-cpu.txt)
 scripts/build_online.py
 scripts/verify_installer.py
 ```

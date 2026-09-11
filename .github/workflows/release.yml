@@ -13,7 +13,7 @@ on:
 
 jobs:
   build-setup-win:
-    name: Build Setup Online single-file (177M)
+    name: Build Setup Online single-file (CUDA unico)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,10 +21,10 @@ jobs:
         with:
           python-version: "3.10"
           architecture: "x64"
-      - name: Install deps (CPU)
+      - name: Install deps (CUDA unico)
         run: |
           python -c "import struct, platform, sys; assert struct.calcsize('P')*8==64, 'Need 64-bit Python'; print(f'Python {platform.architecture()[0]} {sys.version}')"
-          pip install -r requirements-cpu.txt
+          pip install -r requirements.txt
           python -c "
           import importlib.metadata as m
           try:
@@ -56,14 +56,14 @@ jobs:
             printf '%s\n' "PLATE_RECOGNIZER_API_TOKEN=$PLATE_RECOGNIZER_TOKEN" > .env
             ls -l .env
           fi
-      - name: Build PyInstaller ONEDIR CPU
-        run: python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CPU.spec
-      - name: Smoke test ONEDIR CPU
+      - name: Build PyInstaller ONEDIR CUDA (unico)
+        run: python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CUDA.spec
+      - name: Smoke test ONEDIR CUDA
         shell: bash
         run: |
           ls -lh dist/
           test -f dist/InfractiVision/InfractiVision.exe || (echo "ERROR: ONEDIR exe no generado" && ls -R dist | head -n 80 && exit 1)
-          echo "Smoke ONEDIR cpu OK"
+          echo "Smoke ONEDIR cuda OK (mismo binario corre en CPU si no hay NVIDIA)"
           ls -lh dist/InfractiVision/ | head -n 20
       - name: Install Inno Setup
         run: choco install innosetup -y
@@ -113,14 +113,14 @@ jobs:
           files: release-assets/InfractiVision-Setup-Online.exe
           generate_release_notes: true
           body: |
-            ## InfractiVision ${{ github.ref_name }} — Instalador single-file (opcion 3 sin GCS)
+            ## InfractiVision ${{ github.ref_name }} — Instalador single-file (build unico CUDA)
 
-            **Single-file 177M (lzma2): sin zip separado.**
-            - `InfractiVision-Setup-Online.exe` embebe ONEDIR CPU completo (`dist/InfractiVision/*`) comprimido con lzma2 — no necesita descargar `InfractiVision-cpu-Win-x64.zip` (evita 404 y 275M duplicados).
-            - GPU NVIDIA detectada → checkbox CUDA **autoseleccionado** (puedes desmarcar para forzar CPU) → si queda marcado, el instalador intenta `pip install torch==2.6.0+cu124` sobre el CPU embebido (requiere internet + Python del sistema). Si falla o no hay GPU, queda CPU + fallback `torch.cuda.is_available()`. Linux: `--no-cuda-pip` desactiva, `--with-cuda-pip` fuerza.
+            **Build unico CUDA con fallback CPU (sin pip on-demand).**
+            - `InfractiVision-Setup-Online.exe` embebe ONEDIR CUDA completo (`dist/InfractiVision/*`, requirements.txt torch 2.6.0+cu124) comprimido con lzma2.
+            - Si hay NVIDIA usa GPU; si no hay, el mismo binario corre en CPU via `torch.cuda.is_available()`. Sin checkbox ni `pip install` en el instalador. Pagina GPU solo informativa.
             - Vídeos demo (5) y modelos (21 MB) on-demand.
 
             ### Instalación Windows
             1. Descarga `InfractiVision-Setup-Online.exe` abajo
-            2. Doble click → ventana GPU muestra `✅ CUDA autoseleccionado` (checkbox marcado, desmarcable) → elige carpeta → instalación sin descarga extra (offline-capable)
+            2. Doble click → ventana GPU muestra `✅ usará GPU` o `❌ correrá en CPU` (informativo) → elige carpeta → instalación sin descarga extra (offline-capable)
             3. Si falta VC++ Redist: https://aka.ms/vs/17/release/vc_redist.x64.exe

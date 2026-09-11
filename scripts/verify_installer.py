@@ -67,9 +67,11 @@ def test_linux_sh_syntax():
 def test_win_iss_syntax():
     text = (ROOT/"installer/win/online.iss").read_text()
     assert "DetectNvidiaGPU" in text, "ISS debe tener DetectNvidiaGPU"
-    assert "GpuCudaCheckBox" in text, "ISS debe tener checkbox CUDA autoseleccionado"
     assert "GpuDetected" in text
-    assert "TryPipInstallCuda" in text
+    # Build unico: pagina informativa, sin checkbox ni pip on-demand
+    assert "GpuCudaCheckBox" not in text, "ISS ya no debe tener checkbox CUDA (build unico)"
+    assert "TryPipInstallCuda" not in text, "ISS ya no debe hacer pip on-demand (CUDA viene compilado)"
+    assert "FindSystemPython" not in text, "ISS ya no necesita Python del sistema"
     assert "C:\\Users\\Abel" not in text, "ISS aun tiene rutas hardcodeadas"
     assert "PrivilegesRequired=lowest" in text
 
@@ -87,12 +89,13 @@ def test_workflow_exists():
 
 def test_gpu_detection_unit():
     sh = (ROOT/"installer/linux/install.sh").read_text()
-    assert 'resolve_variant' in sh and 'has_nvidia_gpu' in sh
-    assert 'PIP_CUDA' in sh and 'try_pip_install_cuda' in sh
-    assert 'autoseleccion' in sh.lower() or 'autoseleccionando' in sh.lower()
+    assert 'has_nvidia_gpu' in sh
+    # Build unico: deteccion solo informativa, artefacto cuda fijo, sin pip on-demand
+    assert 'VARIANT="cuda"' in sh, "Linux debe instalar siempre el artefacto cuda unico"
+    assert 'try_pip_install_cuda' not in sh and 'PIP_CUDA' not in sh, "Linux ya no debe tener pip CUDA on-demand"
+    assert 'InfractiVision-${VARIANT}-' in sh
     iss = (ROOT/"installer/win/online.iss").read_text()
-    assert 'GpuCudaCheckBox.Checked := True' in iss, "Windows debe autoseleccionar checkbox con NVIDIA"
-    assert 'GpuCudaCheckBoxClick' in iss
+    assert 'build unico' in iss.lower() or 'fallback' in iss.lower(), "Windows debe documentar build unico con fallback"
     # Runtime fallback en python
     assert "cuda:0" in (ROOT/"src/core/ocr/lprnet_engine.py").read_text()
 

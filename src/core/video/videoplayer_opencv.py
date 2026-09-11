@@ -123,6 +123,18 @@ class VideoPlayerOpenCV:
         self.CAR_CLASS_ID = 2               # en COCO, 'car' = 2
         self.CONF_THRESH   = 0.4
 
+        # ─── Filtro de movimiento: ignora autos parados ──────────────────
+        # Un auto solo cuenta como infractor si su centroide se desplazó
+        # >= MIN_PX en una ventana de frames. Costo O(tracks), despreciable
+        # frente a YOLO; corre en el worker, no toca Tk.
+        self.MOTION_MIN_PX = 15.0      # desplazamiento mínimo en px (base)
+        self.MOTION_MIN_FRAMES = 5     # muestras mínimas antes de decidir
+        self.MOTION_WINDOW = 10        # largo del historial por track
+        self.MOTION_ASSOC_TOL = 100.0  # misma tolerancia que infractores
+        self.MOTION_MAX_AGE = 30       # frames sin ver para purgar track
+        self._motion_tracks = {}       # id -> {center, history, last_seen}
+        self._motion_next_id = 1
+
         # Variables de control de reproducción
         self.is_playing = False
         self.is_paused = True
@@ -1821,6 +1833,65 @@ class VideoPlayerOpenCV:
                     pass
                 self._detect_out.put_nowait((annotated, is_night))
 
+    # ─── Filtro de movimiento (anti-parados) ─────────────────────────────
+    def _match_motion_track(self, vehicle_center, frame_index):
+        """Asocia una detección al track de movimiento más cercano o crea uno.
+
+        Devuelve (track_id, track). Siempre actualiza historial y last_seen.
+        """
+        if not hasattr(self, '_motion_tracks') or self._motion_tracks is None:
+            self._motion_tracks = {}
+            self._motion_next_id = 1
+        best_id, best_dist = None, float('inf')
+        assoc_tol = float(getattr(self, 'MOTION_ASSOC_TOL', 100.0))
+        window = int(getattr(self, 'MOTION_WINDOW', 10))
+        for tid, track in self._motion_tracks.items():
+            px, py = track['center']
+            dist = ((vehicle_center[0] - px) ** 2 + (vehicle_center[1] - py) ** 2) ** 0.5
+            if dist < assoc_tol and dist < best_dist:
+                best_id, best_dist = tid, dist
+        if best_id is None:
+            best_id = self._motion_next_id
+            self._motion_next_id += 1
+            self._motion_tracks[best_id] = {
+                'center': vehicle_center,
+                'history': deque(maxlen=window),
+                'last_seen': frame_index,
+            }
+        track = self._motion_tracks[best_id]
+        track['history'].append((frame_index, vehicle_center[0], vehicle_center[1]))
+        track['center'] = vehicle_center
+        track['last_seen'] = frame_index
+        return best_id, track
+
+    def _is_track_moving(self, track, bbox_width):
+        """True si el track se desplazó lo suficiente en la ventana.
+
+        Exige nº mínimo de muestras y desplazamiento >= umbral adaptativo
+        (base MOTION_MIN_PX o 12% del ancho del bbox, lo mayor).
+        """
+        hist = track.get('history', [])
+        min_frames = int(getattr(self, 'MOTION_MIN_FRAMES', 5))
+        if len(hist) < min_frames:
+            return False
+        if hist[-1][0] - hist[0][0] < min_frames - 1:
+            return False
+        dx = hist[-1][1] - hist[0][1]
+        dy = hist[-1][2] - hist[0][2]
+        displacement = (dx * dx + dy * dy) ** 0.5
+        min_px = max(float(getattr(self, 'MOTION_MIN_PX', 15.0)), float(bbox_width) * 0.12, 12.0)
+        return displacement >= min_px
+
+    def _purge_old_motion_tracks(self, frame_index):
+        """Elimina tracks sin ver en MOTION_MAX_AGE frames (evita fugas)."""
+        if not getattr(self, '_motion_tracks', None):
+            return
+        max_age = int(getattr(self, 'MOTION_MAX_AGE', 30))
+        stale = [tid for tid, t in self._motion_tracks.items()
+                 if frame_index - t.get('last_seen', frame_index) > max_age]
+        for tid in stale:
+            del self._motion_tracks[tid]
+
     def _analyze_frame_off_thread(self, frame, frame_index):
         """Todo el cómputo pesado de un frame: detección de vehículos, polígono,
         placas + OCR y tracking de infractores. Se ejecuta en el worker."""
@@ -1851,8 +1922,15 @@ class VideoPlayerOpenCV:
                         in_polygon = self.is_vehicle_in_polygon(car_detection, self.polygon_points)
 
                     if in_polygon:
-                        # 🎯 DETECCIÓN INTELIGENTE del mejor recorte de placa
                         x1, y1, x2, y2 = car_detection[:4]
+                        # ── Filtro anti-parados: exige desplazamiento en frames ──
+                        # Los parados quedan en verde (ya dibujado) y no generan
+                        # crop/cola/beep/cuadro rojo. Barato: solo dist euclídea.
+                        _motion_center = (int((x1 + x2) / 2), int((y1 + y2) / 2))
+                        _, _motion_track = self._match_motion_track(_motion_center, frame_index)
+                        if not self._is_track_moving(_motion_track, bbox_width=(x2 - x1)):
+                            continue
+                        # 🎯 DETECCIÓN INTELIGENTE del mejor recorte de placa
                         best_plate_crop, confidence = self.enhanced_plate_detection(frame, car_detection)
 
                         # 📊 Timestamp sincronizado (frame_index capturado al leer).
@@ -1932,6 +2010,10 @@ class VideoPlayerOpenCV:
                             cv2.putText(frame_with_cars, conf_text, (int(x1), int(y2)+20),
                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
 
+        try:
+            self._purge_old_motion_tracks(frame_index)
+        except Exception:
+            pass
         return frame_with_cars, is_night
 
     def update_frames(self):

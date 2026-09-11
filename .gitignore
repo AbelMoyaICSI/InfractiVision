@@ -107,3 +107,4 @@ $RECYCLE.BIN/
 htmlcov/
 
 indicadore_redindimiento.json
+data/infractions.sqlite
