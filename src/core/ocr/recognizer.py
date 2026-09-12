@@ -1,10 +1,16 @@
+"""Helpers SIIV puros (sin pesos, sin torch) + stubs de compatibilidad.
+
+LPRNet fue eliminado del proyecto: en vivo solo hay detección (YOLO
+vehículos + YOLO placas) y la lectura la hace la API de Plate Recognizer
+en `PlateReviewWindow`. Este módulo conserva las utilidades puras de
+formato/validación MTC Perú usadas por `plate_ocr_enhancer` y scripts.
+"""
 import cv2
-import numpy as np
 import re
-import os
-import threading
-from src.path_helper import resource_path
-from src.core.ocr.lprnet_engine import LPRNetPredictor
+
+from src.core.logger import get_logger
+
+log = get_logger("ocr.siiv")
 
 # ============================================================================
 # CONSTANTES SIIV 2026 (REGLAMENTACIÓN MTC PERÚ)
@@ -39,61 +45,45 @@ SIIV_REGIONS = {
     'R': {'name': 'RESERVADO', 'area': 0, 'priority': 'invalid', 'status': 'reserved'},
 }
 
+
 # ============================================================================
-# SINGLETON PARA EL MOTOR LPRNet (PESO MASTER FINAL)
+# STUBS DE COMPATIBILIDAD (LPRNet eliminado: solo detección en vivo + API)
 # ============================================================================
-_lprnet_predictor = None
-_lprnet_lock = threading.Lock()
 
 def get_lprnet_predictor(model_path=None):
-    global _lprnet_predictor
-    with _lprnet_lock:
-        if _lprnet_predictor is None:
-            _lprnet_predictor = LPRNetPredictor(model_path=model_path)
-    return _lprnet_predictor
+    raise RuntimeError(
+        "LPRNet fue eliminado del proyecto: en vivo solo hay detección "
+        "(YOLO) y la lectura la hace la API de Plate Recognizer."
+    )
+
+
+def is_lprnet_ready() -> bool:
+    return False
+
+
+def recognize_plate(plate_bgr, *args, **kwargs):
+    """Obsoleto: retorna vacío. La lectura la hace la API en la revisión."""
+    log.warning("recognize_plate obsoleto (LPRNet eliminado): se retorna vacío")
+    if kwargs.get("return_processed", False):
+        return "", 0.0, plate_bgr
+    return "", 0.0
+
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL DE RECONOCIMIENTO (MODO DIRECTO)
-# ============================================================================
-
-def recognize_plate(plate_bgr, is_night=False, return_processed=False, autocrop=True, regional_context="Trujillo", preprocessed=False, model_path=None):
-    """
-    RECONOCIMIENTO DIRECTO TRUJILLO SIIV
-    Usa el modelo LPRNet MASTER_FINAL entrenado por Abel.
-    Retorna (texto_formateado, confianza) o (texto, conf, cropped_img)
-    """
-    try:
-        predictor = get_lprnet_predictor(model_path=model_path)
-        if return_processed:
-            decoded, confidence, cropped = predictor.predict(plate_bgr, return_processed=True, autocrop=autocrop, preprocessed=preprocessed)
-            formatted = format_siiv_plate(decoded, regional_context)
-            return formatted, confidence, cropped
-        else:
-            decoded, confidence = predictor.predict(plate_bgr, autocrop=autocrop, preprocessed=preprocessed)
-            formatted = format_siiv_plate(decoded, regional_context)
-            return formatted, confidence
-            
-    except Exception as e:
-        print(f"[Error LPRNet] {e}")
-        if return_processed:
-            return "", 0.0, plate_bgr
-        return "", 0.0
-
-# ============================================================================
-# FUNCIONES DE APOYO SIIV (Mantenidas para compatibilidad y UI)
+# FUNCIONES DE APOYO SIIV (puras, sin modelo)
 # ============================================================================
 
 def format_siiv_plate(plate_text, regional_context="Trujillo"):
     if not plate_text: return plate_text
     clean = plate_text.replace('-', '').replace(' ', '').upper()
-    
+
     # --- LÓGICA DE INTELIGENCIA REGIONAL (TRUJILLO SIIV) ---
     if len(clean) >= 4:
         first_char = clean[0]
         # En Trujillo, el 90% de infracciones son placas serie 'T'
         if regional_context == "Trujillo" and first_char in ['7', '1', 'Y', 'I']:
             clean = 'T' + clean[1:]
-            
+
     # Formatos SIIV 2010: ABC-123, A1B-234, AB1-234
     if len(clean) == 6:
         # --- HEURÍSTICA DE CARRO (PERÚ) ---
@@ -102,17 +92,17 @@ def format_siiv_plate(plate_text, regional_context="Trujillo"):
 
 def validate_siiv_format(plate_text):
     if not plate_text: return False, None, 0.0, ""
-    
+
     # --- LIMPIEZA Y CORRECCIÓN INTELIGENTE ---
     clean = plate_text.replace('-', '').replace(' ', '').upper()
-    
+
     # Si tiene 6 caracteres, aplicamos reglas de oro del MTC Perú
     if len(clean) == 6:
         # 1. La primera posición SIEMPRE es una LETRA (Región)
         if clean[0].isdigit():
             alt = {'7': 'T', '1': 'I', '5': 'S', '2': 'Z', '0': 'O', '8': 'B', '4': 'A'}
             clean = alt.get(clean[0], clean[0]) + clean[1:]
-        
+
         # 2. Las últimas 3 posiciones SIEMPRE son NÚMEROS
         suffix = list(clean[3:])
         for i in range(3):
@@ -120,25 +110,25 @@ def validate_siiv_format(plate_text):
                 alt = {'S': '5', 'Z': '2', 'B': '8', 'G': '6', 'T': '7', 'O': '0', 'I': '1', 'L': '1', 'E': '3', 'P': '9', 'A': '4'}
                 suffix[i] = alt.get(suffix[i], suffix[i])
         clean = clean[:3] + "".join(suffix)
-        
+
         # 3. IDENTIFICACIÓN DE PATRÓN Y CORRECCIÓN QUIRÚRGICA
         # Formatos válidos: LLL (Particular), LNL (Trujillo/Nuevos), LNN (Antiguos/Otros)
         p1, p2, p3 = clean[0], clean[1], clean[2]
-        
+
         # Si el patrón ya es válido (ej. T71, T7J, TBC), NO TOCAMOS NADA.
         # Esto evita que T70 se convierta en T7P erróneamente.
         current_pattern = f"{'L' if p1.isalpha() else 'N'}{'L' if p2.isalpha() else 'N'}{'L' if p3.isalpha() else 'N'}"
         valid_patterns = ["LLL", "LNL", "LNN"]
-        
+
         if current_pattern not in valid_patterns:
             # Solo corregimos si el patrón es inválido (ej: NNN, NLL, etc.)
             prefix = list(clean[:3])
-            
+
             # La primera SIEMPRE es letra
             if prefix[0].isdigit():
                 alt = {'7': 'T', '1': 'I', '5': 'S', '2': 'Z', '0': 'O', '8': 'B', '4': 'A'}
                 prefix[0] = alt.get(prefix[0], prefix[0])
-            
+
             # Si el resto es NNL o algo raro, intentamos normalizar a LNN o LNL
             # Pero le damos prioridad a lo que el OCR leyó si tiene sentido
             clean = "".join(prefix) + clean[3:]
@@ -152,7 +142,7 @@ def validate_siiv_format(plate_text):
             region = SIIV_REGIONS[first_letter]
             if region.get('status') == 'reserved': return False, 'RESERVED', 0.05, clean
             return True, 'SIIV', 0.9, format_siiv_plate(clean)
-    
+
     return False, None, 0.0, clean
 
 def calculate_siiv_confidence(plate_text, base_confidence=0.5):
@@ -162,19 +152,19 @@ def calculate_siiv_confidence(plate_text, base_confidence=0.5):
     """
     clean = plate_text.replace('-', '').upper()
     details = {
-        'valid_siiv': False, 
+        'valid_siiv': False,
         'formatted_plate': plate_text,
-        'region': 'Desconocida', 
-        'priority': 'none', 
+        'region': 'Desconocida',
+        'priority': 'none',
         'vehicle_type': 'Desconocido',
         'valid_regional': False,
         'friendly_reason': 'Letras poco claras (Revisión necesaria)'
     }
-    
+
     is_valid, fmt, boost, formatted = validate_siiv_format(clean)
     details['valid_siiv'] = is_valid
     details['formatted_plate'] = formatted
-    
+
     # --- ASIGNACIÓN DE RAZONES AMIGABLES ---
     if is_valid:
         if base_confidence >= 0.85:
@@ -199,9 +189,9 @@ def calculate_siiv_confidence(plate_text, base_confidence=0.5):
         details['region'] = region_info['name']
         details['priority'] = region_info['priority']
         details['valid_regional'] = region_info['priority'] != 'invalid'
-        
+
     details['vehicle_type'] = get_vehicle_type_by_ending(clean)
-    
+
     return base_confidence, details
 
 def get_vehicle_type_by_ending(plate_text):

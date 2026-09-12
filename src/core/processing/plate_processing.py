@@ -5,8 +5,6 @@ import numpy as np
 from src.core.processing.resolution_process import enhance_plate_image
 from src.core.detection.plate_detector import PlateDetector
 from src.core.processing.superresolution import enhance_plate
-from src.core.ocr.recognizer import recognize_plate
-from src.core.processing.plate_ocr_enhancer import enhance_plate_recognition, get_plate_enhancer
 from src.path_helper import resource_path
 
 # ── Homografía v6.3 (correccion de perspectiva) ──────────────────────
@@ -122,17 +120,17 @@ import os
 
 def process_plate(vehicle_roi, is_night=False):
     """
-    FLUJO CORRECTO DE DOS ETAPAS:
+    FLUJO DE SOLO-DETECCIÓN (LPRNet eliminado):
     1. PlateDetector (license_plate_detector.pt) → Encuentra la PLACA dentro del carro
-    2. LPRNet → Lee el texto de esa placa recortada
-    
-    Retorna: ((x1, y1, x2, y2), plate_img, plate_text, confidence)
+    2. Homografía v6.3 → mejor crop para la API (sin leer texto en vivo)
+
+    Retorna: ((x1, y1, x2, y2), plate_img, "", 0.0)
+    El texto lo lee la API de Plate Recognizer en la revisión final.
     """
     if vehicle_roi is None or vehicle_roi.size == 0:
         return ((0,0,0,0), None, "", 0.0)
 
     try:
-        from src.core.ocr.recognizer import get_lprnet_predictor, recognize_plate, calculate_siiv_confidence
         from src.core.detection.plate_detector import PlateDetector
         from src.path_helper import resource_path
         import os
@@ -146,59 +144,40 @@ def process_plate(vehicle_roi, is_night=False):
                 print(f"✅ PlateDetector cargado: {model_path}")
             else:
                 process_plate._plate_detector = PlateDetector()  # Usa el path por defecto
-        
+
         detector = process_plate._plate_detector
-        
+
         # Detectar placas dentro del ROI del vehículo
         plate_detections = detector.detect_plates(vehicle_roi, confidence=0.3)
-        
+
         plate_crop = None
         bbox = (0, 0, 0, 0)
-        
+
         if plate_detections:
             # Tomar la primera detección (la de mayor confianza)
             x1, y1, x2, y2 = [int(v) for v in plate_detections[0]]
-            
+
             # Validar coordenadas
             h, w = vehicle_roi.shape[:2]
             x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(w, x2), min(h, y2)
-            
+
             if x2 > x1 and y2 > y1:
                 # Extraer el recorte EXACTO de la placa
                 plate_crop = vehicle_roi[y1:y2, x1:x2].copy()
                 bbox = (x1, y1, x2, y2)
                 print(f"🎯 PlateDetector encontró placa: {x2-x1}x{y2-y1}px")
-        
-        # Si no se detectó placa, usar el autocrop como fallback
+
         if plate_crop is None or plate_crop.size == 0:
-            predictor = get_lprnet_predictor()
-            plate_crop = predictor.autocrop_plate(vehicle_roi)
-            h, w = plate_crop.shape[:2]
-            bbox = (0, 0, w, h)
-            print(f"⚠️ Usando fallback autocrop: {w}x{h}px")
-        
-        # ============ ETAPA 2: RECTIFICACIÓN + OCR ============
-        # ── PASO A: Homografía v6.3 (padding → perspectiva → strip header) ──
+            return ((0,0,0,0), None, "", 0.0)
+
+        # ============ ETAPA 2: MEJOR CROP (sin OCR) ============
+        # Homografía v6.3 para entregar el mejor recorte a la API.
         plate_rectified = rectificar_perspectiva(plate_crop)
+        best_crop = plate_rectified if plate_rectified is not None else plate_crop
 
-        if plate_rectified is not None:
-            # Placa rectificada disponible: OCR directo sin autocrop
-            ocr_input = plate_rectified
-            plate_text, raw_conf = recognize_plate(ocr_input, autocrop=False)
-            print(f"📍 Homografía v6.3 OK → '{plate_text}' (conf {raw_conf:.2f})")
-        else:
-            # Fallback: pipeline original con autocrop quirurgico
-            plate_text, raw_conf = recognize_plate(plate_crop, autocrop=True)
-            print(f"⚠️ Fallback autocrop → '{plate_text}' (conf {raw_conf:.2f})")
-
-        # Validar con SIIV
-        siiv_conf = 0.0
-        if plate_text:
-            siiv_conf, _ = calculate_siiv_confidence(plate_text, raw_conf)
-
-        print(f"✅ process_plate: '{plate_text}' (SIIV: {siiv_conf:.2f})")
-        return (bbox, plate_crop, plate_text, siiv_conf)
+        print(f"✅ process_plate (solo-detección): bbox={bbox}")
+        return (bbox, best_crop, "", 0.0)
 
     except Exception as e:
         print(f"❌ Error en process_plate: {e}")

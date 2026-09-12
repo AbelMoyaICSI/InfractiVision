@@ -168,6 +168,7 @@ class OfficialVideoProcessor:
             writer = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
 
         frame_index = 0
+        first_detect_logged = False
         while True:
             ok, frame = cap.read()
             if not ok:
@@ -178,7 +179,12 @@ class OfficialVideoProcessor:
             tracks: dict[int, dict] = {}
             plate_boxes: dict[int, list[tuple[int, int, int, int]]] = {}
             if should_detect:
+                _t0 = time.time()
                 raw = self.vehicle_detector.detect(frame, conf=conf, draw=False)
+                if not first_detect_logged:
+                    first_detect_logged = True
+                    print(f"🔥 Primera inferencia en vivo: frame={frame_index} fase={state} "
+                          f"{(time.time() - _t0) * 1000:.0f}ms (warm-up previo en precarga)")
                 detections = []
                 for item in raw:
                     if len(item) < 5 or int(item[4]) not in (2, 5, 7):
@@ -296,17 +302,28 @@ class OfficialVideoProcessor:
         if writer is not None:
             writer.release()
         evidence = [item.to_dict() for item in sorted(best.values(), key=lambda value: value.track_id)]
-        pending_infractions = [
-            {
+        pending_infractions = []
+        for track_id in sorted(pending_crossings):
+            if track_id in confirmed_at:
+                continue
+            crop_path = pending_paths.get(track_id, "")
+            crop_w, crop_h = 0, 0
+            if crop_path:
+                try:
+                    probe = cv2.imread(str(crop_path))
+                    if probe is not None:
+                        crop_h, crop_w = probe.shape[:2]
+                except Exception:
+                    pass
+            pending_infractions.append({
                 "vehicle_id": track_id,
                 "frame_index": pending_crossings[track_id],
                 "timestamp_seconds": round(pending_crossings[track_id] / fps, 3),
                 "vehicle_class": "VEH",
-                "crop_path": pending_paths.get(track_id, ""),
-            }
-            for track_id in sorted(pending_crossings)
-            if track_id not in confirmed_at
-        ]
+                "crop_path": crop_path,
+                "crop_w": crop_w,
+                "crop_h": crop_h,
+            })
         payload = {
             "video": config.video_name,
             "video_path": str(video_path),

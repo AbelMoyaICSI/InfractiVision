@@ -110,11 +110,16 @@ class VideoPlayerOpenCV:
 
     
     def __init__(self, parent, timestamp_updater, timestamp_label, semaforo,
-                 process_frame_uc=None, traffic_light_state=None):
+                 process_frame_uc=None, traffic_light_state=None,
+                 vehicle_detector=None, plate_detector=None):
         self.parent            = parent
         self.timestamp_updater = timestamp_updater
         self.timestamp_label   = timestamp_label
         self.semaforo          = semaforo
+
+        # ─── Detectores precalentados (precarga bloqueante de Foto Rojo) ───
+        # Si vienen `None`, el lazy-load histórico sigue igual que antes.
+        self.vehicle_detector = vehicle_detector
 
         # ─── Inyección Clean Architecture (opcional, retro-compat) ──────────
         # `process_frame_uc`  → src.application.use_cases.ProcessFrameUseCase
@@ -157,7 +162,9 @@ class VideoPlayerOpenCV:
         self.beep_unique_plates = set()  # Placas que ya han hecho beep (único por matrícula)
         
         # 🎯 DETECCIÓN MEJORADA DE PLACAS
-        self.plate_detector = None  # Se inicializará cuando se necesite
+        # Si la precarga de Foto Rojo inyectó instancias, se reutilizan;
+        # si no, el lazy-load histórico las crea bajo demanda.
+        self.plate_detector = plate_detector  # Se inicializará cuando se necesite
         self.frame_history = deque(maxlen=5)  # Historial para mejor selección
         self.show_debug = True  # Mostrar rectángulos de debug
         
@@ -2812,21 +2819,33 @@ class VideoPlayerOpenCV:
                 # Si falla, asumimos valor por defecto
                 pass
         
-        # ✂️ GUARDADO QUIRÚRGICO MASTER
+        # ✂️ RECORTE YOLO (solo-detección, sin LPRNet en vivo)
         try:
-            from src.core.ocr.recognizer import get_lprnet_predictor
-            predictor = get_lprnet_predictor()
-            
-            # Obtener el recorte exacto (Fine Crop) para la evidencia guardada
-            # plate_img es el recorte del vehículo/YOLO
-            exact_crop = predictor.autocrop_plate(plate_img)
-            
-            # Guardar la placa quirúrgica si no existe
+            from src.core.detection.plate_detector import PlateDetector
+            ev_det = getattr(self, '_evidence_plate_detector', None)
+            if ev_det is None or getattr(ev_det, 'model', None) is None:
+                ev_det = PlateDetector()
+                self._evidence_plate_detector = ev_det
+            exact_crop = plate_img
+            if getattr(ev_det, 'model', None) is not None:
+                try:
+                    dets = ev_det.detect_plates(plate_img, confidence=0.3)
+                except Exception:
+                    dets = []
+                if dets:
+                    px1, py1, px2, py2 = [int(v) for v in dets[0][:4]]
+                    h, w = plate_img.shape[:2]
+                    px1, py1 = max(0, px1), max(0, py1)
+                    px2, py2 = min(w, px2), min(h, py2)
+                    if px2 > px1 and py2 > py1:
+                        exact_crop = plate_img[py1:py2, px1:px2].copy()
+
+            # Guardar la placa si no existe
             if not os.path.exists(plate_path):
                 cv2.imwrite(plate_path, exact_crop)
-                print(f"📸 Guardado Recorte Quirúrgico: {plate_path}")
+                print(f"📸 Guardado recorte YOLO: {plate_path}")
         except Exception as e:
-            print(f"Error al generar/guardar recorte quirúrgico: {e}")
+            print(f"Error al generar/guardar recorte: {e}")
             if not os.path.exists(plate_path):
                 cv2.imwrite(plate_path, plate_img)
         

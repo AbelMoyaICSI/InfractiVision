@@ -22,10 +22,10 @@ except ImportError:
 
 @dataclass(frozen=True)
 class ModelPaths:
-    # Usa get_model_path para descarga selectiva (APPDATA/models en frozen)
+    # Usa get_model_path para descarga selectiva (APPDATA/models en frozen).
+    # En vivo solo hay detección (YOLO); la lectura la hace la API.
     yolo_vehicle: str = field(default_factory=lambda: get_model_path("yolov8n.pt"))
     yolo_plate: str = field(default_factory=lambda: get_model_path("license_plate_detector.pt"))
-    lprnet_master: str = field(default_factory=lambda: get_model_path("LPRNet_Peru_MASTER_FINAL.pth"))
     fsrcnn: str = field(default_factory=lambda: get_model_path("FSRCNN_x3.pb"))
 
 

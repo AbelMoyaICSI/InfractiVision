@@ -16,7 +16,7 @@ Los 5 videos demo se descargan al **directorio de datos del usuario**:
 
 Esa es la carpeta `videos/` que el exe busca (persistente; `_MEIPASS` es temporal y no sirve). Si falla la red al instalar, la app **reintenta la descarga al primer inicio** (`src/infrastructure/storage/demo_video_downloader.py`, botón "⬇️ Descargar Demo" en el selector de videos). Videos y presets vienen del manifest `config/demo_videos.json` (hashes sha256 verificados).
 
-Runtime siempre hace fallback: `src/core/detection/vehicle_detector.py:26`, `plate_detector.py:64`, `src/core/ocr/lprnet_engine.py:91` `torch.cuda.is_available()` → el mismo binario corre en CPU si no hay GPU.
+Runtime siempre hace fallback: `src/core/detection/vehicle_detector.py:26`, `plate_detector.py:64` `torch.cuda.is_available()` → el mismo binario corre en CPU si no hay GPU.
 
 ## Secretos incluidos en el artefacto
 El `.exe` empaqueta (solo si existen al compilar):

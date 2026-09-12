@@ -47,6 +47,18 @@ def normalize_plate(text: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (text or "").upper())
 
 
+def has_plate_recognizer_token() -> bool:
+    """True si hay token Plate Recognizer configurado (sin red).
+
+    Revisa `PLATE_RECOGNIZER_API_TOKEN` en entorno y el fallback
+    `APPDATA/plate_recognizer.json`. No hace llamadas de red: sirve para
+    avisar temprano al entrar a Foto Rojo en vez de fallar en la revisión.
+    """
+    if os.getenv("PLATE_RECOGNIZER_API_TOKEN"):
+        return True
+    return PlateRecognizerSnapshotReader._token_from_appdata() is not None
+
+
 class PlateRecognizerSnapshotReader:
     method = "plate_recognizer"
 

@@ -34,7 +34,7 @@ class GenerateTicketUseCase:
         evidence = ViolationEvidence(image_path=saved_image, video_path=evidence.video_path)
 
         violation = Violation(
-            plate_text=vehicle.plate_text or "DESCONOCIDA",
+            plate_text=vehicle.plate_text or "PENDIENTE_OCR",
             plate_confidence=vehicle.plate_confidence or 0.0,
             vehicle_class_id=vehicle.class_id,
             track_id=vehicle.track_id,

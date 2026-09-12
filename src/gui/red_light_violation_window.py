@@ -7,12 +7,17 @@ from src.core.video.videoplayer_opencv import VideoPlayerOpenCV
 
 
 def create_violation_window(container: tk.Widget, back_callback,
-                            process_frame_uc=None, traffic_light_state=None):
+                            process_frame_uc=None, traffic_light_state=None,
+                            preloaded: dict | None = None):
     """Crea la pantalla de Foto Rojo.
 
     Los argumentos `process_frame_uc` y `traffic_light_state` son la nueva
     seam Clean Architecture y son **opcionales**: si vienen `None` la GUI
     funciona idéntica a antes.
+
+    `preloaded` trae detectores ya calientes del `AppManager` (precarga
+    bloqueante al entrar): se inyectan al reproductor para no cargar
+    `torch.load` durante el análisis del video.
     """
     left = tk.Frame(container, bg="white", width=260)
     left.pack(side="left", fill="y", expand=False)
@@ -32,6 +37,8 @@ def create_violation_window(container: tk.Widget, back_callback,
         semaforo=sem,
         process_frame_uc=process_frame_uc,
         traffic_light_state=traffic_light_state,
+        vehicle_detector=(preloaded or {}).get("vehicle_detector"),
+        plate_detector=(preloaded or {}).get("plate_detector"),
     )
 
     tk.Button(container, text="Volver", font=("Arial", 12), padx=16, command=back_callback, bg="#3366FF", fg="white", bd=0, activebackground="#3366FF", activeforeground="white").place(x=10, y=10)

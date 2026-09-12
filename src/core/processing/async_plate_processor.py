@@ -181,17 +181,9 @@ class AsyncPlateProcessor:
                         except Exception as _he:
                             pass
 
-                        # Fallback: usar plate_raw si homografía falló
+                        # Fallback: usar plate_raw (sin OCR en vivo; la API lee al final)
                         if not homo_ok:
                             plate_crop = plate_raw
-                            try:
-                                from src.core.ocr.recognizer import get_lprnet_predictor
-                                predictor = get_lprnet_predictor()
-                                if predictor and hasattr(predictor, 'autocrop_plate'):
-                                    plate_crop = predictor.autocrop_plate(plate_crop)
-                                print(f"⚠️ AsyncProc: Fallback autocrop (homo falló)")
-                            except:
-                                pass
                             
                         # Dibujar recuadro verde en vehicle_img
                         cv2.rectangle(vehicle_img, (px1, py1), (px2, py2), (0, 255, 0), 2)

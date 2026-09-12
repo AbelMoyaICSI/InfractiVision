@@ -262,7 +262,7 @@ Cada capa usa un set de librerías pineadas en `requirements.txt:1` (Python 3.10
 | Video | OpenCV (`opencv-python`) | 4.9.0.80 | `src/core/video/videoplayer_opencv.py` — `VideoCapture`, `VideoWriter`, overlays, `pointPolygonTest` |
 | Detección | YOLOv8 (`ultralytics`) | 8.4.120 | `src/infrastructure/ai/yolo_detector.py` — vehículos (car/bus/truck, clases 2/5/7) y placas |
 | Deep Learning | PyTorch + CUDA 11.7 | 1.13.1+cu117 / 0.14.1+cu117 | Inferencia YOLO y LPRNet (ver pins críticos en `requirements.txt:1`) |
-| OCR primario | LPRNet Perú | — (`LPRNet_Peru_MASTER_FINAL.pth`) | `src/core/ocr/lprnet_engine.py`, `src/infrastructure/ocr/lprnet_reader.py` — singleton `get_lprnet_predictor()` con precarga en background |
+| OCR lectura | Plate Recognizer API | — (`requests`) | `src/infrastructure/ocr/cloud_plate_readers.py:23` — `regions=pe`, `min_interval 2s`, retry `Retry-After`. En vivo solo detección YOLO; sin OCR local |
 | OCR alternos | PaddleOCR / EasyOCR | opcionales (`requirements-ocr.txt:1`) | `src/infrastructure/ocr/paddleocr_reader.py`, `easyocr_reader.py` — seleccionables por `INFRACTI_OCR_BACKEND` |
 | OCR validación cloud | Plate Recognizer API | — (`requests`) | `src/infrastructure/ocr/cloud_plate_readers.py:23` — `regions=pe`, `min_interval 2s`, retry `Retry-After` |
 | OCR corrección | SmartPlateCorrector | — | `src/infrastructure/ocr/plate_corrector.py` — mapas 0↔O, 1↔I, validación SIIV MTC |
@@ -348,5 +348,5 @@ flowchart LR
 | Migración legacy (Storage) | `src/automations/cloud_migrator.py:61` |
 | Stack pineado | `requirements.txt:1`, `mise.toml:1` |
 | Config por video | `src/infrastructure/configuration/video_config_repository.py:26` |
-| OCR LPRNet | `src/core/ocr/recognizer.py:48`, `src/core/ocr/lprnet_engine.py` |
+| Detección placas | `src/core/detection/plate_detector.py`, `src/core/processing/plate_processing.py` |
 | Settings | `config/settings.py:1` |

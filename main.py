@@ -15,7 +15,6 @@ import platform
 import socket
 import struct
 import sys
-import threading
 import tkinter as tk
 import traceback
 import uuid
@@ -93,22 +92,6 @@ def _load_or_create_ids() -> dict:
     return ids
 
 
-# ─── Precarga LPRNet (background, post-mainloop) ──────────────────────────
-# Se lanza DESPUÉS de que el mainloop está vivo: así el arranque no se
-# bloquea y el singleton compartido queda caliente cuando el usuario abra
-# un video o "Foto Rojo" (la GUI legacy usa el mismo get_lprnet_predictor()).
-def _preload_lprnet_in_background() -> None:
-    def _job():
-        try:
-            from src.core.ocr.recognizer import get_lprnet_predictor
-            get_lprnet_predictor()
-            log.info("LPRNet Master Engine precargado")
-        except Exception as e:
-            log.warning("LPRNet preload falló: %s", e)
-
-    threading.Thread(target=_job, daemon=True).start()
-
-
 # ─── Bootstrap GUI ─────────────────────────────────────────────────────────
 def main() -> None:
     # Lazy imports para arranque rápido: no pagan torch/cv2/ultralytics antes de Tk.
@@ -130,13 +113,10 @@ def main() -> None:
     except Exception:
         pass
 
-        # Precarga LPRNet solo cuando el mainloop ya está vivo (arranque libre).
-    root.after(300, _preload_lprnet_in_background)
-
     # Descarga selectiva: modelos AI primero (requeridos para inferencia),
     # luego videos demo. Idempotente y no bloquea el arranque.
     def _ensure_assets() -> None:
-        # 1) Modelos: solo required (yolov8n, license_plate_detector, LPRNet V4)
+        # 1) Modelos: solo required (yolov8n, license_plate_detector)
         try:
             from src.infrastructure.storage.model_downloader import ensure_models_async, missing_models
 

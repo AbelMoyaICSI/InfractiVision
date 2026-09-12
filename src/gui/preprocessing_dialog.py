@@ -35,6 +35,51 @@ from src.domain.entities.plate_evidence import PlateEvidence
 from src.presentation.gui.plate_review_window import PlateReviewWindow
 
 
+# Ancho mínimo del crop de vehículo para mandarlo entero a la API cuando YOLO
+# no encontró la placa. Coherente con el mínimo de placa (55px + margen):
+# recortes menores desperdician cuota/tiempo de API sin chance real.
+FULL_CAR_MIN_WIDTH = 160
+
+
+def split_viable_full_car(pending_infractions, video_name):
+    """Divide pendientes en filas de revisión (carro completo) y resto a NIE.
+
+    Un pendiente va a la API solo si su crop de vehículo existe y es viable
+    en tamaño; la API detecta la placa sola dentro del auto. Retorna
+    `(rows: list[PlateEvidence], remaining: list[dict])`.
+    """
+    rows: list[PlateEvidence] = []
+    remaining: list[dict] = []
+    for pend in (pending_infractions or []):
+        crop_path = str(pend.get("crop_path", "") or "")
+        viable = False
+        if crop_path and os.path.exists(crop_path):
+            w = int(pend.get("crop_w", 0) or 0)
+            if w <= 0:
+                try:
+                    probe = cv2.imread(crop_path)
+                    if probe is not None:
+                        w = probe.shape[1]
+                except Exception:
+                    w = 0
+            viable = w >= FULL_CAR_MIN_WIDTH
+        if not viable:
+            remaining.append(pend)
+            continue
+        rows.append(PlateEvidence(
+            video_name=video_name,
+            track_id=int(pend.get("vehicle_id", 0)),
+            frame_index=int(pend.get("frame_index", 0)),
+            timestamp_seconds=float(pend.get("timestamp_seconds", 0)),
+            vehicle_class=pend.get("vehicle_class", "VEH"),
+            quality_score=0.0,
+            crop_path=crop_path,
+            review_notes="Vehículo completo (YOLO no encontró placa)",
+            metadata={"full_car": True},
+        ))
+    return rows, remaining
+
+
 
 
 class PreprocessingDialog(PreprocessingPopupsMixin):
@@ -214,15 +259,11 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         self.metrics_calculator = ThesisMetricsCalculator()
         self.smart_corrector = SmartPlateCorrector()
         
-        # 🚀 PIPELINE ASÍNCRONO: Procesa durante VERDE/AMARILLO (Idea de Abel 2026)
-        try:
-            from src.core.processing.async_plate_processor import get_async_processor
-            self.async_processor = get_async_processor()
-            self.async_processor.start()
-            print("🚀 Pipeline Asíncrono: Activado (procesa en intervalos vacíos)")
-        except Exception as e:
-            self.async_processor = None
-            print(f"⚠️ Pipeline Asíncrono no disponible: {e}")
+        # 🚀 PIPELINE ASÍNCRONO: lazy — el flujo oficial no lo alimenta, solo la
+        # ruta legacy. Se crea/arranca al primer uso real (ahorra 1 YOLO + FSRCNN
+        # en arranque y VRAM). Ver `_get_async_processor`.
+        self.async_processor = None
+        self._async_unavailable = False
         
         print("🧠 Sistema de clasificación NID/NIE inicializado con umbrales balanceados")
 
@@ -367,27 +408,54 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             except:
                 pass
         self._after_ids.clear()
-    
+
+    def _get_async_processor(self, create=True):
+        """Retorna el pipeline asíncrono, creándolo solo al primer uso real.
+
+        El flujo oficial no lo alimenta; crearlo en `__init__` pagaba un
+        YOLO de placas + FSRCNN duplicados en cada análisis. Con
+        `create=False` solo devuelve lo existente (para `update_semaphore_state`
+        sin costo de arranque).
+        """
+        ap = getattr(self, "async_processor", None)
+        if ap is not None or not create or getattr(self, "_async_unavailable", False):
+            return ap
+        try:
+            from src.core.processing.async_plate_processor import get_async_processor
+            ap = get_async_processor()
+            ap.start()
+            self.async_processor = ap
+            print("🚀 Pipeline Asíncrono: Activado bajo demanda")
+        except Exception as e:
+            self._async_unavailable = True
+            print(f"⚠️ Pipeline Asíncrono no disponible: {e}")
+        return getattr(self, "async_processor", None)
+
     def _preload_models(self):
-        """Precarga los modelos de IA antes de procesar el video"""
+        """Precarga los modelos de IA antes de procesar el video.
+
+        Fast-path: si Foto Rojo ya inyectó detectores calientes en el
+        player, se reutilizan y se arranca el procesamiento de inmediato.
+        Solo se crea lo que falte (p. ej. diálogo abierto sin precarga).
+        En vivo solo hay detección (YOLO); sin OCR local.
+        """
         try:
             self._ui_call(self.phase_label.config, text="Preparando modelos de IA...")
             self._ui_call(self.details_label.config, text="Inicializando detectores...")
-            
-            # Inicializar detectores si son necesarios
-            if not hasattr(self.player, 'vehicle_detector'):
+
+            # Inicializar detectores si son necesarios (reutiliza precarga)
+            if getattr(self.player, 'vehicle_detector', None) is None:
                 from src.core.detection.vehicle_detector import VehicleDetector
                 self.player.vehicle_detector = VehicleDetector(model_path=resource_path("models/yolov8n.pt"))
-                
-            # Inicializar el detector ANPR para placas
-            if not hasattr(self.player, 'anpr_detector'):
-                from src.core.detection.anpr import ANPR
-                self.player.anpr_detector = ANPR(languages=['es', 'en'])
-                
-            # Mantener el detector de placas anterior como fallback
-            if not hasattr(self.player, 'plate_detector'):
+
+            # Detector de placas (reutiliza precarga)
+            if getattr(self.player, 'plate_detector', None) is None:
                 from src.core.detection.plate_detector import PlateDetector
-                self.player.plate_detector = PlateDetector()
+                try:
+                    plate = PlateDetector()
+                    self.player.plate_detector = plate if getattr(plate, "model", None) is not None else None
+                except Exception:
+                    self.player.plate_detector = None
             
             # Una vez cargados los modelos, iniciar procesamiento del video
             self.process_thread = threading.Thread(target=self._process_video, daemon=True)
@@ -1330,11 +1398,18 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             ocr_method=item.get("ocr_method", ""),
             validated=bool(item.get("validated", False)),
         ) for item in payload.get("evidence", [])]
+        # Pendientes con crop de vehículo viable: van enteros a la API para que
+        # busque la placa (YOLO no encontró bbox). El resto sigue a NIE directo.
+        full_car_rows, remaining_pending = split_viable_full_car(
+            payload.get("pending_infractions", []), Path(self.video_path).name
+        )
+        evidences.extend(full_car_rows)
         if not evidences:
+            self._pending_infractions = list(payload.get("pending_infractions", []))
             self._complete_processing()
             return
-        # Infracciones pendientes sin placa detectada (recuadro amarillo) -> NIE
-        self._pending_infractions = payload.get("pending_infractions", [])
+        # Infracciones pendientes restantes (crop no viable) -> NIE directo
+        self._pending_infractions = remaining_pending
         if self._pending_infractions:
             try:
                 self.player.apply_official_validation([], self._pending_infractions)
@@ -1565,9 +1640,11 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         cv2.rectangle(display, (10, 10), (int(10 + txt_size[0]), int(20 + txt_size[1])), bg_color, -1)
         cv2.putText(display, semaforo_text, (10, int(15 + txt_size[1])), cv2.FONT_HERSHEY_DUPLEX, 1.5 * f_scale, text_color, 4)
         
-        # 🚀 Actualizar estado del semáforo al procesador asíncrono
-        if hasattr(self, 'async_processor') and self.async_processor:
-            self.async_processor.update_semaphore_state(current_state)
+        # 🚀 Actualizar estado del semáforo al procesador asíncrono (sin crearlo:
+        # solo estado; si nadie lo alimenta, no paga su costo de arranque)
+        ap_state = self._get_async_processor(create=False)
+        if ap_state is not None:
+            ap_state.update_semaphore_state(current_state)
 
         
         # =====================================================
@@ -1740,14 +1817,16 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                         
                         ready = is_panic or is_secure or is_peak_gold or is_heavy
                         if not in_polygon and proximity_factor < 0.40: ready = False
-                        
-                        if ready and hasattr(self, 'async_processor') and self.async_processor:
-                            self.async_processor.add_infraction(
-                                track_id=current_d['id'],
-                                frame_img=current_d['mmrp_frame']['img'] if current_d['mmrp_frame'] else frame.copy(),
-                                bbox=current_d['mmrp_frame']['bbox'] if current_d['mmrp_frame'] else (x1,y1,x2,y2),
-                                frame_index=self._prep_frame_index
-                            )
+
+                        if ready:
+                            ap = self._get_async_processor(create=True)
+                            if ap is not None:
+                                ap.add_infraction(
+                                    track_id=current_d['id'],
+                                    frame_img=current_d['mmrp_frame']['img'] if current_d['mmrp_frame'] else frame.copy(),
+                                    bbox=current_d['mmrp_frame']['bbox'] if current_d['mmrp_frame'] else (x1,y1,x2,y2),
+                                    frame_index=self._prep_frame_index
+                                )
                             current_d['async_sent'] = True
                             p_str = "[PEAK]" if is_peak_gold else "[PANIC]" if is_panic else "[PERSIST]"
                             print(f"🚀 {p_str} TRIGGER #{current_d['id']} PPI:{proximity_factor:.2f} (Frames: {num_f})")

@@ -5,7 +5,8 @@ Sigue el pipeline funcional:
     2. Asigna track_id (DeepSORT)
     3. Lee estado del semáforo (hilo)
     4. Verifica cruce de línea
-    5. Si cruce + ROJO  → captura evidencia → OCR → guarda BD → genera ticket
+    5. Si cruce + ROJO  → captura evidencia → localiza placa (bbox) → guarda BD → genera ticket
+       (el texto lo lee la API en la revisión final; en vivo solo detección)
 """
 from __future__ import annotations
 
@@ -73,7 +74,7 @@ class ProcessFrameUseCase:
                 self._violation_service.is_red_light_violation(vehicle, light_entity)
                 and vehicle.track_id not in self._already_ticketed
             ):
-                # 7-8. Recortar evidencia + OCR
+                # 7-8. Localizar placa (bbox, sin OCR) para la evidencia
                 vehicle = self._recognize_plate.execute(frame_bgr, vehicle)
                 # 9-10. Guardar evidencia + generar papeleta
                 violation = self._generate_ticket.execute(vehicle, frame_bgr)

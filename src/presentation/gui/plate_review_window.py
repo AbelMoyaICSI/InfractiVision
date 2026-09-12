@@ -27,6 +27,11 @@ class PlateReviewWindow:
         self.images: list[ImageTk.PhotoImage] = []
         self.rows: list[dict] = []
         self.reader = PlateRecognizerSnapshotReader()
+        try:
+            from src.infrastructure.ocr.cloud_plate_readers import has_plate_recognizer_token
+            self._plate_token_ok = bool(has_plate_recognizer_token())
+        except Exception:
+            self._plate_token_ok = True  # sin bloqueo: el error saldrá por evidencia
         # Tkinter NO es thread-safe: el worker de OCR nunca toca widgets.
         # Publica resultados en esta cola y un poller (hilo de Tk) los drena.
         self._results_queue: queue.Queue[tuple[int, str, float, str]] = queue.Queue()
@@ -37,6 +42,10 @@ class PlateReviewWindow:
         self.window.transient(parent)
         self.window.protocol("WM_DELETE_WINDOW", self._on_close)
         self._build()
+        if not getattr(self, "_plate_token_ok", True):
+            self.status.config(
+                text="Sin token Plate Recognizer: configure el token para leer las placas."
+            )
         self._render_all()
         self.window.after(150, self._process_next)
         self.window.after(50, self._poll_results)
@@ -111,6 +120,12 @@ class PlateReviewWindow:
                     f"Tiempo: {evidence.timestamp_seconds:.2f}s | Calidad: {evidence.quality_score:.2f}"
                 ),
             ).pack(anchor="w")
+            if (getattr(evidence, "metadata", None) or {}).get("full_car"):
+                ttk.Label(
+                    info,
+                    text="🚗 VEHÍCULO COMPLETO — la API buscará la placa (validar con lupa)",
+                    foreground="#b9770e",
+                ).pack(anchor="w", pady=(4, 0))
             ttk.Label(info, text="Resultado Plate Recognizer:").pack(anchor="w", pady=(8, 0))
             text_var = tk.StringVar(value=evidence.plate_text)
             entry = ttk.Entry(info, textvariable=text_var, width=28)
@@ -170,14 +185,28 @@ class PlateReviewWindow:
             return
         row = self.rows[index]
         evidence: PlateEvidence = row["evidence"]
-        evidence.plate_text = text
-        evidence.ocr_confidence = confidence
-        evidence.ocr_method = "plate_recognizer"
-        row["text"].set(text)
+        previous = (evidence.plate_text or "").strip().upper()
         if text:
+            evidence.plate_text = text
+            evidence.ocr_confidence = confidence
+            evidence.ocr_method = "plate_recognizer"
+            row["text"].set(text)
             row["confidence"].config(text=f"Confianza: {confidence:.2f}")
             row["check"].state(["!disabled"])
+        elif previous:
+            # Fallback: la API falló/offline o no vio placa; se conserva el
+            # texto previo (si lo hay) en vez de vaciarlo.
+            evidence.ocr_method = "previo"
+            row["text"].set(previous)
+            row["confidence"].config(
+                text=f"API sin resultado ({error or 'placa no reconocida'}). Se conserva: {previous}"
+            )
+            row["check"].state(["!disabled"])
         else:
+            evidence.plate_text = ""
+            evidence.ocr_confidence = 0.0
+            evidence.ocr_method = "plate_recognizer"
+            row["text"].set("")
             row["confidence"].config(text=f"Sin resultado: {error or 'placa no reconocida'}")
             row["check"].state(["disabled"])
         self.processing = False

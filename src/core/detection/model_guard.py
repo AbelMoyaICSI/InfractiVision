@@ -1,12 +1,12 @@
 """Guarda de carga de modelos de IA (multihilo).
 
-torch 1.13 + CUDA NO es seguro para cargar varios modelos a la vez
+torch + CUDA NO es seguro para cargar varios modelos a la vez
 (torch.load + .to(cuda) + fuse) desde hilos distintos; puede provocar
 SIGSEGV/Abort. Todos los constructores de detectores adquieren este lock
 durante su inicialización pesada.
 
-Es un RLock porque los constructores se anidan: LPRNetPredictor crea un
-PlateDetector internamente.
+En vivo solo hay detección (YOLO vehículos + YOLO placas); la lectura OCR
+la hace la API de Plate Recognizer en la revisión final.
 """
 from __future__ import annotations
 

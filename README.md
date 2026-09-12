@@ -266,7 +266,7 @@ Secrets necesarios en el repo (`Settings → Secrets`): `FIREBASE_SA_JSON` (Serv
 | 🚦 **Detectar cruces en rojo (offline por video)** | Analiza un archivo de video con un semáforo virtual G → Y → R configurable. Solo cuenta como infracción el cruce del polígono durante fase roja (más un pequeño pre-rojo) |
 | 🚗 **Trackear vehículos sin duplicar** | Asigna un ID por vehículo (centroide / DeepSORT) para que el mismo auto no genere 2 infracciones |
 | 🔍 **Recortar la mejor placa por infractor** | YOLO de placas sobre el cuadrante inferior del vehículo + scoring de calidad (contraste, bordes, nitidez, tamaño). Guarda el mejor crop |
-| 🔤 **Leer placas con LPRNet Perú** | OCR principal `LPRNet_Peru_MASTER_FINAL.pth` con contexto Trujillo + validación SIIV MTC + `SmartPlateCorrector` (0↔O, 1↔I, 8↔B…). Alternativos PaddleOCR/EasyOCR por `INFRACTI_OCR_BACKEND` |
+| 🔤 **Leer placas con Plate Recognizer API** | En vivo solo hay detección (YOLO vehículos + YOLO placas); la lectura la hace la API (`regions=pe`, 2 s entre requests) en la revisión final con validación SIIV MTC + `SmartPlateCorrector` (0↔O, 1↔I, 8↔B…) |
 | ☁️ **Validar placa en la nube** | Cada crop se valida contra **Plate Recognizer API** (`regions=pe`, 2 s entre requests) con revisión humana (check *Validar*) |
 | 📊 **Medir NID / NIE / TI / TR** | NID = validadas con placa; NIE = pendientes sin placa o no validadas; TI = `NID/(NID+NIE)*100`; TR = minutos de video por infracción validada |
 | 💾 **Guardar todo local** | SQLite `data/infractions.sqlite` (tablas `infractions`, `video_configs`, `indicators`, `migrations`) |
@@ -508,11 +508,10 @@ Indicadores: **TI** = NID/(NID+NIE)*100, **TR** = duración total / NID validada
 | FSRCNN x3 | `models/FSRCNN_x3.pb` | Super-resolución opcional | `src/core/ocr/super_resolution.py` |
 | Otros LPRNet | `LPRNet_CONSENSO_V2.pth`, `LPRNet_V3_ESPECIALISTA.pth`, `LPRNet_V4_CORREGIDO.pth` | Variantes de entrenamiento | No usados por defecto |
 
-**OCR backends seleccionables** (`config/settings.py:32`, `INFRACTI_OCR_BACKEND`):
+**Lectura de placas** (solo API, sin OCR local):
 
-- `lprnet` (default) → `LPRNetReader` con `regional_context="Trujillo"` y validación SIIV (`src/core/ocr/recognizer.py:86`).
-- `paddleocr` → `PaddleOCRReader` (`src/infrastructure/ocr/paddleocr_reader.py:16`).
-- `easyocr` → `EasyOCRReader`.
+- En vivo solo detección (YOLO vehículos + YOLO placas, bbox + mejor crop).
+- La lectura la hace `PlateRecognizerSnapshotReader` (`src/infrastructure/ocr/cloud_plate_readers.py:23`, `PLATE_RECOGNIZER_API_TOKEN` en `.env:1`) en la revisión final.
 
 **Validación cloud** (post-procesamiento, no durante el barrido de frames):
 

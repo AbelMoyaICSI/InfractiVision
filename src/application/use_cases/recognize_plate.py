@@ -1,12 +1,14 @@
-"""Caso de uso: reconocer la placa de un vehículo recortado.
+"""Caso de uso: localizar la placa de un vehículo recortado (SOLO detección).
 
-Pipeline: PlateDetector (recorta region de placa) → OCRReader (lee texto).
+En vivo NO se lee texto: se detecta el bbox de la placa con YOLO y se
+guarda en `vehicle.extras["plate_bbox"]`. La lectura OCR la hace la API de
+Plate Recognizer al final, en `PlateReviewWindow` (un crop por evidencia).
+LPRNet fue eliminado del proyecto.
 """
 from __future__ import annotations
 
 import numpy as np
 
-from src.core.exceptions import OCRError
 from src.core.logger import get_logger
 from src.domain.entities import Vehicle
 from src.domain.interfaces import OCRReaderPort, PlateDetectorPort
@@ -18,7 +20,7 @@ class RecognizePlateUseCase:
     def __init__(
         self,
         plate_detector: PlateDetectorPort,
-        ocr_reader: OCRReaderPort,
+        ocr_reader: OCRReaderPort | None = None,
         min_confidence: float = 0.55,
     ):
         self._plate_detector = plate_detector
@@ -35,13 +37,8 @@ class RecognizePlateUseCase:
         if plate_crop.size == 0:
             return vehicle
 
-        try:
-            text, conf = self._ocr.read_plate(plate_crop)
-        except Exception as e:
-            raise OCRError(str(e)) from e
-
-        if conf >= self._min_conf and text:
-            vehicle.plate_text = text
-            vehicle.plate_confidence = conf
-            log.info("Placa reconocida: %s (%.2f) track=%s", text, conf, vehicle.track_id)
+        # Solo-detección: se conserva el bbox para la evidencia; el texto lo
+        # resuelve la API en la revisión final.
+        vehicle.extras["plate_bbox"] = plate_box.as_tuple()
+        log.debug("Placa localizada track=%s bbox=%s", vehicle.track_id, plate_box.as_tuple())
         return vehicle

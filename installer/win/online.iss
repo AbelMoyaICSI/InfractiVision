@@ -1,7 +1,7 @@
 ; InfractiVision Setup Online - Windows single-file (build unico CUDA con fallback CPU)
 ; Modo: single-file — embebe ONEDIR CUDA completo (requirements.txt torch 2.6.0+cu124).
 ; - Una sola version compilada: si hay NVIDIA usa GPU, si no hay hace fallback a CPU
-;   (torch.cuda.is_available() en vehicle_detector/plate_detector/lprnet_engine).
+;   (torch.cuda.is_available() en vehicle_detector/plate_detector).
 ; - La pagina GPU es solo informativa: no instala dependencias ni hace pip.
 ; - Modelos 21 MB no se bundlean, se descargan on-demand a %APPDATA%\InfractiVision\models
 ; Uso: iscc installer/win/online.iss  (requiere dist/InfractiVision/ previo compilado con requirements.txt)

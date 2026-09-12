@@ -23,7 +23,6 @@ from src.application.use_cases import (
 )
 from src.core.logger import get_logger
 from src.domain.interfaces import (
-    OCRReaderPort,
     TrafficLightDetectorPort,
     TrackerPort,
     ViolationRepositoryPort,
@@ -82,17 +81,10 @@ def _build_repository(settings: Settings) -> ViolationRepositoryPort:
 
 
 def _build_ocr(settings: Settings) -> object:
-    def factory() -> OCRReaderPort:
-        backend = settings.ocr.backend.lower()
-        if backend == "easyocr":
-            from src.infrastructure.ocr import EasyOCRReader
-            return EasyOCRReader()
-        if backend == "paddleocr":
-            from src.infrastructure.ocr import PaddleOCRReader
-            return PaddleOCRReader()
-        from src.infrastructure.ocr import LPRNetReader
-        return LPRNetReader(regional_context=settings.ocr.regional_context)
-    return Lazy(factory)
+    """En vivo NO hay OCR: solo detección (bbox). La lectura la hace la API
+    de Plate Recognizer en la revisión final. Se retorna None y
+    `RecognizePlateUseCase` opera en modo solo-detección."""
+    return None
 
 
 def _build_vehicle_detector(settings: Settings) -> object:
@@ -179,7 +171,7 @@ def build_container(
         generate_ticket=generate_ticket_uc,
     )
 
-    log.info("Container construido (DB=%s, OCR=%s)", settings.database.backend, settings.ocr.backend)
+    log.info("Container construido (DB=%s, modo=solo-deteccion)", settings.database.backend)
     return Container(
         settings=settings,
         process_frame=process_frame_uc,

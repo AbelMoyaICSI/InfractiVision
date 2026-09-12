@@ -103,7 +103,7 @@ hiddenimports = [
     'src.core.utils.paths', 'src.core.utils.timestamp', 'src.core.utils.icon', 'src.core.utils.audio',
     'src.automations.cloud_migrator',
     'src.infrastructure.ai.yolo_detector', 'src.infrastructure.ai.plate_detector',
-    'src.infrastructure.ocr.lprnet_reader', 'src.infrastructure.database.sqlite_repository',
+    'src.infrastructure.database.sqlite_repository',
     'src.infrastructure.storage.demo_video_downloader',
     'src.infrastructure.storage.model_downloader',
     'src.infrastructure.ocr.cloud_plate_readers',

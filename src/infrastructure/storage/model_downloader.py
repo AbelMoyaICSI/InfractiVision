@@ -10,9 +10,8 @@ Fuentes en orden:
   2. URL directa (field "url" en manifest, si existe)
   3. URL publica (field "public_url")
 
-Los fallbacks de LPRNet (V3, CONSENSO, MASTER) solo se descargan si el
-V4_CORREGIDO no esta disponible localmente — asi el online no paga 3x2MB
-innecesario. El FSRCNN es opcional (super-resolucion).
+En vivo solo hay detección (YOLO vehículos + YOLO placas); la lectura OCR
+la hace la API de Plate Recognizer. El FSRCNN es opcional (super-resolucion).
 """
 from __future__ import annotations
 
