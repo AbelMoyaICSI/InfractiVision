@@ -48,6 +48,15 @@ _add_data(BASE_DIR / "presets" / "infractions_preset.db", "presets", datas)
 _add_data(BASE_DIR / "infractivision-e8c03-firebase-adminsdk-fbsvc-957f584093.json", ".", datas)
 _add_data(BASE_DIR / ".env", ".", datas)
 
+# Modelos embebidos (offline): YOLO vehículos/placas + FSRCNN (+ LPRNet .pth
+# cuando exista en models/). Sin esto Foto Rojo depende de descarga on-demand.
+# Nota: LPRNet_V4_CORREGIDO.pth no está en GCS (404) ni local; el downloader
+# lo reintentará al arrancar con red. Los 3 presentes sí van embebidos.
+for _model in ["yolov8n.pt", "license_plate_detector.pt", "FSRCNN_x3.pb",
+               "LPRNet_V4_CORREGIDO.pth", "LPRNet_Peru_MASTER_FINAL.pth",
+               "LPRNet_V3_ESPECIALISTA.pth", "LPRNet_CONSENSO_V2.pth"]:
+    _add_data(BASE_DIR / "models" / _model, "models", datas)
+
 hiddenimports = [
     'tkinter', 'tkinter.messagebox', 'tkinter.filedialog', 'tkinter.ttk',
     'cv2', 'numpy', 'numpy._core', 'numpy._core.multiarray', 'numpy._core.numeric',
@@ -85,9 +94,34 @@ hiddenimports = [
     'src.automations.cloud_migrator',
     'src.infrastructure.ai.yolo_detector', 'src.infrastructure.ai.plate_detector',
     'src.infrastructure.ocr.lprnet_reader', 'src.infrastructure.database.sqlite_repository',
+    'src.infrastructure.database.app_repository',
     'src.infrastructure.storage.demo_video_downloader',
     'src.infrastructure.storage.model_downloader',
     'src.infrastructure.ocr.cloud_plate_readers',
+    # Cadena de Foto Rojo: videoplayer importa preprocessing_dialog a nivel
+    # módulo y este a su vez OfficialVideoProcessor + PlateReviewWindow.
+    # Sin estos hiddenimports el frozen falla y la botonera no se renderiza.
+    'src.application.use_cases.process_violation_video',
+    'src.application.use_cases.process_frame',
+    'src.application.services.metrics_calculator',
+    'src.application.services.processing_planner',
+    'src.application.services.traffic_processing_planner',
+    'src.presentation.gui.plate_review_window',
+    'src.presentation.gui.popups.preprocessing_popups',
+    'src.domain.services.intelligent_tracker',
+    'src.domain.services.plate_classification',
+    'src.domain.services.violation_service',
+    'src.domain.services.tracking_service',
+    'src.domain.services.evidence_service',
+    'src.domain.entities.plate_evidence',
+    'src.infrastructure.tracking.deepsort_tracker',
+    'src.infrastructure.video.frame_extractor',
+    'src.infrastructure.ai.yolo_detector',
+    'src.infrastructure.ai.traffic_light_detector',
+    'src.infrastructure.ocr.plate_corrector',
+    'src.core.detection.torch_compat',
+    'src.core.processing.async_plate_processor',
+    'src.core.utils.json_store',
 ]
 
 pathex = [str(BASE_DIR), str(SRC_DIR)]
@@ -117,10 +151,13 @@ excludes = [
     'bokeh', 'plotly', 'seaborn', 'statsmodels', 'networkx',
     'gensim', 'nltk', 'spacy', 'transformers', 'datasets', 'huggingface_hub',
     # Recorte peso para mantener zip <2GB sin GCS (no usados en runtime)
+    # NOTA: no excluir 'unittest'/'test'/'tests': librerías (torch/ultralytics/
+    # numpy) los importan en runtime y en frozen eso rompe (ej. LPRNet preload
+    # fallaba con "No module named 'unittest'").
     'matplotlib.tests', 'mpl_toolkits.tests', 'numpy.tests', 'scipy.tests',
     'sklearn.tests', 'sklearn.datasets', 'sklearn.experimental',
-    'pandas.tests', 'PIL.tests', 'tkinter.test', 'test', 'tests',
-    'unittest', 'distutils.tests', 'email.tests',
+    'pandas.tests', 'PIL.tests', 'tkinter.test',
+    'distutils.tests', 'email.tests',
     'PyQt5', 'PyQt6', 'PySide2', 'PySide6',
 ]
 

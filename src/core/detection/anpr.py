@@ -6,6 +6,7 @@ import threading
 import re
 from pathlib import Path
 from src.path_helper import resource_path
+from src.core.utils.paths import writable_data_path
 from src.core.ocr.recognizer import calculate_siiv_confidence, recognize_plate, get_lprnet_predictor
 from src.core.processing.plate_processing import process_plate
 
@@ -55,8 +56,8 @@ class ANPR:
             print(f"Error loading detector for ANPR: {e}")
             self.model = None
         
-        # Output directories
-        self.output_dir = resource_path("data/output")
+        # Output directories (escribibles: APPDATA en frozen)
+        self.output_dir = writable_data_path("data/output")
         self.plates_dir = os.path.join(self.output_dir, "placas")
         os.makedirs(self.plates_dir, exist_ok=True)
         

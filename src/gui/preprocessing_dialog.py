@@ -18,6 +18,7 @@ from PIL import Image, ImageTk
 
 from src.gui.infractions_management_window import generate_performance_indicators_json
 from src.path_helper import resource_path
+from src.core.utils.paths import writable_config_path, writable_data_path
 from src.core.utils.icon import set_window_icon
 
 # --- Clases extraídas a sus capas Clean Architecture (Fase 2) ---
@@ -196,10 +197,10 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         self.green_skip_rate = 3    # Skip x3 durante fase VERDE (más evidente)
         self.fast_skip_rate = 2     # Skip x2 durante fast-scan (amarillo)
         
-        # Definir rutas de configuración usando resource_path para PyInstaller
-        self.POLYGON_CONFIG_FILE = resource_path("config/polygon_config.json")
-        self.AVENUE_CONFIG_FILE = resource_path("config/avenue_config.json")
-        self.PRESETS_FILE = resource_path("config/time_presets.json")
+        # Definir rutas de configuración escribibles (APPDATA en frozen con seed)
+        self.POLYGON_CONFIG_FILE = writable_config_path("polygon_config.json")
+        self.AVENUE_CONFIG_FILE = writable_config_path("avenue_config.json")
+        self.PRESETS_FILE = writable_config_path("time_presets.json")
 
         # Add this line to track start time
         self.processing_start_time = time.time()
@@ -1292,7 +1293,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
 
         project_root = Path(__file__).resolve().parents[2]
         config = VideoConfigRepository(project_root).require(Path(self.video_path).name)
-        output_dir = Path(resource_path("data/output/official"))
+        output_dir = Path(writable_data_path("data/output/official"))
         self._ui_call(self.phase_label.config, text="Procesando con el pipeline oficial...")
 
         processor = OfficialVideoProcessor(
@@ -1342,7 +1343,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         PlateReviewWindow(
             self.dialog,
             evidences,
-            Path(resource_path("data/output/official")),
+            Path(writable_data_path("data/output/official")),
             on_complete=self._on_official_validation_done,
         )
 
@@ -2963,8 +2964,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         print(f"🔍 Registro Infracción #{track_id}: Placa {plate_text} (Conf: {confidence:.2f})")
         
         # Crear directorios
-        plates_dir = resource_path("data/output/placas")
-        vehicles_dir = resource_path("data/output/autos")
+        plates_dir = writable_data_path("data/output/placas")
+        vehicles_dir = writable_data_path("data/output/autos")
         os.makedirs(plates_dir, exist_ok=True)
         os.makedirs(vehicles_dir, exist_ok=True)
         
@@ -3696,8 +3697,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             # Solo beep de completado al final del procesamiento
             
             # PASO 3: Guardar las imágenes finales
-            plates_dir = resource_path("data/output/placas")
-            vehicles_dir = resource_path("data/output/autos")
+            plates_dir = writable_data_path("data/output/placas")
+            vehicles_dir = writable_data_path("data/output/autos")
             os.makedirs(plates_dir, exist_ok=True)
             os.makedirs(vehicles_dir, exist_ok=True)
             
@@ -4307,7 +4308,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             self._generate_thesis_metrics(nid_infractions)
 
             # PASO 4: Actualizar indicadores TR en el JSON existente
-            indicators_file = resource_path("data/indicadores_rendimiento.json")
+            indicators_file = writable_data_path("data/indicadores_rendimiento.json")
             if os.path.exists(indicators_file):
                 with open(indicators_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -4332,8 +4333,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
 
                 # — Regenerar JSON plano pasándole SOLO LAS INFRACCIONES NUEVAS de esta sesión
                 # Leer las que acabamos de guardar para obtener el formato JSON completo
-                infractions_file = resource_path("data/infracciones.json")
-                nie_file = resource_path("data/nie_infracciones.json")
+                infractions_file = writable_data_path("data/infracciones.json")
+                nie_file = writable_data_path("data/nie_infracciones.json")
                 
                 # Leer TODAS las infracciones guardadas
                 saved_infractions = []
@@ -4474,8 +4475,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         import socket
         from datetime import datetime
 
-        # Asegurar existencia del directorio
-        data_dir = resource_path("data")
+        # Asegurar existencia del directorio (escribible: APPDATA en frozen)
+        data_dir = writable_data_path("data")
         os.makedirs(data_dir, exist_ok=True)
         infractions_file = os.path.join(data_dir, "infracciones.json")
 
@@ -4607,8 +4608,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 "franja_horaria":  time_slot,
                 "tipo":            "Semáforo en rojo",
                 "estado":          "Pendiente",
-                "plate_path":      os.path.join(resource_path("data/output/placas"), f"plate_{plate}.jpg"),
-                "vehicle_path":    os.path.join(resource_path("data/output/autos"), f"vehicle_{plate}.jpg"),
+                "plate_path":      os.path.join(writable_data_path("data/output/placas"), f"plate_{plate}.jpg"),
+                "vehicle_path":    os.path.join(writable_data_path("data/output/autos"), f"vehicle_{plate}.jpg"),
                 # 🆕 NUEVOS CAMPOS PARA ESTRUCTURA FIRESTORE POR VIDEO Y CONFIGURACIÓN
                 "nombre_video":    nombre_video,      # Nombre del video procesado
                 "config_semaforo": config_semaforo,   # ID de configuración (ej: "10-3-15")
@@ -4652,8 +4653,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         import socket
         from datetime import datetime
 
-        # Asegurar existencia del directorio
-        data_dir = resource_path("data")
+        # Asegurar existencia del directorio (escribible: APPDATA en frozen)
+        data_dir = writable_data_path("data")
         os.makedirs(data_dir, exist_ok=True)
         nie_file = os.path.join(data_dir, "nie_infracciones.json")
 
@@ -4757,8 +4758,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 "estado":          "Rechazada",
                 "clasificacion":   "NIE",
                 "confianza":       round(real_confidence, 3),
-                "plate_path":      os.path.join(resource_path("data/output/placas"), f"plate_{plate}.jpg"),
-                "vehicle_path":    os.path.join(resource_path("data/output/autos"), f"vehicle_{plate}.jpg"),
+                "plate_path":      os.path.join(writable_data_path("data/output/placas"), f"plate_{plate}.jpg"),
+                "vehicle_path":    os.path.join(writable_data_path("data/output/autos"), f"vehicle_{plate}.jpg"),
                 "tiempo_procesamiento": round(inf.get("timestamp", inf.get("time", 0)), 2),
                 "metadata_clasificacion": metadata_clasificacion,
                 # 🆕 NUEVOS CAMPOS PARA ESTRUCTURA FIRESTORE POR VIDEO Y CONFIGURACIÓN
@@ -4922,7 +4923,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 report["detalle_clasificaciones"].append(detalle)
             
             # Guardar reporte de métricas (usar indicadores_rendimiento.json en lugar del eliminado metricas_tesis.json)
-            metrics_file = resource_path("data/indicadores_rendimiento.json")
+            metrics_file = writable_data_path("data/indicadores_rendimiento.json")
             
             # Crear estructura compatible con indicadores_rendimiento.json
             indicators_data = {

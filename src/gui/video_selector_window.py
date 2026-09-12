@@ -13,6 +13,7 @@ import threading
 from PIL import Image, ImageTk
 
 from src.path_helper import resource_path
+from src.core.utils.paths import writable_config_path, writable_data_path
 from src.core.utils.icon import set_window_icon
 
 class VideoSelectorWindow:
@@ -33,11 +34,11 @@ class VideoSelectorWindow:
         # Cola thread-safe para marshaling de callbacks a la UI
         self.ui_queue = queue.Queue()
         
-        # Configurar archivos de configuración
+        # Configurar archivos de configuración (escribibles: APPDATA en frozen)
         self.config_files = {
-            'polygon': resource_path("config/polygon_config.json"),
-            'time_presets': resource_path("config/time_presets.json"),
-            'avenue': resource_path("config/avenue_config.json")
+            'polygon': writable_config_path("polygon_config.json"),
+            'time_presets': writable_config_path("time_presets.json"),
+            'avenue': writable_config_path("avenue_config.json")
         }
         
         # Crear ventana
@@ -860,8 +861,8 @@ class VideoSelectorWindow:
                     self.config_files['polygon'],
                     self.config_files['time_presets'],
                     self.config_files['avenue'],
-                    resource_path("data/infracciones.json"),
-                    resource_path("data/indicadores_rendimiento.json")
+                    writable_data_path("data/infracciones.json"),
+                    writable_data_path("data/indicadores_rendimiento.json")
                 ]
                 
                 for config_file in config_files:
@@ -871,8 +872,8 @@ class VideoSelectorWindow:
                 
                 # Limpiar directorios de salida
                 output_dirs = [
-                    resource_path("data/output/placas"),
-                    resource_path("data/output/autos")
+                    writable_data_path("data/output/placas"),
+                    writable_data_path("data/output/autos")
                 ]
                 
                 for output_dir in output_dirs:
@@ -911,7 +912,7 @@ class VideoSelectorWindow:
         """Limpiar datos de infracciones de un video específico"""
         print(f"🧹 Limpiando infracciones para: {filename}")
         try:
-            infractions_file = resource_path("data/infracciones.json")
+            infractions_file = writable_data_path("data/infracciones.json")
             if os.path.exists(infractions_file):
                 with open(infractions_file, 'r', encoding='utf-8') as f:
                     infractions = json.load(f)

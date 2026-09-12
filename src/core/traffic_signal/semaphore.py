@@ -7,8 +7,9 @@ from tkinter import messagebox
 import json
 import os
 from src.path_helper import resource_path
+from src.core.utils.paths import writable_config_path
 
-PRESETS_FILE = resource_path("config/time_presets.json")
+PRESETS_FILE = writable_config_path("time_presets.json")
 
 class Semaforo:
     """

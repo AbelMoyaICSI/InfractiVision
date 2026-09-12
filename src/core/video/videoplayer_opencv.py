@@ -20,11 +20,12 @@ from PIL import Image, ImageTk
 from src.core.detection.plate_detector import PlateDetector
 from src.core.detection.vehicle_detector import VehicleDetector
 from src.path_helper import resource_path
+from src.core.utils.paths import writable_config_path, writable_data_path
 
-# Archivos de configuración
-POLYGON_CONFIG_FILE = resource_path("config/polygon_config.json")
-AVENUE_CONFIG_FILE  = resource_path("config/avenue_config.json")
-PRESETS_FILE        = resource_path("config/time_presets.json")
+# Archivos de configuración (escribibles: APPDATA en frozen con seed del bundle)
+POLYGON_CONFIG_FILE = writable_config_path("polygon_config.json")
+AVENUE_CONFIG_FILE  = writable_config_path("avenue_config.json")
+PRESETS_FILE        = writable_config_path("time_presets.json")
 
 # ─── Lectura/escritura JSON con caché en memoria + escritura atómica ──────
 # Los configs (avenidas, presets de semáforo, polígonos) se leen decenas de
@@ -67,7 +68,17 @@ def _json_save(path: str, data: dict) -> None:
     with _CONFIG_LOCK:
         _CONFIG_CACHE[path] = (mtime, data)
 
-from src.gui.preprocessing_dialog import PreprocessingDialog
+# Import con fallback: si el diálogo de preprocesamiento no se puede importar
+# (cadena OfficialVideoProcessor/PlateReviewWindow ausente en frozen), la
+# botonera de Foto Rojo debe renderizarse igual. Quien lo usa lo reintenta
+# con import lazy y avisa solo al pulsar PROCESAMIENTO.
+try:
+    from src.gui.preprocessing_dialog import PreprocessingDialog
+except Exception as _preproc_import_error:
+    PreprocessingDialog = None  # type: ignore[no-redef]
+    _PREPROC_IMPORT_ERROR = _preproc_import_error
+else:
+    _PREPROC_IMPORT_ERROR = None
 
 class VideoPlayerOpenCV:
     def get_video_key(self, video_path):
@@ -1349,8 +1360,18 @@ class VideoPlayerOpenCV:
             else:
                 messagebox.showinfo("Procesamiento cancelado", "El análisis del video fue cancelado.")
         
-        # Iniciar el diálogo de preprocesamiento
-        PreprocessingDialog(self.parent, path, self, on_preprocessing_complete)
+        # Iniciar el diálogo de preprocesamiento (con reintento lazy si el
+        # import a nivel módulo falló en frozen).
+        _PreprocCls = PreprocessingDialog
+        if _PreprocCls is None:
+            try:
+                from src.gui.preprocessing_dialog import PreprocessingDialog as _Late
+                _PreprocCls = _Late
+            except Exception as e:
+                messagebox.showerror(
+                    "Error", f"No se pudo abrir el procesamiento: {e}")
+                return
+        _PreprocCls(self.parent, path, self, on_preprocessing_complete)
 
     def stop_video(self):
         self.running = False
@@ -2769,9 +2790,9 @@ class VideoPlayerOpenCV:
             except Exception:
                 pass
         
-        # Crear las carpetas necesarias
-        plates_dir = resource_path("data/output/placas")
-        vehicles_dir = resource_path("data/output/autos")
+        # Crear las carpetas necesarias (escribibles: APPDATA en frozen)
+        plates_dir = writable_data_path("data/output/placas")
+        vehicles_dir = writable_data_path("data/output/autos")
         os.makedirs(plates_dir, exist_ok=True)
         os.makedirs(vehicles_dir, exist_ok=True)
         
@@ -3521,7 +3542,7 @@ class VideoPlayerOpenCV:
         y se monta una barra de progreso pequeña. Al terminar la evaluación, se
         sigue abriendo la ventana de revisión (PlateReviewWindow).
         """
-        from src.gui.preprocessing_dialog import PreprocessingDialog
+        from src.gui.preprocessing_dialog import PreprocessingDialog as _LocalPreproc
 
         # Pausar cualquier reproducción en curso
         self.running = False
@@ -3549,7 +3570,7 @@ class VideoPlayerOpenCV:
                     print(f"❌ Error abriendo panel de gestión: {e}")
 
         try:
-            self._inline_dialog = PreprocessingDialog(
+            self._inline_dialog = _LocalPreproc(
                 self.parent,
                 self.current_video_path,
                 self,
@@ -4206,14 +4227,27 @@ class VideoPlayerOpenCV:
 
         Usa el VehicleDetector si ya está creado (fuente canónica: detecta CUDA
         vía torch); si no, consulta torch directamente.
+
+        Nunca debe lanzar: se ejecuta en __init__ ANTES de crear la botonera,
+        así que cualquier fallo (torch ausente, sin drivers) cae a CPU.
         """
-        if hasattr(self, 'vehicle_detector') and self.vehicle_detector is not None:
-            self.using_gpu = self.vehicle_detector.using_gpu
-            gi = getattr(self.vehicle_detector, 'hardware_info', {}).get('gpu', {})
-        else:
-            import torch
-            self.using_gpu = torch.cuda.is_available()
-            gi = {'name': torch.cuda.get_device_name(0)} if self.using_gpu else {}
+        try:
+            if hasattr(self, 'vehicle_detector') and self.vehicle_detector is not None:
+                self.using_gpu = self.vehicle_detector.using_gpu
+                gi = getattr(self.vehicle_detector, 'hardware_info', {}).get('gpu', {})
+            else:
+                import torch
+                self.using_gpu = torch.cuda.is_available()
+                gi = {'name': torch.cuda.get_device_name(0)} if self.using_gpu else {}
+        except Exception as e:
+            print(f"[videoplayer] hardware probe falló, usando CPU: {e}")
+            try:
+                from src.core.logger import get_logger as _get_log
+                _get_log("videoplayer").warning("hardware probe falló, usando CPU: %s", e)
+            except Exception:
+                pass
+            self.using_gpu = False
+            gi = {}
         self.gpu_info = {
             'name': gi.get('name', ''),
             'available': self.using_gpu,
@@ -4221,6 +4255,12 @@ class VideoPlayerOpenCV:
             'memory': gi.get('memory', 0.0),
             'count': gi.get('count', 1 if self.using_gpu else 0),
         }
+        try:
+            from src.core.logger import get_logger as _get_log2
+            _get_log2("videoplayer").info(
+                "hardware: using_gpu=%s name=%s", self.using_gpu, self.gpu_info['name'])
+        except Exception:
+            pass
 
     def check_internet_connection(self):
         """Verificar conexión a Internet"""

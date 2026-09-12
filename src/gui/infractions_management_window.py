@@ -8,13 +8,14 @@ import csv
 import queue
 import threading
 from src.path_helper import resource_path
+from src.core.utils.paths import writable_data_path
 
 
-# Ruta centralizada del archivo de infracciones
-INF_FILE = resource_path("data/infracciones.json")
+# Ruta centralizada del archivo de infracciones (escribible: APPDATA en frozen)
+INF_FILE = writable_data_path("data/infracciones.json")
 
 # Ruta centralizada del archivo de infracciones NIE (incorrectamente registradas)
-NIE_FILE = resource_path("data/nie_infracciones.json")
+NIE_FILE = writable_data_path("data/nie_infracciones.json")
 
 # === HISTORIAL DE MIGRACIONES (BD SQLite) ===
 
@@ -99,7 +100,7 @@ def delete_all_infractions():
         repo = AppRepository()
         repo.clear_infractions()
         # Limpiar directorios de imágenes
-        output_dirs = [resource_path("data/output/placas"), resource_path("data/output/autos")]
+        output_dirs = [writable_data_path("data/output/placas"), writable_data_path("data/output/autos")]
         for output_dir in output_dirs:
             if os.path.exists(output_dir):
                 for file in os.listdir(output_dir):
@@ -422,7 +423,7 @@ def generate_performance_indicators_json(software_infractions, software_processi
         print(f"⚠️ Error guardando indicadores en SQLite: {e}")
     # Compat JSON (deprecated)
     try:
-        out_path = resource_path("data/indicadores_rendimiento.json")
+        out_path = writable_data_path("data/indicadores_rendimiento.json")
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         from src.core.utils.json_store import read_json, write_json
         _existing = read_json(out_path, {})
@@ -529,14 +530,14 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             software_reincidence_data = {}
             
             # Cargar datos de infracciones del JSON
-            infractions_file = resource_path("data/infracciones.json")
+            infractions_file = writable_data_path("data/infracciones.json")
             if os.path.exists(infractions_file):
                 try:
                     with open(infractions_file, "r", encoding="utf-8") as f:
                         software_infractions = json.load(f)
                         
                         # Buscar si existe archivo de tiempos de procesamiento 
-                        processing_times_file = resource_path("data/processing_times.json")
+                        processing_times_file = writable_data_path("data/processing_times.json")
                         if os.path.exists(processing_times_file):
                             try:
                                 with open(processing_times_file, "r", encoding="utf-8") as pt_file:
@@ -696,7 +697,7 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             }
             
             # Guardar informe en JSON (conservando metricas_tesis de la sesión)
-            report_file = resource_path("data/indicadores_rendimiento.json")
+            report_file = writable_data_path("data/indicadores_rendimiento.json")
             os.makedirs(os.path.dirname(report_file), exist_ok=True)
             
             from src.core.utils.json_store import read_json, write_json
@@ -840,7 +841,7 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                         return
                     
                     # Verificar si existe el archivo de indicadores
-                    source_path = resource_path("data/indicadores_rendimiento.json")
+                    source_path = writable_data_path("data/indicadores_rendimiento.json")
                     if not os.path.exists(source_path):
                         messagebox.showerror("Error", "No se encontró el archivo de indicadores de rendimiento.")
                         return

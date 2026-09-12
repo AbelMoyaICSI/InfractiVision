@@ -15,7 +15,7 @@
 
 *Detección automática de violaciones al semáforo en rojo con YOLOv8 + LPRNet y validación humana asistida*
 
-[🚀 Instalación](#-instalación) • [📖 Manual de Usuario](#-manual-de-usuario) • [🎯 Características](#-características) • [🏗️ Arquitectura](#️-arquitectura) • [🔄 Flujo](#-flujo-de-procesamiento) • [☁️ Cloud](#️-integración-cloud)
+[🚀 Instalación](#-instalación) • [📦 Compilar Build](#-compilar-build) • [📖 Manual de Usuario](#-manual-de-usuario) • [🎯 Características](#-características) • [🏗️ Arquitectura](#️-arquitectura) • [🔄 Flujo](#-flujo-de-procesamiento) • [☁️ Cloud](#️-integración-cloud)
 
 </div>
 
@@ -126,10 +126,10 @@ python --version  # 3.10.x
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # Linux/macOS: source .venv/bin/activate
-pip install -r requirements.txt          # con CUDA 11.7 (usa --extra-index-url del archivo)
+pip install -r requirements.txt          # con CUDA 12.4 (torch 2.6.0+cu124, usa --extra-index-url del archivo)
 # Alternativas:
-# pip install -r requirements-cpu.txt   # sin CUDA
-# pip install -r requirements-ocr.txt   # solo OCR (PaddleOCR/EasyOCR)
+# pip install -r requirements-cpu.txt   # sin GPU (torch 2.8.0 CPU, para CI / macOS / PCs sin NVIDIA)
+# pip install -r requirements-ocr.txt   # solo OCR de pruebas (PaddleOCR/EasyOCR, NO para build prod)
 
 # Variable para validación en la nube (requerida para Plate Recognizer)
 # .env en la raíz (ver .env:1):
@@ -146,28 +146,199 @@ python main.py
 
 ---
 
+## 📦 Compilar Build
+
+> Build único CUDA con fallback a CPU: el mismo binario usa GPU si hay NVIDIA (`torch.cuda.is_available()`) y si no, corre en CPU. No hay que elegir versión según hardware en ejecución, solo según dónde compilas.
+
+### Prerrequisitos del build
+
+| Requisito | Detalle |
+|-----------|---------|
+| **Python** | **3.10 64-bit** (`mise.toml`). Si compilas con 32-bit falla con `DLL load failed while importing cv2`. Verifica con `python -c "import struct; print(struct.calcsize('P')*8)"` → debe dar `64` |
+| **OpenCV** | `opencv-python==4.9.0.80`. **Nunca** `opencv-python-headless` en prod (solo tests con EasyOCR). Si lo tienes: `pip uninstall opencv-python-headless opencv-python -y` y luego `pip install --no-cache --force-reinstall opencv-python==4.9.0.80` |
+| **VC++ Redist (Windows)** | [vc_redist.x64.exe](https://aka.ms/vs/17/release/vc_redist.x64.exe), requerido para que `cv2` cargue en el `.exe` |
+| **PyInstaller** | `pyinstaller==6.11.1` (viene en ambos `requirements*.txt`) |
+| **Inno Setup 6 (solo Setup Windows)** | `choco install innosetup` → comando `iscc` |
+
+### Qué requirements usar
+
+| Archivo | Cuándo | Contenido |
+|---------|--------|-----------|
+| `requirements.txt` | **Canónico CUDA** — PC con NVIDIA / build oficial / Releases | `torch==2.6.0+cu124`, `torchvision==0.21.0+cu124`, `numpy==1.26.4`, `opencv==4.9.0.80` |
+| `requirements-cpu.txt` | PCs **sin GPU**, macOS, CI | `torch==2.8.0`, `torchvision==0.23.0` CPU desde PyPI, mismo pin `numpy`/`opencv` |
+| `requirements-ocr.txt` | **Solo tests** comparadores OCR | PaddleOCR/EasyOCR — no se empaqueta en el `.exe` |
+
+### Tabla de specs PyInstaller
+
+| Spec | Modo | Cuándo usarlo |
+|------|------|---------------|
+| `InfractiVision-ONEDIR-CUDA.spec` | **ONEDIR (canónico)** | Build oficial CUDA. Carpeta `dist/InfractiVision/` que arranca en <1.5 s (sin extracción `_MEIPASS`). Lo que embebe `online.iss` |
+| `InfractiVision-ONEDIR-CPU.spec` | ONEDIR | Legacy solo macOS / CPU |
+| `InfractiVision-CUDA.spec` | ONEFILE | Portable de un solo `.exe` con CUDA bundlado (arranque más lento) |
+| `InfractiVision-CPU.spec` | ONEFILE | Portable CPU |
+| `InfractiVision.spec` | ONEFILE genérico | Fallback compat |
+
+Todos empaquetan `img/*.png|*.ico` + `config/*.json` + `presets/*.db` y, **solo si existen al compilar**, el JSON de Firebase y `.env` (token Plate Recognizer). `data/`, `videos/` y `models/*.pt|*.pth` (21 MB) **no** se empaquetan: se descargan on-demand al instalar / primer arranque (`config/demo_videos.json`, `config/models_manifest.json`).
+
+### Comandos de build local
+
+```bash
+# 0. Entorno limpio (una sola vez)
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
+pip install -r requirements.txt          # CUDA (oficial)
+# o: pip install -r requirements-cpu.txt # CPU / macOS
+
+# 1. Build canónico CUDA ONEDIR (recomendado)
+python scripts/build_online.py --variant cuda
+# Salida: dist/InfractiVision/InfractiVision.exe (Win) o dist/InfractiVision/InfractiVision (Linux/Mac)
+
+# 2. Build + ZIP listo para Releases
+python scripts/build_online.py --variant cuda --zip
+# Salida: dist/InfractiVision-cuda-Win-x64.zip (o Linux-x64 / Mac-x64|arm64)
+
+# 3. Variante CPU (legacy, solo macOS / PCs sin NVIDIA)
+pip install -r requirements-cpu.txt
+python scripts/build_online.py --variant cpu --zip
+
+# 4. ONEFILE portable (un solo .exe, arranque más lento)
+python scripts/build_online.py --variant cuda --onefile
+# o directo:
+python -m PyInstaller --noconfirm --clean InfractiVision-CUDA.spec
+
+# 5. Verificación offline (sin red)
+python scripts/verify_installer.py
+python scripts/ci_smoke_test.py
+```
+
+### Instalador para usuario final (sin compilar)
+
+```bash
+# Windows (requiere Inno Setup 6)
+iscc installer/win/online.iss
+# Genera: dist/InfractiVision-Setup-Online.exe (ONEDIR CUDA embebido con lzma2)
+
+# Linux (per-user, XDG)
+bash installer/linux/install.sh --prefix ~/.local/share/InfractiVision
+bash installer/linux/install.sh --no-demo   # sin descargar los 5 videos demo
+
+# macOS (siempre CPU, sin CUDA)
+bash installer/mac/install.sh
+# Si Gatekeeper bloquea (sin firma): xattr -dr com.apple.quarantine /Applications/InfractiVision.app
+# Empaquetado pkg/dmg (requiere Xcode):
+bash installer/mac/build-pkg.sh --version 2.1.0
+```
+
+El instalador descarga los 5 videos demo a la carpeta de datos del usuario (`%APPDATA%\InfractiVision\videos` en Win, `~/.config/InfractiVision/videos` en Linux, `~/Library/Application Support/InfractiVision/videos` en Mac). Si falla la red, la app los reintenta al primer arranque (botón `⬇️ Descargar Demo` en el selector).
+
+### Release por CI (GitHub Actions)
+
+`release.yml` se dispara con tag `v*` y hace todo solo:
+
+```bash
+git tag v2.1.0
+git push origin v2.1.0
+# CI: requirements.txt → PyInstaller ONEDIR CUDA → iscc online.iss → publica InfractiVision-Setup-Online.exe
+```
+
+Secrets necesarios en el repo (`Settings → Secrets`): `FIREBASE_SA_JSON` (Service Account para migrar desde el `.exe`) y `PLATE_RECOGNIZER_TOKEN` (validación cloud). Sin ellos el build sale igual pero sin secretos embebidos (la app los lee como fallback desde `APPDATA_DIR/plate_recognizer.json`).
+
+### Troubleshooting de build
+
+| Error | Causa | Solución |
+|-------|-------|----------|
+| `DLL load failed while importing cv2: %1 no es una aplicación Win32 válida` | Python 32-bit en PC 64-bit, o falta VC++ Redist, o `headless` instalado | Reinstala Python 3.10 x64, instala `vc_redist.x64.exe`, desinstala `headless` (ver arriba) |
+| `[spec] ERROR: opencv-python-headless detectado` | EasyOCR/PaddleOCR contaminó el venv prod | `pip uninstall opencv-python-headless opencv-python -y && pip install --no-cache --force-reinstall opencv-python==4.9.0.80` |
+| `.exe` corre en CPU teniendo GPU | Driver < 550 o PyTorch CPU instalado | `pip install -r requirements.txt` (índice cu124) y verifica `nvidia-smi`; la página GPU del instalador es solo informativa |
+| Setup > 2 GB | Se coló `data/` o `videos/` | No tocar el spec: ya los excluye a propósito; reconstruye con `build_online.py` |
+
+---
+
 ## 📖 Manual de Usuario
 
-### Pantalla de Inicio
+> El mismo manual está disponible dentro de la app: botón **Manual de Usuario** en la pantalla de inicio (`src/gui/manual_window.py:8`).
 
-`src/gui/welcome_window.py:95` — panel izquierdo con imagen `img/welcome_bg.png` redimensionada (máx. 1920×1080, debounce 200 ms) y panel derecho con:
+### 1. Qué puede hacer el software
 
-- **Manual de Usuario** → `src/gui/manual_window.py:8`
-- **Foto Rojo** → `src/gui/app_manager.py:43`
-- **Gestión de Infracciones** → `src/gui/app_manager.py:54`
+| Capacidad | Descripción |
+|-----------|-------------|
+| 🚦 **Detectar cruces en rojo (offline por video)** | Analiza un archivo de video con un semáforo virtual G → Y → R configurable. Solo cuenta como infracción el cruce del polígono durante fase roja (más un pequeño pre-rojo) |
+| 🚗 **Trackear vehículos sin duplicar** | Asigna un ID por vehículo (centroide / DeepSORT) para que el mismo auto no genere 2 infracciones |
+| 🔍 **Recortar la mejor placa por infractor** | YOLO de placas sobre el cuadrante inferior del vehículo + scoring de calidad (contraste, bordes, nitidez, tamaño). Guarda el mejor crop |
+| 🔤 **Leer placas con LPRNet Perú** | OCR principal `LPRNet_Peru_MASTER_FINAL.pth` con contexto Trujillo + validación SIIV MTC + `SmartPlateCorrector` (0↔O, 1↔I, 8↔B…). Alternativos PaddleOCR/EasyOCR por `INFRACTI_OCR_BACKEND` |
+| ☁️ **Validar placa en la nube** | Cada crop se valida contra **Plate Recognizer API** (`regions=pe`, 2 s entre requests) con revisión humana (check *Validar*) |
+| 📊 **Medir NID / NIE / TI / TR** | NID = validadas con placa; NIE = pendientes sin placa o no validadas; TI = `NID/(NID+NIE)*100`; TR = minutos de video por infracción validada |
+| 💾 **Guardar todo local** | SQLite `data/infractions.sqlite` (tablas `infractions`, `video_configs`, `indicators`, `migrations`) |
+| ☁️ **Migrar a Firebase** | Al pulsar *Completado* sube un documento `migraciones/{uuid}` a Firestore `infractivision-e8c03` con TI/TR/NID/NIE + settings + detecciones |
+| 📤 **Exportar evidencia** | CSV / Excel / PDF / JSON desde Gestión y desde la ventana de validación |
+| 🌙 **Trabajar de noche** | Detecta video nocturno (nombre o brillo < 60) y ajusta confianza + realce |
+| 🎬 **Gestionar videoteca** | Miniaturas, importar/eliminar/actualizar videos, 5 demos descargables, descarga de modelos on-demand |
 
-### Módulo Foto Rojo
+### 2. Partes del software (dónde está cada cosa)
 
-1. **Selector visual** (`src/gui/video_selector_window.py:23`): miniaturas, metadatos (duración/resolución/tamaño), estado de configuración (polígono/semáforo/avenida). Acciones: *Seleccionar*, *Configurar*, *Limpiar*, *Eliminar*, *Importar*, *Actualizar*.
-2. **Configurar zona**: polígono de la intersección + margen de peligro (`danger_zone_margin_pixels`, `src/infrastructure/configuration/video_config_repository.py:17`). Se guarda en `config/polygon_config.json`.
-3. **Configurar semáforo y avenida**: tiempos G/Y/R + `pre_red_seconds`/`green_skip_rate` en `config/time_presets.json`; avenida en `config/avenue_config.json`. Todo vía `VideoConfigRepository:26`.
-4. **Reproductor** (`src/core/video/videoplayer_opencv.py:1357`): `play_video()`, overlay del estado, timer HH:mm:ss y `G/Y/R` en segundos, beeps por `src/core/utils/audio.py:1`.
-5. **Iniciar procesamiento** (`src/gui/preprocessing_dialog.py:1247`): `_process_video_official()` crea `OfficialVideoProcessor` con los detectores del player y un `callback` que encola `official_frame` / `official_infraction` / `official_complete`. La UI se drena en el hilo de Tk (`_process_results_queue`, `_poll_display_queue`). Al terminar, congela semáforo/timer y abre `PlateReviewWindow`.
-6. **Validación** (`src/presentation/gui/plate_review_window.py:17`): un worker por crop llama `PlateRecognizerSnapshotReader.read()` (`src/infrastructure/ocr/cloud_plate_readers.py:23`, `regions=pe`, espera mínima 2 s, reintentos con `Retry-After`), publica en `queue.Queue` y el poller de Tk muestra `Confianza: 0.xx` y habilita el check *Validar*. Botones: *Reintentar actual*, *Exportar validados*, *Completado* (dispara persistencia + migración).
+| Parte | Archivo | Qué hace |
+|-------|---------|----------|
+| **Welcome (inicio)** | `src/gui/welcome_window.py:95` | 3 botones: *Manual de Usuario*, *Foto Rojo*, *Gestión de Infracciones*. Fondo `img/welcome_bg.png` |
+| **Selector de videos** | `src/gui/video_selector_window.py:23` | Galería con miniatura, duración/resolución/tamaño y estado (🔒 Configurado / ⚙️ Sin configurar). Botones: *Seleccionar*, *Configurar*, *Limpiar*, *Eliminar*, *Importar*, *Actualizar*, *⬇️ Descargar Demo* |
+| **Config. zona** | `VideoConfigRepository` + `config/polygon_config.json` | Polígono de la intersección + `danger_zone_margin_pixels` (default 80 px) |
+| **Config. semáforo + avenida** | `config/time_presets.json`, `config/avenue_config.json` | Tiempos G/Y/R + `pre_red_seconds` (0.5 s) + `green_skip_rate` (60 frames) + nombre de avenida |
+| **Reproductor** | `src/core/video/videoplayer_opencv.py:1357` | `play_video()`, overlay SEMÁFORO + timer HH:mm:ss + estado G/Y/R, beeps (`src/core/utils/audio.py:1`) |
+| **Preprocesamiento** | `src/gui/preprocessing_dialog.py:1247` | `_process_video_official()` lanza `OfficialVideoProcessor` en hilo worker, muestra progreso en Tk vía cola. Al terminar congela semáforo/timer |
+| **Validación de placas** | `src/presentation/gui/plate_review_window.py:17` | Revisión secuencial crop por crop (worker + `queue.Queue` + `after(50)`). Botones: *Reintentar actual*, *Exportar validados*, *Completado* |
+| **Gestión de Infracciones** | `src/gui/infractions_management_window.py:1` | Tarjetas a color (grid 3/2/1), paginación de 10 con *Cargar más*, filtros fecha/placa, exportar CSV/Excel/PDF, eliminar, historial `migrations` |
+| **Persistencia** | `src/infrastructure/database/app_repository.py:226` | `list_infractions()`, `compute_indicators_report():379` |
+| **Migración cloud** | `src/automations/firestore_migrator.py:153` | `migrate_single_video_to_firestore()` en hilo `daemon` (`preprocessing_dialog.py:1388`) |
 
-### Gestión de Infracciones
+### 3. Cómo se usa (paso a paso)
 
-`src/gui/infractions_management_window.py:1` — lee de `AppRepository.list_infractions()` (`src/infrastructure/database/app_repository.py:226`), renderiza tarjetas a color por validación (grid 3/2/1 columnas según ancho), paginación de 10 en 10 con *Cargar más*. Acciones: filtrar por fecha/placa, exportar CSV/Excel/PDF, eliminar, y ver historial de migraciones (`migrations`).
+**Paso 0 — Abrir la app:**
+```bash
+python main.py
+# o doble clic en InfractiVision.exe / InfractiVision-Setup-Online.exe
+```
+Requisitos del video: MP4 (recomendado), AVI, MOV, MKV, WMV o FLV; 720p mínimo (1080p ideal); 15–30 FPS; cámara **estática** con vista frontal/semi-frontal a las placas. De día funciona mejor; de noche necesita algo de iluminación.
+
+**Paso 1 — Pantalla de inicio:** pulsa **Foto Rojo**.
+
+**Paso 2 — Elige video:** en el selector visual pulsa *Seleccionar* sobre un video. Si dice *⚙️ Sin configurar*, pulsa *Configurar*:
+- Dibuja el **polígono** sobre la intersección (clic por vértice, doble clic para cerrar).
+- Pon **avenida/ubicación** (ej. `Av. Condorcanqui - Trujillo`).
+- Pon tiempos **Verde / Amarillo / Rojo** en segundos (ej. 12 / 2 / 10). Guarda.
+
+**Paso 3 — Reproduce y verifica:** dale *Play*. Comprueba que el banner `SEMÁFORO EN ROJO` y el timer G/Y/R cuadran con el video. Si no, vuelve a *Configurar*.
+
+**Paso 4 — Iniciar procesamiento:** pulsa **INICIAR PROCESAMIENTO DE INFRACCIONES**. Se abre el diálogo de progreso (barra + contador de infractores). No cierres la ventana; el proceso corre en background.
+
+**Paso 5 — Validar placas:** al terminar se abre **PlateReviewWindow** con el mejor crop de cada infractor:
+1. Espera el texto de Plate Recognizer (`Confianza: 0.xx`, ~2 s por placa por límite API).
+2. Corrige la placa a mano si el OCR se equivocó (formato Perú `ABC-123`).
+3. Marca el check **Validar** solo en las correctas → cuentan como **NID**; las demás quedan **NIE**.
+4. *Reintentar actual* si falló la red; *Exportar validados* para un CSV rápido.
+5. Pulsa **Completado** → guarda en SQLite, calcula TI/TR y migra a Firestore.
+
+**Paso 6 — Revisar en Gestión:** abre **Gestión de Infracciones** para ver tarjetas NID (verde) / NIE (ámbar), filtrar por fecha o placa (`T4A-123`), *Cargar más* (10 en 10), exportar a **CSV/Excel/PDF** o eliminar. La pestaña de migraciones muestra el `uuid` subido a Firestore.
+
+### 4. Indicadores (cómo leerlos)
+
+Calculados en `AppRepository.compute_indicators_report()` (`app_repository.py:379`), idénticos en SQLite, panel y Firestore:
+
+| Indicador | Fórmula | Ejemplo |
+|-----------|---------|---------|
+| **NID** | evidencias validadas ✓ con placa | 3 |
+| **NIE** | pendientes sin placa + no validados | 1 |
+| **TI** | `NID / (NID+NIE) * 100` (%) | 75 % |
+| **TR** | `duración video (min) / NID` | 0.42 min/infracción |
+
+### 5. Si algo sale mal (uso)
+
+| Síntoma | Causa probable | Qué hacer |
+|---------|----------------|-----------|
+| No detecta infracciones | Polígono mal dibujado o tiempos G/Y/R invertidos | Re-edita polígono (que cubra el cruce, no toda la calle) y revisa que el rojo del video coincida con el timer |
+| Placas mal leídas | Video 480p, noche sin luz, ángulo lateral | Usa 1080p diurno si puedes; el `SmartPlateCorrector` corrige 0↔O/1↔I pero no milagros con blur |
+| `Confianza: --` eternamente | Sin `PLATE_RECOGNIZER_API_TOKEN` en `.env` o sin internet | La app sigue guardando local (NIE); configura el token y pulsa *Reintentar actual* |
+| No migra a Firestore | Sin JSON Service Account o sin internet | Funciona offline; la fila queda pendiente en tabla `migrations` y se reintenta en *Completado* |
+| Error al exportar | Carpeta sin permiso de escritura | Exporta a `Documentos/` o ejecuta como usuario normal (no como admin bloqueado) |
 
 ### Configuraciones Avanzadas
 

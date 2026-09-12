@@ -19,6 +19,19 @@ def _configure_root() -> None:
     root = logging.getLogger("infractivision")
     root.setLevel(logging.INFO)
     root.addHandler(handler)
+    # En frozen (windowed, console=False) stdout es invisible: persistir a
+    # %APPDATA%/InfractiVision/logs/infractivision.log (best-effort, sin romper).
+    try:
+        from pathlib import Path as _P
+
+        from src.core.utils.paths import LOGS_DIR
+
+        _P(LOGS_DIR).mkdir(parents=True, exist_ok=True)
+        _fh = logging.FileHandler(str(_P(LOGS_DIR) / "infractivision.log"), encoding="utf-8")
+        _fh.setFormatter(logging.Formatter(_FORMAT, datefmt=_DATEFMT))
+        root.addHandler(_fh)
+    except Exception:
+        pass
     root.propagate = False
     _configured = True
 

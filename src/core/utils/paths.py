@@ -62,6 +62,62 @@ def ensure_user_dirs() -> None:
             d.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
+    # Dirs escribibles que la GUI legacy usa vía writable_data_path
+    for rel in ("data", "data/output", "data/output/placas", "data/output/autos",
+                "data/output/official", "data/videos", "data/images",
+                "data/evidences", "videos", "models"):
+        try:
+            (APPDATA_DIR / rel).mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+
+def writable_config_path(filename: str) -> str:
+    """Ruta ESCRIBIBLE para configs (polígono/avenida/presets).
+
+    En frozen (instalado) apunta a %APPDATA%/InfractiVision/config/<file>
+    con seed desde el bundle (_MEIPASS/config) en el primer arranque.
+    En desarrollo conserva el archivo del proyecto (config/<file>).
+    """
+    if not hasattr(sys, "_MEIPASS"):
+        # Desarrollo: conservar el archivo del proyecto (raíz, no .venv).
+        # paths.resource_path usa sys.executable/__file__ como base y en venv
+        # apunta a .venv/Scripts o src/core/utils; usar el helper de raíz.
+        try:
+            from src.path_helper import resource_path as _dev_rp
+        except ImportError:
+            from src.core.utils import resource_path as _dev_rp  # type: ignore[no-redef]
+        return _dev_rp(f"config/{filename}")
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    dest = CONFIG_DIR / filename
+    if not dest.exists():
+        try:
+            seed = Path(resource_path(f"config/{filename}"))
+            if seed.exists():
+                shutil.copy2(seed, dest)
+        except Exception:
+            pass
+    return str(dest)
+
+
+def writable_data_path(rel: str) -> str:
+    """Ruta ESCRIBIBLE para datos (data/*.json, data/output/...).
+
+    En frozen va a %APPDATA%/InfractiVision/<rel> (crea padres).
+    En desarrollo resuelve contra el proyecto, igual que user_data_path.
+    """
+    if hasattr(sys, "_MEIPASS"):
+        p = APPDATA_DIR / rel
+        try:
+            parent = p.parent if "." in Path(rel).name else p
+            parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        return str(p)
+    return user_data_path(rel)
 
 # Archivos clave (SETTINGS_JSON usa CONFIG_DIR pero no crea dirs en import)
 ICONO_APP = resource_path("img/icon.ico")

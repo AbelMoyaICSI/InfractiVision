@@ -447,11 +447,19 @@ end;
 procedure DownloadDemoVideos(AppPath: String);
 var
   I, Added: Integer;
-  VDir, TmpFile, DestFile: String;
+  VDir, LegacyDir, TmpFile, DestFile: String;
 begin
-  VDir := AppPath + '\videos';
+  // La app (frozen) lee videos de %APPDATA%\InfractiVision\videos
+  // (user_data_path). Descargar SIEMPRE ahí, no solo a {app},
+  // porque el usuario puede cambiar DefaultDirName y {app} ya no
+  // coincide con APPDATA. Se mantiene compat con {app}\videos.
+  VDir := ExpandConstant('{userappdata}\InfractiVision\videos');
+  LegacyDir := AppPath + '\videos';
   if not ForceDirectories(VDir) then
     Log('No se pudo crear ' + VDir);
+  if (CompareText(VDir, LegacyDir) <> 0) then
+    if not ForceDirectories(LegacyDir) then
+      Log('No se pudo crear legacy ' + LegacyDir);
   DownloadPage.Clear;
   Added := 0;
   for I := 0 to GetArrayLength(DemoFiles)-1 do
@@ -500,12 +508,31 @@ end;
 
 procedure EnsureModelsPreFetched(AppPath: String);
 var
-  MDir: String;
+  MDir, LegacyMDir: String;
 begin
-  MDir := AppPath + '\models';
+  // Los modelos los resuelve la app vía get_model_path() a
+  // %APPDATA%\InfractiVision\models. Asegurar ese dir siempre.
+  MDir := ExpandConstant('{userappdata}\InfractiVision\models');
+  LegacyMDir := AppPath + '\models';
   if not ForceDirectories(MDir) then
     Log('No se pudo crear ' + MDir);
+  if (CompareText(MDir, LegacyMDir) <> 0) then
+    if not ForceDirectories(LegacyMDir) then
+      Log('No se pudo crear legacy ' + LegacyMDir);
   Log('Modelos se descargaran on-demand al primer arranque a %APPDATA%\InfractiVision\models');
+end;
+
+procedure EnsureConfigsSeeded(AppPath: String);
+var
+  CfgDir, SrcDir: String;
+begin
+  // Las configs escribibles viven en %APPDATA%\InfractiVision\config
+  // (writable_config_path con seed). Sembrarlas aquí acelera el primer
+  // arranque y evita depender solo del seed en runtime.
+  CfgDir := ExpandConstant('{userappdata}\InfractiVision\config');
+  SrcDir := AppPath + '\_internal\config';
+  if not ForceDirectories(CfgDir) then
+    Log('No se pudo crear ' + CfgDir);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -530,9 +557,10 @@ begin
       Log('CurStepChanged: NVIDIA detectada -> el build unico usará GPU')
     else
       Log('CurStepChanged: sin NVIDIA -> el mismo build correrá en CPU');
-    // 1. Videos demo
+    // 1. Videos demo + modelos + seed de configs en APPDATA
     DownloadDemoVideos(ExpandConstant('{app}'));
     EnsureModelsPreFetched(ExpandConstant('{app}'));
+    EnsureConfigsSeeded(ExpandConstant('{app}'));
   end;
 end;
 

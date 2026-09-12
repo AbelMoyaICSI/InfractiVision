@@ -238,6 +238,13 @@ def ensure_models(
         if _is_valid(dest, entry.get("size"), entry.get("sha256")):
             summary["skipped"] += 1
             continue
+        # Embebido en el bundle: get_model_path lo resuelve (no descargar).
+        try:
+            if Path(get_model_path(entry["filename"])).exists():
+                summary["skipped"] += 1
+                continue
+        except Exception:
+            pass
         # Fallback handling: if primary failed, try its fallbacks
         if _download_entry(entry, dest_dir_p, on_progress):
             summary["ok"] += 1
@@ -309,6 +316,16 @@ def missing_models(dest_dir: str | Path | None = None, manifest: str | None = No
     missing: list[str] = []
     for e in entries:
         dest = dest_dir_p / e["filename"]
+        if _is_valid(dest, e.get("size"), e.get("sha256")):
+            continue
+        # Si el modelo ya viene embebido en el bundle (_MEIPASS/models),
+        # get_model_path lo resuelve: no reportar como faltante ni re-descargar
+        # (evita 404s ruidosos en frozen cuando el bucket no los tiene).
+        try:
+            if Path(get_model_path(e["filename"])).exists():
+                continue
+        except Exception:
+            pass
         if not _is_valid(dest, e.get("size"), e.get("sha256")):
             missing.append(e["filename"])
     return missing
