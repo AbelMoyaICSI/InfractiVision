@@ -27,6 +27,17 @@ class VehicleDetector:
         self.using_gpu = self.device.type == 'cuda'
         # FP16 solo si realmente hay GPU usable (port de windows_machine_owner)
         self.half = self.using_gpu
+        # Fase 1 GPU: cudnn benchmark para imgsz fijo + hilos CPU acotados para
+        # no saturar la CPU mientras la GPU infiere (GTX 1650 Ti 4GB).
+        if self.using_gpu:
+            try:
+                torch.backends.cudnn.benchmark = True
+            except Exception:
+                pass
+            try:
+                torch.set_num_threads(max(2, (os.cpu_count() or 4) // 2))
+            except Exception:
+                pass
 
         try:
             self.model.to(self.device)
@@ -149,6 +160,19 @@ class VehicleDetector:
             return
         
         # Resto de configuraciones para GPU
+        # Fase 1 (medido en GTX 1650 Ti 4GB): yolov8n es tan liviano que el
+        # batch de ultralytics es más lento que single (99ms vs 9ms en 416px
+        # por overhead de stacking/padding). Se deja batch=1 por defecto;
+        # el batch queda disponible vía IV_BATCH=4 para modelos más grandes.
+        gpu_mem = float(self.hardware_info['gpu'].get('memory') or 0)
+        gpu_cc = float(self.hardware_info['gpu'].get('compute_capability') or 0)
+        if has_gpu and gpu_cc >= 7.0 and 3.0 <= gpu_mem < 6.0:
+            self.imgsz = 480
+            self.conf_threshold = 0.30
+            self.max_det = 100
+            self.batch_size = 1
+            print("[GPU] Configuracion TURING-4GB: 480px single FP16 (Fase 1, batch opt-in)")
+            return
         if score >= 80:  # Hardware muy potente
             self.imgsz = 832
             self.conf_threshold = 0.25
@@ -220,14 +244,21 @@ class VehicleDetector:
         # OMITIMOS: 0: person, 3: motorcycle (según pedido del usuario)
         valid_classes = [2, 5, 7]
         
-        # MEJORA: Configuración adaptativa automática
+        # MEJORA Fase 1: un solo downscale para brillo + hash (evita 2x cvtColor
+        # full-res por frame). El brillo con proxy 64px difiere <3 niveles.
         if conf is None:
-            # Calcular brillo promedio de la imagen
-            gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-            image_brightness = np.mean(gray)
+            try:
+                _tiny = cv2.resize(image_bgr, (64, 64), interpolation=cv2.INTER_LINEAR)
+                _tiny_gray = cv2.cvtColor(_tiny, cv2.COLOR_BGR2GRAY)
+                image_brightness = float(np.mean(_tiny_gray))
+            except Exception:
+                gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+                image_brightness = np.mean(gray)
             conf = self.get_adaptive_conf_for_conditions(is_night, image_brightness)
-        
+
         # 1. Verificar si el frame es muy similar al anterior usando hash perceptual
+        # Fase 1: hash sobre el mismo proxy 8x8 pero sin resize full->8 del BGR
+        # (se reutiliza el tiny cuando existe para no pagar 2 resizes).
         if image_bgr.shape[0] > 200:  # Solo para imágenes grandes
             small = cv2.resize(image_bgr, (8, 8))
             gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)

@@ -128,10 +128,13 @@ def score_quad(pts, roi_h, roi_w):
             central_score * 0.30)
 
 
-def encontrar_esquinas(roi_bgr):
+def encontrar_esquinas(roi_bgr, fast: bool = False):
     """
     Busca las 4 esquinas de la placa usando múltiples métodos.
     Retorna: (pts_4x2_ordered, method, score) o (None, "NONE", 0)
+
+    Fase 2: fast=True prueba ~1/6 de combinaciones (suficiente para YOLO-crops
+    ya centrados) y sale temprano si score>0.6. Full se reserva para best_pqi.
     """
     h, w = roi_bgr.shape[:2]
     if h < 10 or w < 15:
@@ -143,6 +146,32 @@ def encontrar_esquinas(roi_bgr):
     enhanced = clahe.apply(bilateral)
 
     all_candidates = []
+
+    if fast:
+        # Fase 2 fast: 1 blur + 2 blocks + 1 Canny + 2 brillos + 1 blanco.
+        # ~5 máscaras vs ~35 del full. Early-exit abajo si score alto.
+        blur = cv2.GaussianBlur(enhanced, (5, 5), 0)
+        for block, c_val in [(11, 2), (21, 4)]:
+            thresh = cv2.adaptiveThreshold(
+                blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY, block, c_val)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
+            thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+            for s, p in _buscar_quads(thresh, h, w):
+                all_candidates.append((s, p, "Adaptive-fast"))
+                if s > 0.6:
+                    return p, "Adaptive-fast", s
+        edges = cv2.Canny(enhanced, 50, 150)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 3))
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=2)
+        for s, p in _buscar_quads(edges, h, w):
+            all_candidates.append((s, p, "Canny-fast"))
+            if s > 0.6:
+                return p, "Canny-fast", s
+        if all_candidates:
+            all_candidates.sort(key=lambda x: x[0], reverse=True)
+            return all_candidates[0][1], all_candidates[0][2], all_candidates[0][0]
+        return None, "NONE", 0
 
     # ===== 1. ADAPTIVE THRESHOLD =====
     for blur_k in [5, 3, 7]:

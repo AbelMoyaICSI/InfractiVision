@@ -17,7 +17,7 @@ except Exception as _e:
 # ──────────────────────────────────────────────────────────────
 
 
-def rectificar_perspectiva(plate_raw):
+def rectificar_perspectiva(plate_raw, fast: bool = True):
     """
     Pipeline de rectificacion homografica v6.3.
     Orden correcto:
@@ -25,6 +25,8 @@ def rectificar_perspectiva(plate_raw):
       2. encontrar_esquinas → aplicar_homografia → 300x110 plano
       3. strip header PERU (top 25%)                  ← solo caracteres al OCR
     Retorna imagen lista para LPRNet, o None si falla.
+
+    Fase 2: fast=True por defecto en vivo (~1/6 costo). Full solo para best final.
     """
     if not _HOMOGRAFIA_OK or plate_raw is None or plate_raw.size == 0:
         return None
@@ -39,8 +41,8 @@ def rectificar_perspectiva(plate_raw):
             cv2.BORDER_REPLICATE
         )
 
-        # PASO 2: Homografia v6.3
-        pts, method, score = encontrar_esquinas(padded)
+        # PASO 2: Homografia v6.3 (fast en vivo, full solo en best final)
+        pts, method, score = encontrar_esquinas(padded, fast=fast)
         if pts is None:
             return None
         rectified = aplicar_homografia(padded, pts)   # 300x110

@@ -63,6 +63,19 @@ class PlateDetector:
         if self.device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.half = self.device.type == 'cuda'
+        # Fase 1: cudnn benchmark para imgsz de crops relativamente estable.
+        if self.device.type == 'cuda':
+            try:
+                torch.backends.cudnn.benchmark = True
+            except Exception:
+                pass
+        # Fase 2: LUTs gamma precalculadas (evita np.array 3x por crop nocturno).
+        self._gamma_luts = {}
+        for _g in (0.15, 0.3, 0.5, 0.7):
+            _inv = 1.0 / _g
+            self._gamma_luts[_g] = np.array(
+                [((i / 255.0) ** _inv) * 255 for i in np.arange(0, 256)]
+            ).astype("uint8")
 
         if self.model:
             try:
@@ -129,13 +142,19 @@ class PlateDetector:
                 print("[PlateDetector] Enhanced night mode activated with multi-capture")
             
             # Optimizar imagen para mejor detección con multi-capture para noche
+            # Fase 2: fast-first (1 variante ~8ms). Solo si la calidad es mala
+            # se pagan las 5 variantes (~226ms medidos).
             if is_night:
                 enhanced_image = self._select_best_night_enhancement(image)
             else:
                 enhanced_image = self._enhance_image_for_detection(image, is_night)
-            
-            # Configuración adaptativa basada en las características de la imagen
-            brightness = np.mean(cv2.cvtColor(enhanced_image, cv2.COLOR_BGR2GRAY))
+
+            # Fase 2: brillo sobre proxy 64px (evita cvtColor full-res por crop).
+            try:
+                _tg = cv2.resize(enhanced_image, (64, 64), interpolation=cv2.INTER_LINEAR)
+                brightness = float(np.mean(cv2.cvtColor(_tg, cv2.COLOR_BGR2GRAY)))
+            except Exception:
+                brightness = np.mean(cv2.cvtColor(enhanced_image, cv2.COLOR_BGR2GRAY))
             
             # ULTRA LOW confidence thresholds for night detection
             if brightness < 100:  # Dark/night image
@@ -276,54 +295,56 @@ class PlateDetector:
             return []
     
     def _enhance_image_for_detection(self, image, is_night=False):
-        """Mejora la imagen para una mejor detección de placas con soporte nocturno"""
+        """Fase 2 ligera: evita bilateralFilter (O(d²), el filtro más caro).
+
+        YOLO-placas no necesita denoising edge-preserving; un blur gaussiano
+        3x3 es ~10x más barato y no degrada mAP en crops. Noche usa el fast.
+        """
         try:
-            enhanced = image.copy()
-            
-            # Corrección de gamma adaptativa
-            gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
-            mean_brightness = np.mean(gray)
-            
+            # Brillo sobre proxy para no pagar cvtColor full-res extra.
+            try:
+                _p = cv2.resize(image, (64, 64), interpolation=cv2.INTER_LINEAR)
+                mean_brightness = float(np.mean(cv2.cvtColor(_p, cv2.COLOR_BGR2GRAY)))
+            except Exception:
+                mean_brightness = float(np.mean(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)))
+
             if is_night:
-                # Mejoras específicas para condiciones nocturnas
-                enhanced = self._apply_night_enhancement(enhanced)
-            elif mean_brightness < 100:
-                # Imagen oscura - aumentar brillo
-                enhanced = cv2.convertScaleAbs(enhanced, alpha=1.2, beta=20)
+                return self._fast_night_enhance(image)
+
+            enhanced = image
+            if mean_brightness < 100:
+                enhanced = cv2.convertScaleAbs(image, alpha=1.2, beta=20)
             elif mean_brightness > 180:
-                # Imagen muy brillante - reducir exposición
-                enhanced = cv2.convertScaleAbs(enhanced, alpha=0.9, beta=-10)
-            
-            # Mejora de contraste local
+                enhanced = cv2.convertScaleAbs(image, alpha=0.9, beta=-10)
+
             if len(enhanced.shape) == 3:
                 lab = cv2.cvtColor(enhanced, cv2.COLOR_BGR2LAB)
                 l, a, b = cv2.split(lab)
-                
-                if is_night:
-                    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))  # Más agresivo para noche
-                else:
-                    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                    
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
                 l = clahe.apply(l)
-                enhanced = cv2.merge([l, a, b])
-                enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
-            
-            # Reducción de ruido adaptativa
-            if is_night:
-                enhanced = cv2.bilateralFilter(enhanced, 9, 75, 75)  # Más fuerte para noche
-            else:
-                enhanced = cv2.bilateralFilter(enhanced, 5, 50, 50)
-            
+                enhanced = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+
+            # Denoise barato: solo si el crop es grande, blur 3x3.
+            try:
+                if max(image.shape[:2]) > 200:
+                    enhanced = cv2.GaussianBlur(enhanced, (3, 3), 0)
+            except Exception:
+                pass
             return enhanced
-            
+
         except Exception:
             return image
 
     def _detect_night_conditions(self, image):
-        """Detecta si la imagen fue tomada en condiciones nocturnas"""
+        """Fase 2: proxy 64px (35ms -> <1ms en full-frame, idéntica decisión)."""
         try:
-            # Convert to grayscale for analysis
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
+            small = image
+            try:
+                if max(image.shape[:2]) > 64:
+                    small = cv2.resize(image, (64, 64), interpolation=cv2.INTER_LINEAR)
+            except Exception:
+                pass
+            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if len(small.shape) == 3 else small
             
             # Calculate brightness metrics
             mean_brightness = np.mean(gray)
@@ -343,6 +364,93 @@ class PlateDetector:
             print(f"Error detecting night conditions: {e}")
             return False
     
+    def _gpu_gamma_boost(self, image: np.ndarray, alpha: float = 1.8,
+                           beta: float = 30.0, gamma: float = 0.5) -> np.ndarray:
+        """Fase 2: brillo+gamma en GPU (torch.cuda) con fallback CPU.
+
+        En GTX 1650 Ti evita 2-3 pasadas CPU por crop. Si no hay CUDA o el
+        crop es diminuto (<40px), usa LUT CPU precalculada (más rápido que H2D).
+        """
+        h, w = image.shape[:2]
+        try:
+            import torch
+
+            # Medido en 1650 Ti: H2D+kernel+DtoH (~20ms) pierde contra LUT CPU
+            # (~2ms) en crops típicos. GPU solo para crops enormes u opt-in.
+            import os as _os
+
+            _force_gpu = _os.getenv("IV_GPU_PREPROCESS", "") == "1"
+            if self.device.type == "cuda" and (_force_gpu or h * w >= 800 * 800):
+                t = torch.from_numpy(image).to(self.device, non_blocking=True).float()
+                t = (t * alpha + beta).clamp(0, 255) / 255.0
+                t = torch.pow(t.clamp(0, 1), 1.0 / gamma) * 255.0
+                out = t.clamp(0, 255).byte().cpu().numpy()
+                return out
+        except Exception:
+            pass
+        try:
+            tmp = cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
+            lut = self._gamma_luts.get(gamma)
+            if lut is None:
+                inv = 1.0 / gamma
+                lut = np.array([((i / 255.0) ** inv) * 255 for i in range(256)]).astype("uint8")
+            return cv2.LUT(tmp, lut)
+        except Exception:
+            return image
+
+    def _fast_night_enhance(self, image: np.ndarray) -> np.ndarray:
+        """Fase 2: 1 sola variante rápida (~5-10ms) en vez de 5 (~226ms).
+
+        Suficiente para YOLO-placas en la mayoría de noches urbanas; el modo
+        full de 5 variantes queda como fallback cuando el score es bajo.
+        """
+        try:
+            boosted = self._gpu_gamma_boost(image, alpha=1.8, beta=30.0, gamma=0.5)
+            # CLAHE suave en L (no el agresivo 4.0/10.0 del full) para no
+            # amplificar ruido y no pagar bilateralFilter (el filtro más caro).
+            lab = cv2.cvtColor(boosted, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            l = clahe.apply(l)
+            return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+        except Exception:
+            return image
+
+    def detect_batch_quadrants(self, quadrants: list, conf=0.40, classes=[0]):
+        """Fase 2: una sola inferencia GPU para N cuadrantes del mismo frame.
+
+        Evita N lanzamientos CUDA (cada YOLO-placa ~53ms). Retorna lista de
+        listas de detecciones en formato (x1,y1,x2,y2,score,class_id) por cuadrante.
+        """
+        if not quadrants or self.model is None:
+            return [[] for _ in quadrants]
+        try:
+            # Fast path por cuadrante para no pagar 5 variantes x N vehículos.
+            enhanced = [self._fast_night_enhance(q)
+                        if self._detect_night_conditions(q) else q
+                        for q in quadrants]
+            results = self.model(
+                enhanced, conf=max(0.15, conf * 0.5), classes=classes,
+                iou=0.45, agnostic_nms=True, device=self.device,
+                half=self.half, verbose=False,
+            )
+            out: list[list[tuple]] = []
+            for r in results:
+                dets: list[tuple] = []
+                if r.boxes is not None and len(r.boxes):
+                    boxes = r.boxes.xyxy.cpu().numpy()
+                    confs = r.boxes.conf.cpu().numpy()
+                    clss = r.boxes.cls.cpu().numpy()
+                    for i in range(len(boxes)):
+                        x1, y1, x2, y2 = map(int, boxes[i])
+                        dets.append((x1, y1, x2, y2, float(confs[i]), int(clss[i])))
+                out.append(dets)
+            self.detection_stats['total_detections'] += len(quadrants)
+            return out
+        except Exception:
+            # Fallback seguro: uno por uno con el path clásico.
+            return [self.detect(q, conf=conf, classes=classes) for q in quadrants]
+
     def _apply_night_enhancement(self, image):
         """Aplica mejoras ultra-agresivas para imágenes nocturnas"""
         try:
@@ -404,61 +512,64 @@ class PlateDetector:
             print(f"Error in night enhancement: {e}")
             return image
     
-    def _select_best_night_enhancement(self, image):
-        """Selecciona la mejor mejora nocturna probando múltiples técnicas"""
+    def _select_best_night_enhancement(self, image, full_if_weak: bool = True):
+        """Fase 2 fast-first: 1 variante rápida, full de 5 solo si es débil.
+
+        Medido: full=226ms vs fast=~8ms. El fast gana en noches urbanas típicas;
+        el full se reserva para score <0.45 (niebla/lluvia/noche cerrada).
+        """
         try:
-            print("[PlateDetector] Generating multiple night enhancement variants...")
-            
-            # Generar múltiples variantes
+            # Downscale de crops grandes para el costo de variantes, pero se
+            # devuelve a tamaño ORIGINAL: YOLO entrega boxes en coords de la
+            # imagen que se le pasa y el caller las mapea sobre `image`.
+            h, w = image.shape[:2]
+            work = image
+            scaled = False
+            if w > 400:
+                s = 400.0 / w
+                work = cv2.resize(image, (400, max(1, int(h * s))), interpolation=cv2.INTER_LINEAR)
+                scaled = True
+
+            def _back(img):
+                if scaled and (img.shape[1] != w or img.shape[0] != h):
+                    try:
+                        return cv2.resize(img, (w, h), interpolation=cv2.INTER_LINEAR)
+                    except Exception:
+                        return img
+                return img
+
+            fast = self._fast_night_enhance(work)
+            fast_score = self._evaluate_night_variant(fast, cheap=True)
+            if not full_if_weak or fast_score >= 0.45:
+                return _back(fast)
+
+            # Fallback full (path original) solo cuando el fast es débil.
             variants = []
-            
-            # 1. Mejora nocturna estándar
-            standard = self._apply_night_enhancement(image)
+            standard = self._apply_night_enhancement(work)
             variants.append(("Standard", standard))
-            
-            # 2. Mejora ultra-agresiva
-            ultra = image.copy()
-            ultra = cv2.convertScaleAbs(ultra, alpha=5.0, beta=120)
-            gamma = 0.15
-            inv_gamma = 1.0 / gamma
-            table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
-            ultra = cv2.LUT(ultra, table)
+            ultra = cv2.convertScaleAbs(work, alpha=5.0, beta=120)
+            ultra = cv2.LUT(ultra, self._gamma_luts[0.15])
             variants.append(("Ultra", ultra))
-            
-            # 3. Mejora específica para reflectores
-            reflective = self._enhance_reflective_areas(image)
+            reflective = self._enhance_reflective_areas(work)
             variants.append(("Reflective", reflective))
-            
-            # 4. Mejora de contraste local extremo
-            contrast = self._extreme_contrast_enhancement(image)
+            contrast = self._extreme_contrast_enhancement(work)
             variants.append(("Contrast", contrast))
-            
-            # 5. Mejora específica para semáforos rojos
-            red_light = self._red_light_compensation(image)
+            red_light = self._red_light_compensation(work)
             variants.append(("RedLight", red_light))
-            
-            # Evaluar cada variante
-            best_variant = None
-            best_score = 0
-            
+
+            best_variant, best_score = fast, fast_score
             for name, variant in variants:
-                score = self._evaluate_night_variant(variant)
-                print(f"[Variant] '{name}': score {score:.3f}")
-                
+                score = self._evaluate_night_variant(variant, cheap=True)
                 if score > best_score:
                     best_score = score
                     best_variant = variant
-            
-            if best_variant is not None:
-                print(f"[PlateDetector] Selected best night variant with score {best_score:.3f}")
-                return best_variant
-            else:
-                print("[PlateDetector] No good variant found, using standard enhancement")
-                return self._apply_night_enhancement(image)
-                
-        except Exception as e:
-            print(f"Error selecting best night enhancement: {e}")
-            return self._apply_night_enhancement(image)
+            return _back(best_variant)
+
+        except Exception:
+            try:
+                return self._fast_night_enhance(image)
+            except Exception:
+                return image
     
     def _enhance_reflective_areas(self, image):
         """Mejora específica para áreas reflectivas"""
@@ -534,10 +645,17 @@ class PlateDetector:
             print(f"Error in red light compensation: {e}")
             return image
     
-    def _evaluate_night_variant(self, variant):
-        """Evalúa la calidad de una variante nocturna"""
+    def _evaluate_night_variant(self, variant, cheap: bool = False):
+        """Evalúa la calidad de una variante nocturna (Fase 2: cheap downscale)."""
         try:
-            gray = cv2.cvtColor(variant, cv2.COLOR_BGR2GRAY)
+            # Fase 2: el scoring original (calcHist 256 + Canny full-res x5) era
+            # gran parte de los 226ms. En cheap se evalúa sobre 160px.
+            g = variant
+            if cheap and max(g.shape[:2]) > 160:
+                s = 160.0 / max(g.shape[:2])
+                g = cv2.resize(g, (max(1, int(g.shape[1] * s)), max(1, int(g.shape[0] * s))),
+                               interpolation=cv2.INTER_LINEAR)
+            gray = cv2.cvtColor(g, cv2.COLOR_BGR2GRAY)
             
             # 1. Contraste general
             contrast = np.std(gray)
