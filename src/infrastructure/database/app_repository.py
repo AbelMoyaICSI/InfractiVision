@@ -34,9 +34,25 @@ log = get_logger("infra.db.app")
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 # En frozen (onefile) la DB debe ser PERSISTENTE (APPDATA), no _MEIPASS.
 DEFAULT_DB_PATH = Path(user_data_path("data/infractions.sqlite"))
+
+
+def _resolve_preset_path() -> Path:
+    """Resuelve el preset sin depender del CWD.
+
+    Orden: `resource_path()` (CWD/_MEIPASS) y fallback a `PROJECT_ROOT`.
+    """
+    candidates = [
+        Path(resource_path("presets/infractions_preset.db")),
+        PROJECT_ROOT / "presets" / "infractions_preset.db",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
 # Preset (seed) versionable: schema + video_configs con los presets actuales.
 # Se usa como bootstrap: si la DB local no existe, se restaura una copia.
-PRESET_DB = resource_path("presets/infractions_preset.db")
+PRESET_DB = str(_resolve_preset_path())
 
 _SCHEMA_VERSION = "2"
 _DATA_MIGRATED_KEY = "data_migrated"
@@ -151,10 +167,17 @@ class AppRepository:
         self._lock = threading.Lock()
         self._ensure_db_from_preset()
         self.ensure_schema()
+        self._auto_reseed_if_empty()
 
     @property
     def db_path(self) -> str:
         return self._db_path
+
+    def _is_default_db(self) -> bool:
+        try:
+            return Path(self._db_path).resolve() == Path(DEFAULT_DB_PATH).resolve()
+        except OSError:
+            return str(self._db_path) == str(DEFAULT_DB_PATH)
 
     def _ensure_db_from_preset(self) -> None:
         """Restaura una copia del preset si la DB no existe.
@@ -166,8 +189,9 @@ class AppRepository:
         db = Path(self._db_path)
         if db.exists():
             return
-        preset = Path(PRESET_DB)
+        preset = _resolve_preset_path()
         if not preset.exists():
+            log.warning("Preset no encontrado: %s (CWD=%s)", preset, Path(".").resolve())
             return
         try:
             db.parent.mkdir(parents=True, exist_ok=True)
@@ -175,6 +199,57 @@ class AppRepository:
             log.info("DB restaurada desde preset: %s → %s", preset, db)
         except OSError as e:
             log.warning("No se pudo restaurar la DB desde preset: %s", e)
+
+    def _auto_reseed_if_empty(self) -> None:
+        """Si la DB por defecto quedó vacía (0 configs), la resiembra del preset.
+
+        Cubre el caso 'DB vacía bloquea al preset': una DB creada vacía antes
+        del seed nunca recibía los polígonos. Solo aplica a la DB por defecto
+        para no contaminar las DBs temporales de los tests.
+        """
+        if not self._is_default_db():
+            return
+        try:
+            if self.count_rows("video_configs") == 0:
+                seeded = self.reseed_video_configs_from_preset()
+                if seeded:
+                    log.info("DB vacía resembrada desde preset: %d configs", seeded)
+        except Exception as e:
+            log.warning("Auto-reseed omitido: %s", e)
+
+    def reseed_video_configs_from_preset(self) -> int:
+        """Sobrescribe `video_configs` con el contenido exacto del preset.
+
+        Estrategia 'Sobrescribir todo': DELETE local + INSERT de cada fila del
+        preset. No toca `infractions`, `indicators` ni `migrations`.
+        Retorna la cantidad de configs copiadas (0 si no hay preset).
+        """
+        preset = _resolve_preset_path()
+        if not preset.exists():
+            log.warning("Reseed omitido, preset no encontrado: %s", preset)
+            return 0
+        with sqlite3.connect(preset, timeout=10.0) as src:
+            src.row_factory = sqlite3.Row
+            rows = src.execute("SELECT * FROM video_configs").fetchall()
+            columns = [d[0] for d in src.execute("SELECT * FROM video_configs LIMIT 0").description]
+        if not rows:
+            log.warning("Reseed omitido, preset sin video_configs: %s", preset)
+            return 0
+        placeholders = ", ".join("?" * len(columns))
+        quoted = ", ".join(f'"{c}"' for c in columns)
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM video_configs")
+            conn.executemany(
+                f'INSERT INTO video_configs ({quoted}) VALUES ({placeholders})',
+                [tuple(r[c] for c in columns) for r in rows],
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
+                ("schema_version", _SCHEMA_VERSION),
+            )
+            conn.commit()
+        log.info("video_configs sobrescrito desde preset: %d configs", len(rows))
+        return len(rows)
 
     @contextmanager
     def _connect(self):
@@ -233,13 +308,34 @@ class AppRepository:
         if row is None:
             return None
         cfg = dict(row)
-        cfg["polygon"] = json.loads(cfg.pop("polygon_json")) if cfg.get("polygon_json") else None
+        raw = cfg.pop("polygon_json", None)
+        if raw:
+            try:
+                cfg["polygon"] = json.loads(raw) if isinstance(raw, str) else raw
+            except (TypeError, json.JSONDecodeError):
+                cfg["polygon"] = None
+        else:
+            cfg["polygon"] = None
         return cfg
 
     def all_video_configs(self) -> dict[str, dict]:
         with self._connect() as conn:
             rows = conn.execute("SELECT * FROM video_configs").fetchall()
-        return {r["video_name"]: dict(r) for r in rows}
+        out: dict[str, dict] = {}
+        for r in rows:
+            cfg = dict(r)
+            # Compat: exponer `polygon` parseado (como get_video_config) y
+            # conservar `polygon_json` para export/create_preset.
+            raw = cfg.get("polygon_json")
+            if raw:
+                try:
+                    cfg["polygon"] = json.loads(raw) if isinstance(raw, str) else raw
+                except (TypeError, json.JSONDecodeError):
+                    cfg["polygon"] = None
+            else:
+                cfg["polygon"] = None
+            out[cfg["video_name"]] = cfg
+        return out
 
     # ─── Escritura de configuración por video (FUENTE UNICA) ──────────────
 
@@ -905,10 +1001,21 @@ def create_preset(preset_path: str | Path | None = None) -> Path:
         conn.execute("PRAGMA journal_mode=OFF;")
         for stmt in _DDL:
             conn.execute(stmt)
+        # Migrar preset v1 -> v2 si el archivo ya existía sin las columnas nuevas.
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(video_configs)")}
+        for column, ddl_type in (
+            ("danger_zone_margin_pixels", "REAL"),
+            ("pre_red_seconds", "REAL"),
+            ("green_skip_rate", "INTEGER"),
+        ):
+            if column not in existing:
+                conn.execute(f"ALTER TABLE video_configs ADD COLUMN {column} {ddl_type}")
         for name in names:
             if use_db:
                 row = db_configs[name]
                 polygon = row.get("polygon_json")
+                if polygon is None and row.get("polygon") is not None:
+                    polygon = json.dumps(row.get("polygon") or [], ensure_ascii=False)
                 values = (
                     name,
                     row.get("avenue", "") or "",
