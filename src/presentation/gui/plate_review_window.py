@@ -72,16 +72,65 @@ class PlateReviewWindow:
             "<Configure>",
             lambda _event: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
         )
-        self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
+        self._scroll_frame_id = self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
         self.canvas.configure(yscrollcommand=scrollbar.set)
         self.canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+        self._bind_mousewheel()
 
         controls = ttk.Frame(self.window)
         controls.pack(fill="x", padx=12, pady=10)
         ttk.Button(controls, text="Reintentar actual", command=self._retry_current).pack(side="left")
         ttk.Button(controls, text="Completado", command=self._complete).pack(side="right", padx=(0, 8))
         ttk.Button(controls, text="Exportar validados", command=self._export).pack(side="right")
+
+    def _on_canvas_configure(self, event):
+        """Mantiene el frame interno al ancho del canvas al redimensionar."""
+        try:
+            self.canvas.itemconfig(self._scroll_frame_id, width=event.width)
+        except tk.TclError:
+            pass
+
+    def _bind_mousewheel(self):
+        """Activa el scroll con rueda solo mientras el cursor está sobre la lista."""
+        self.canvas.bind("<Enter>", lambda _e: self._bind_mousewheel_global(), add="+")
+        self.scroll_frame.bind("<Enter>", lambda _e: self._bind_mousewheel_global(), add="+")
+        self.canvas.bind("<Leave>", lambda _e: self._unbind_mousewheel(), add="+")
+        self.scroll_frame.bind("<Leave>", lambda _e: self._unbind_mousewheel(), add="+")
+        # Por si el cursor ya está sobre la lista al abrir.
+        self._bind_mousewheel_global()
+
+    def _bind_mousewheel_global(self):
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel, add="+")
+        self.canvas.bind_all("<Button-4>", self._on_mousewheel, add="+")
+        self.canvas.bind_all("<Button-5>", self._on_mousewheel, add="+")
+
+    def _unbind_mousewheel(self):
+        try:
+            self.canvas.unbind_all("<MouseWheel>")
+            self.canvas.unbind_all("<Button-4>")
+            self.canvas.unbind_all("<Button-5>")
+        except tk.TclError:
+            pass
+
+    def _on_mousewheel(self, event):
+        """Desplaza el canvas con la rueda (Windows/macOS `delta`, Linux `Button-4/5`)."""
+        try:
+            if not self.canvas.winfo_exists():
+                return
+            if getattr(event, "num", None) == 4:
+                delta = -1
+            elif getattr(event, "num", None) == 5:
+                delta = 1
+            elif getattr(event, "delta", 0):
+                delta = -1 * (event.delta / 120)
+            else:
+                return
+            self.canvas.yview_scroll(int(delta * 3), "units")
+        except tk.TclError:
+            pass
+        return "break"
 
     def _render_all(self):
         self.images.clear()
@@ -192,6 +241,10 @@ class PlateReviewWindow:
             evidence.ocr_method = "plate_recognizer"
             row["text"].set(text)
             row["confidence"].config(text=f"Confianza: {confidence:.2f}")
+            # Auto-validar por defecto: Plate Recognizer sí detectó placa.
+            # El usuario aún puede desmarcar manualmente antes de Completar/Exportar.
+            evidence.validated = True
+            row["validated"].set(True)
             row["check"].state(["!disabled"])
         elif previous:
             # Fallback: la API falló/offline o no vio placa; se conserva el
@@ -206,8 +259,10 @@ class PlateReviewWindow:
             evidence.plate_text = ""
             evidence.ocr_confidence = 0.0
             evidence.ocr_method = "plate_recognizer"
+            evidence.validated = False
             row["text"].set("")
             row["confidence"].config(text=f"Sin resultado: {error or 'placa no reconocida'}")
+            row["validated"].set(False)
             row["check"].state(["disabled"])
         self.processing = False
         self.current_index = index + 1
@@ -238,6 +293,7 @@ class PlateReviewWindow:
     def _complete(self):
         """Botón 'Completado': aplica la validación, notifica al llamador
         (que dispara la migración) y cierra la ventana."""
+        self._unbind_mousewheel()
         self._apply_review_values()
         self._notify_complete()
         try:
@@ -247,6 +303,7 @@ class PlateReviewWindow:
 
     def _on_close(self):
         """Al cerrar la ventana sincroniza la validación marcada (sin exportar)."""
+        self._unbind_mousewheel()
         self._apply_review_values()
         self._notify_complete()
         try:

@@ -1506,7 +1506,7 @@ class VideoPlayerOpenCV:
         ret, frame = self.cap.read()
         if not ret:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            self._after_id = self.parent.after(int(1000 / 30), self.update_frames_preview)
+            self._after_id = self.parent.after(int(1000 / 15), self.update_frames_preview)
             return
 
         # Mostrar el frame original sin anotaciones
@@ -1532,9 +1532,9 @@ class VideoPlayerOpenCV:
         import os as _os3
 
         try:
-            _pdfps = max(10, min(60, int(_os3.getenv("IV_DISPLAY_FPS", "30"))))
+            _pdfps = max(10, min(60, int(_os3.getenv("IV_DISPLAY_FPS", "15"))))
         except Exception:
-            _pdfps = 30
+            _pdfps = 15
         self._after_id = self.parent.after(int(1000 / _pdfps), self.update_frames_preview)
 
     def _calculate_timestamp_with_time_range(self, video_timestamp):
@@ -1603,13 +1603,13 @@ class VideoPlayerOpenCV:
         # Redimensionar frame para procesamiento
         small_frame = cv2.resize(frame, (proc_w, proc_h), interpolation=cv2.INTER_LINEAR)
 
-        # Night-check cacheado: 1 de cada N frames (IV_NIGHT_CHECK_INTERVAL=10).
+        # Night-check cacheado: 1 de cada N frames (IV_NIGHT_CHECK_INTERVAL=15).
         import os as _os
 
         try:
-            _interval = max(1, int(_os.getenv("IV_NIGHT_CHECK_INTERVAL", "10")))
+            _interval = max(1, int(_os.getenv("IV_NIGHT_CHECK_INTERVAL", "15")))
         except Exception:
-            _interval = 10
+            _interval = 15
         _cnt = int(getattr(self, "_night_frame_counter", 0)) + 1
         self._night_frame_counter = _cnt
         if _cnt == 1 or (_cnt % _interval) == 1 or not hasattr(self, "_last_is_night"):
@@ -1712,13 +1712,13 @@ class VideoPlayerOpenCV:
         return avg_brightness < 50  # Umbral restrictivo - solo videos muy oscuros
 
     def _enhance_night_visibility(self, frame):
-        """Mejora la visibilidad en escenas nocturnas"""
+        """Mejora la visibilidad en escenas nocturnas (dieta i3: CLAHE 2.0)."""
         # Convertir a LAB para trabajar con el canal de luminosidad
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
-        
+
         # Aplicar CLAHE al canal L para mejorar contraste local
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         cl = clahe.apply(l)
         
         # Fusionar canales de nuevo
@@ -1991,7 +1991,7 @@ class VideoPlayerOpenCV:
                             # (preprocesamiento offline). Aquí solo se guarda el crop.
                             enhanced_plate = best_plate_crop
                             if best_plate_crop.shape[0] < 30:
-                                enhanced_plate = cv2.resize(best_plate_crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+                                enhanced_plate = cv2.resize(best_plate_crop, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
 
                             # Sin OCR en live: texto vacío, confianza = detección.
                             plate_text = ""
@@ -2078,7 +2078,7 @@ class VideoPlayerOpenCV:
         ret, frame = self.cap.read()
         if not ret:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            self._after_id = self.parent.after(int(1000/30), self.update_frames)
+            self._after_id = self.parent.after(int(1000/15), self.update_frames)
             return
 
         frame_index = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
@@ -2163,9 +2163,9 @@ class VideoPlayerOpenCV:
         import os as _os2
 
         try:
-            _dfps = max(10, min(60, int(_os2.getenv("IV_DISPLAY_FPS", "30"))))
+            _dfps = max(10, min(60, int(_os2.getenv("IV_DISPLAY_FPS", "15"))))
         except Exception:
-            _dfps = 30
+            _dfps = 15
         self._after_id = self.parent.after(int(1000 / _dfps), self.update_frames)
 
     class PlateCard:
@@ -3780,12 +3780,13 @@ class VideoPlayerOpenCV:
             canvas = np.zeros((hlbl, wlbl, 3), dtype=np.uint8)
             self._letterbox_cache = {
                 "key": (wlbl, hlbl, new_w, new_h),
-                "canvas_shape": canvas.shape,
+                "canvas": canvas,
                 "off": (off_x, off_y),
             }
         else:
-            # Reutilizar forma sin realloc si coincide (se limpia con [:]=0).
-            canvas = np.zeros((hlbl, wlbl, 3), dtype=np.uint8)
+            # Reutilizar buffer sin realloc: limpiar in-place (<1ms en i3).
+            canvas = _cache["canvas"]
+            canvas[:] = 0
         resized = cv2.resize(frame_bgr, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
         canvas[off_y:off_y + new_h, off_x:off_x + new_w] = resized
         return canvas

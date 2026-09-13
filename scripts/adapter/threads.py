@@ -2,10 +2,11 @@
 threads.py — Centralized thread budget for the CLI pipeline.
 
 Why this exists:
-  The CLI scripts run on a 4-core / 8-thread CPU (i5-10300H + UHD 630 iGPU)
+  The CLI scripts run on a 4-core / 4-thread CPU (i3-9100F + RTX 5050)
   where OpenCV decode, PyTorch inference and the Python tracker all
   compete for the same physical cores. Without explicit thread caps the
-  three runtimes oversubscribe the 8 logical cores and silently thrash.
+  three runtimes oversubscribe the 4 physical cores and silently thrash,
+  starving the GPU feed (decode/UI) while the GPU idles.
 
 This module gives a single place to set the budget, idempotently, so the
 caller (usually `main()` of a CLI script) does not have to repeat five
@@ -19,14 +20,18 @@ import os
 
 def configure_thread_budget(
     cv_threads: int = 2,
-    torch_threads: int = 4,
+    torch_threads: int = 2,
 ) -> dict:
     """
     Pin the number of threads used by OpenCV, PyTorch and the BLAS backend.
 
-    Defaults are tuned for a 4-core / 8-thread CPU with no discrete GPU:
-      - OpenCV: 2 threads (decode, leaves room for the inference runtime)
-      - PyTorch: 4 threads (one per physical core)
+    Defaults are tuned for i3-9100F 4C/4T + discrete NVIDIA (GTX 1650 Ti /
+    RTX 5050), where inference runs on GPU (FP16) and CPU only feeds
+    decode + pre/post + Tk:
+      - OpenCV: 2 threads (decode + resize, leaves room for Tk/worker)
+      - PyTorch: 2 threads (CPU pre/post only; GPU does the matmuls)
+
+    Total torch+cv2 <= 4: no quitarle CPU a la GPU ni al decode.
 
     On any other layout (more cores, GPU available) the caller can pass
     different values. The function returns the values that were actually

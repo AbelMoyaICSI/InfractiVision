@@ -211,13 +211,13 @@ class SuperResolutionProcessor:
         enhanced = clahe.apply(image)
         
         # Aplicar la máscara de forma suave para mezclar
-        result = np.zeros_like(image, dtype=np.float32)
-        
-        # Mezclar: más de la imagen mejorada donde hay caracteres, más de la original en el resto
-        for i in range(image.shape[0]):
-            for j in range(image.shape[1]):
-                weight = char_mask[i, j] * 0.3  # usar solo 30% del efecto máximo
-                result[i, j] = image[i, j] * (1 - weight) + enhanced[i, j] * weight
+        # Dieta i3: vectorizado numpy (el doble loop Python tardaba segundos).
+        weight = (char_mask * 0.3).astype(np.float32)
+        img_f = image.astype(np.float32)
+        enh_f = enhanced.astype(np.float32)
+        if weight.ndim == 2 and img_f.ndim == 3:
+            weight = weight[:, :, None]
+        result = img_f * (1.0 - weight) + enh_f * weight
         
         result = np.clip(result, 0, 255).astype(np.uint8)
         
@@ -321,20 +321,18 @@ class SuperResolutionProcessor:
         # Donde no hay bordes (fondo), suavizar para reducir ruido
         
         # Crear imagen mejorada solo para áreas de texto
+        # Dieta i3: vectorizado (el doble loop con if por píxel bloqueaba el hilo).
         text_enhanced = enhanced.copy()
-        
-        # Aumentar contraste local en áreas de texto - muy suavemente
-        for i in range(0, enhanced.shape[0]):
-            for j in range(0, enhanced.shape[1]):
-                if edge_mask[i, j] > 0.2:  # Si es área de texto
-                    # Ajuste muy sutil de contraste para mayor legibilidad
-                    pixel_val = enhanced[i, j]
-                    if pixel_val < 128:
-                        # Oscurecer píxeles oscuros muy sutilmente
-                        text_enhanced[i, j] = max(0, pixel_val - 5)
-                    else:
-                        # Aclarar píxeles claros muy sutilmente
-                        text_enhanced[i, j] = min(255, pixel_val + 5)
+        text_mask = edge_mask > 0.2
+        dark = text_mask & (enhanced < 128)
+        bright = text_mask & (enhanced >= 128)
+        # Saturación con clip en vez de max/min por píxel
+        text_enhanced[dark] = np.clip(
+            enhanced[dark].astype(np.int16) - 5, 0, 255
+        ).astype(np.uint8)
+        text_enhanced[bright] = np.clip(
+            enhanced[bright].astype(np.int16) + 5, 0, 255
+        ).astype(np.uint8)
         
         # 5. Combinar con la imagen original - dando MUCHO peso a la original
         # Esto preserva los detalles y solo aplica pequeñas mejoras donde se necesita

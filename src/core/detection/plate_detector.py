@@ -150,8 +150,14 @@ class PlateDetector:
             # Optimizar imagen para mejor detección con multi-capture para noche
             # Fase 2: fast-first (1 variante ~8ms). Solo si la calidad es mala
             # se pagan las 5 variantes (~226ms medidos).
+            # i3+GPU en vivo: IV_PLATE_FULL_NIGHT=0 fuerza solo fast (~8ms).
             if is_night:
-                enhanced_image = self._select_best_night_enhancement(image)
+                import os as _os_night
+
+                _full = _os_night.getenv("IV_PLATE_FULL_NIGHT", "0") == "1"
+                enhanced_image = self._select_best_night_enhancement(
+                    image, full_if_weak=_full
+                )
             else:
                 enhanced_image = self._enhance_image_for_detection(image, is_night)
 
@@ -171,12 +177,16 @@ class PlateDetector:
                 adaptive_conf = max(0.15, conf * 0.5)  # Lower than before
             
             # Ejecutar inferencia con YOLO con parámetros optimizados
+            # i3-9100F + RTX 5050: imgsz=320 fijo en placas. El default de
+            # ultralytics (640) es 4x FLOPs por crop y en CPU es 2-3x más
+            # caro que vehículos-416. Warmup ya usa 320 (model_preloader).
             results = self.model(
-                enhanced_image, 
-                conf=adaptive_conf, 
+                enhanced_image,
+                conf=adaptive_conf,
                 classes=classes,
                 iou=0.45,  # IoU threshold optimizado
                 agnostic_nms=True,  # NMS mejorado
+                imgsz=320,
                 device=self.device,
                 half=self.half,
                 verbose=False
@@ -437,7 +447,7 @@ class PlateDetector:
                         for q in quadrants]
             results = self.model(
                 enhanced, conf=max(0.15, conf * 0.5), classes=classes,
-                iou=0.45, agnostic_nms=True, device=self.device,
+                iou=0.45, agnostic_nms=True, imgsz=320, device=self.device,
                 half=self.half, verbose=False,
             )
             out: list[list[tuple]] = []

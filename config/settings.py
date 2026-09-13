@@ -62,16 +62,16 @@ class PerformanceSettings:
     profile: str = field(default_factory=lambda: os.getenv("IV_PERF", "i3_9100F"))
     torch_threads: int = field(default_factory=lambda: int(os.getenv("IV_TORCH_THREADS", "2")))
     cv_threads: int = field(default_factory=lambda: int(os.getenv("IV_CV_THREADS", "2")))
-    skip_green: int = field(default_factory=lambda: int(os.getenv("IV_SKIP_GREEN", "3")))
+    skip_green: int = field(default_factory=lambda: int(os.getenv("IV_SKIP_GREEN", "5")))
     skip_red: int = field(default_factory=lambda: int(os.getenv("IV_SKIP_RED", "2")))
     imgsz_override: int = field(default_factory=lambda: int(os.getenv("IV_IMGSZ", "0")))
     night_check_interval: int = field(
-        default_factory=lambda: int(os.getenv("IV_NIGHT_CHECK_INTERVAL", "10"))
+        default_factory=lambda: int(os.getenv("IV_NIGHT_CHECK_INTERVAL", "15"))
     )
     enable_rectifier_live: bool = field(
         default_factory=lambda: os.getenv("IV_ENABLE_RECTIFIER_LIVE", "0") == "1"
     )
-    display_fps: int = field(default_factory=lambda: int(os.getenv("IV_DISPLAY_FPS", "30")))
+    display_fps: int = field(default_factory=lambda: int(os.getenv("IV_DISPLAY_FPS", "15")))
     tracker: str = field(default_factory=lambda: os.getenv("INFRACTI_TRACKER", "centroid"))
 
 

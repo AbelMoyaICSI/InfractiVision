@@ -70,10 +70,12 @@ class OfficialVideoProcessor:
                 small = cv2.resize(crop, (max(1, int(w * s)), max(1, int(h * s))),
                                    interpolation=cv2.INTER_LINEAR)
             # GPU path: contraste+nitidez con torch (1 kernel, sin Canny CPU).
+            # i3+RTX5050: intentar siempre en GPU (sin umbral de tamaño); el
+            # fallback CPU solo queda si CUDA falla o el crop es vacío.
             try:
                 import torch
 
-                if torch.cuda.is_available() and small.size >= 64 * 64 * 3:
+                if torch.cuda.is_available() and small.size > 0:
                     g = torch.from_numpy(
                         cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
                     ).cuda(non_blocking=True).float()
