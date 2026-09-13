@@ -4,12 +4,6 @@ import time
 import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox
-import json
-import os
-from src.path_helper import resource_path
-from src.core.utils.paths import writable_config_path
-
-PRESETS_FILE = writable_config_path("time_presets.json")
 
 class Semaforo:
     """
@@ -185,19 +179,41 @@ class Semaforo:
     # --------------------
     # Gestión de presets
     # --------------------
+    def _db(self):
+        from src.infrastructure.database.app_repository import AppRepository
+        return AppRepository()
+
     def load_presets(self):
-        if not os.path.exists(PRESETS_FILE):
-            return {}
+        """Presets por video desde la BD (fuente única)."""
         try:
-            with open(PRESETS_FILE, "r") as f:
-                return json.load(f)
-        except json.JSONDecodeError:
+            presets = {}
+            for name, row in self._db().all_video_configs().items():
+                if row.get("green") is None or row.get("yellow") is None or row.get("red") is None:
+                    continue
+                entry = {"green": row["green"], "yellow": row["yellow"], "red": row["red"]}
+                if row.get("time_slot"):
+                    entry["time_slot"] = row["time_slot"]
+                presets[name] = entry
+            return presets
+        except Exception:
             return {}
 
     def save_presets(self, data):
-        os.makedirs(os.path.dirname(PRESETS_FILE), exist_ok=True)
-        with open(PRESETS_FILE, "w") as f:
-            json.dump(data, f, indent=2)
+        """Compat: guarda cada preset en BD (upsert parcial, no borra nada)."""
+        try:
+            db = self._db()
+            for vid, times in (data or {}).items():
+                if not isinstance(times, dict):
+                    continue
+                db.save_video_config(
+                    vid,
+                    green=times.get("green"),
+                    yellow=times.get("yellow"),
+                    red=times.get("red"),
+                    time_slot=str(times.get("time_slot", "") or ""),
+                )
+        except Exception:
+            pass
 
     def gestionar_tiempos(self):
         """
@@ -411,9 +427,11 @@ class Semaforo:
             line = lb.get(sel[0])
             vid = line.split(" → ",1)[0]
             if messagebox.askyesno("Confirmar", f"Eliminar preset para '{vid}'?", parent=win):
-                presets = self.load_presets()
-                presets.pop(vid, None)
-                self.save_presets(presets)
+                try:
+                    # Solo tiempos (conserva avenida/polígono del video).
+                    self._db().clear_video_preset(vid)
+                except Exception:
+                    pass
                 refresh()
 
         tk.Button(win, text="Guardar", command=on_save, bg="#4CAF50", fg="white", font=("Arial", 10, "bold")).grid(row=7, column=0, pady=15, padx=5)

@@ -108,10 +108,8 @@ class AppManager:
             self._show_preload_error(loading, f"No se pudo completar la precarga: {payload}")
             return
         errors = payload.get("errors", [])
-        critical_missing = (
-            payload.get("vehicle_detector") is None
-            or payload.get("plate_detector") is None
-        )
+        # Nuevo flujo: en vivo basta YOLOv8-vehiculos (placas = lazy post).
+        critical_missing = payload.get("vehicle_detector") is None
         if critical_missing:
             detail = "; ".join(errors) if errors else "modelos no disponibles"
             self._show_preload_error(loading, f"Modelos críticos sin cargar ({detail}).")
@@ -134,7 +132,7 @@ class AppManager:
                 messagebox.showwarning(
                     "Plate Recognizer sin token",
                     "No hay PLATE_RECOGNIZER_API_TOKEN.\n"
-                    "En vivo solo se detectan vehículos y placas; la lectura "
+                    "En vivo solo se detectan vehículos infractores; la lectura "
                     "se hará en la revisión final cuando configure el token.",
                     parent=self.root,
                 )

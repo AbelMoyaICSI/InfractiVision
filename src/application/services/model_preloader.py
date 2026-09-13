@@ -1,7 +1,9 @@
-"""Precarga de modelos IA al entrar a Foto Rojo (SOLO detección).
+"""Precarga de modelos IA al entrar a Foto Rojo (SOLO YOLOv8-vehiculos).
 
-En vivo solo hay detección: YOLO-vehículos + YOLO-placas. La lectura OCR
-la hace la API de Plate Recognizer al final, en `PlateReviewWindow`.
+Nuevo flujo: en vivo solo hay YOLO-vehiculos. El YOLO de placas NO se carga
+aqui: el post-proceso lo pide 1x por infractor (lazy, ver
+`plate_review_preparer`). La lectura la hace la API de Plate Recognizer al
+final, en `PlateReviewWindow`.
 
 La entrada a Foto Rojo muestra un spinner bloqueante una sola vez y el
 `PreprocessingDialog` / `VideoPlayerOpenCV` reutilizan las instancias
@@ -24,14 +26,15 @@ def has_plate_token() -> bool:
 def preload_foto_rojo_models(
     progress: Callable[[str], None] | None = None,
 ) -> dict:
-    """Calienta YOLO-vehículos y YOLO-placas en serie.
+    """Calienta SOLO YOLO-vehículos (el YOLO-placas es lazy en post-proceso).
 
     Serializado por `MODEL_LOAD_LOCK` (vía `@serialized` en cada
     constructor): nunca carga dos modelos en paralelo (evita SIGSEGV CUDA).
     No toca Tk: el llamador marshala `progress` al hilo principal.
 
     Retorna dict con instancias + flags:
-      vehicle_detector, plate_detector, plate_token_ok, errors, elapsed_s
+      vehicle_detector, plate_detector (siempre None, clave por compat),
+      plate_token_ok, errors, elapsed_s
     """
     t0 = time.monotonic()
     errors: list[str] = []
@@ -70,30 +73,10 @@ def preload_foto_rojo_models(
         except Exception as e:
             errors.append(f"warmup vehículos: {e}")
 
-    # 2) Placas (license_plate_detector.pt)
-    try:
-        _say("Cargando detector de placas (YOLO)...")
-        from src.core.detection.plate_detector import PlateDetector
-        plate_detector = PlateDetector()
-        if getattr(plate_detector, "model", None) is None:
-            errors.append("placas: modelo no encontrado (license_plate_detector.pt)")
-            plate_detector = None
-    except Exception as e:
-        errors.append(f"placas: {e}")
-        plate_detector = None
-
-    if plate_detector is not None:
-        try:
-            _say("Calentando detector de placas...")
-            import numpy as np
-            t1 = time.monotonic()
-            try:
-                plate_detector.detect(np.zeros((320, 320, 3), dtype=np.uint8), conf=0.4, draw=False)
-            except TypeError:
-                plate_detector.detect_plates(np.zeros((320, 320, 3), dtype=np.uint8), confidence=0.4)
-            warmup_s["plate"] = round(time.monotonic() - t1, 2)
-        except Exception as e:
-            errors.append(f"warmup placas: {e}")
+    # 2) Placas: NO se cargan en vivo (nuevo flujo). El post-proceso
+    # (`plate_review_preparer`) carga `license_plate_detector.pt` 1x bajo
+    # demanda. Se deja `plate_detector=None` por compat con callers.
+    plate_detector = None
 
     # 3) Warm-up FSRCNN (si está disponible; solo mejora crops, no bloquea)
     try:

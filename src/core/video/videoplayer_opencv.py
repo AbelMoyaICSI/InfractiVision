@@ -161,9 +161,10 @@ class VideoPlayerOpenCV:
         self.beep_cooldown = 2.0  # 2 segundos entre beeps para mejor control
         self.beep_unique_plates = set()  # Placas que ya han hecho beep (único por matrícula)
         
-        # 🎯 DETECCIÓN MEJORADA DE PLACAS
-        # Si la precarga de Foto Rojo inyectó instancias, se reutilizan;
-        # si no, el lazy-load histórico las crea bajo demanda.
+        # 🎯 DETECTOR DE PLACAS (nuevo flujo: solo post-proceso 1x, no live)
+        # Se conserva el atributo por compat (`red_light_violation_window`
+        # aún lo inyecta como None); el pipeline oficial ya no lo usa en el
+        # loop. El worker legacy lo crea bajo demanda si lo necesita.
         self.plate_detector = plate_detector  # Se inicializará cuando se necesite
         self.frame_history = deque(maxlen=5)  # Historial para mejor selección
         self.show_debug = True  # Mostrar rectángulos de debug
@@ -522,46 +523,70 @@ class VideoPlayerOpenCV:
         canvas.bind('<Enter>', _bind_to_mousewheel)
         canvas.bind('<Leave>', _unbind_from_mousewheel)
 
+    def _db(self):
+        """AppRepository (fuente única de configuración por video)."""
+        from src.infrastructure.database.app_repository import AppRepository
+        return AppRepository()
+
     def load_avenue_config(self):
+        # Compat legacy: la lectura por video usa la BD (get_avenue_for_video).
         return _json_load(AVENUE_CONFIG_FILE)
 
     def save_avenue_config(self, data):
         _json_save(AVENUE_CONFIG_FILE, data)
 
     def get_avenue_for_video(self, video_path):
-        config = self.load_avenue_config()
-        video_key = self.get_video_key(video_path)
-        # Verificar que la configuración exista y no esté vacía
-        if video_key in config and config[video_key] and config[video_key].strip():
-            return config[video_key]
+        try:
+            row = self._db().get_video_config(self.get_video_key(video_path))
+        except Exception:
+            return None
+        if row and (row.get("avenue") or "").strip():
+            return row["avenue"]
         return None
 
     def set_avenue_for_video(self, video_path, avenue_name):
-        cfg = self.load_avenue_config()
-        cfg[self.get_video_key(video_path)] = avenue_name
-        self.save_avenue_config(cfg)
+        try:
+            self._db().save_video_config(
+                self.get_video_key(video_path), avenue=avenue_name or "")
+        except Exception:
+            pass
 
     def load_time_presets(self):
+        # Compat legacy: la lectura por video usa la BD (get_time_preset_for_video).
         return _json_load(PRESETS_FILE)
 
     def save_time_presets(self, data):
         _json_save(PRESETS_FILE, data)
 
     def get_time_preset_for_video(self, video_path):
-        presets = self.load_time_presets()
-        video_key = self.get_video_key(video_path)
-        # Verificar que la configuración exista y tenga los campos necesarios
-        if video_key in presets and presets[video_key]:
-            config = presets[video_key]
-            # Verificar que tenga al menos los tiempos básicos
-            if isinstance(config, dict) and 'green' in config and 'yellow' in config and 'red' in config:
-                return config
-        return None
+        try:
+            row = self._db().get_video_config(self.get_video_key(video_path))
+        except Exception:
+            return None
+        if not row or row.get("green") is None or row.get("yellow") is None or row.get("red") is None:
+            return None
+        # Mismo shape que el preset JSON (tiempos + extras si existen).
+        config = {"green": row["green"], "yellow": row["yellow"], "red": row["red"]}
+        for key in ("time_slot", "danger_zone_margin_pixels", "pre_red_seconds", "green_skip_rate"):
+            if row.get(key) is not None:
+                config[key] = row[key]
+        return config
 
     def set_time_preset_for_video(self, video_path, times):
-        presets = self.load_time_presets()
-        presets[self.get_video_key(video_path)] = times
-        self.save_time_presets(presets)
+        try:
+            times = dict(times or {})
+            self._db().save_video_config(
+                self.get_video_key(video_path),
+                green=times.get("green"),
+                yellow=times.get("yellow"),
+                red=times.get("red"),
+                time_slot=str(times.get("time_slot", "") or ""),
+                danger_zone_margin_pixels=times.get("danger_zone_margin_pixels"),
+                pre_red_seconds=times.get("pre_red_seconds"),
+                green_skip_rate=times.get("green_skip_rate"),
+            )
+        except Exception:
+            pass
         self.cycle_durations = times
         self.target_time     = time.time() + times[self.semaforo.get_current_state()]
 
@@ -651,14 +676,13 @@ class VideoPlayerOpenCV:
     def load_polygon_for_video(self):
         self.have_polygon=False
         self.polygon_points=[]
-        if not self.current_video_path or not os.path.exists(POLYGON_CONFIG_FILE):
+        if not self.current_video_path:
             return
         try:
-            presets = _json_load(POLYGON_CONFIG_FILE)
-            # Usar solo el nombre del archivo como clave
-            video_key = self.get_video_key(self.current_video_path)
-            if video_key in presets:
-                self.polygon_points=presets[video_key]
+            row = self._db().get_video_config(self.get_video_key(self.current_video_path))
+            polygon = (row or {}).get("polygon") or []
+            if polygon:
+                self.polygon_points = [tuple(point) for point in polygon]
                 self.have_polygon=True
         except: pass
 
@@ -818,15 +842,11 @@ class VideoPlayerOpenCV:
             messagebox.showerror("Error", f"Error configurando video: {str(e)}", parent=self.parent)
 
     def check_polygon_exists(self, video_path):
-        """Verifica si ya existe polígono definido para este video"""
-        if not os.path.exists(POLYGON_CONFIG_FILE):
-            return False
-        
+        """Verifica si ya existe polígono definido para este video (BD)."""
         try:
-            presets = _json_load(POLYGON_CONFIG_FILE)
-            video_key = self.get_video_key(video_path)
-            # Ser más permisivo: solo verificar que exista la clave, no necesariamente 3+ puntos
-            return video_key in presets
+            row = self._db().get_video_config(self.get_video_key(video_path))
+            # Ser más permisivo: solo verificar que exista config con polígono
+            return bool(row and row.get("polygon"))
         except:
             return False
 
@@ -1193,15 +1213,18 @@ class VideoPlayerOpenCV:
                 "time_slot": time_slot  # Guardar franja horaria
             })
             
-            # Guardar polígono si existe
+            # Guardar polígono si existe (BD, fuente única)
             if len(polygon_points) >= 3:
                 self.polygon_points = polygon_points
                 self.have_polygon = True
-                
-                # Guardar en archivo de configuración
-                presets = _json_load(POLYGON_CONFIG_FILE)
-                presets[self.get_video_key(video_path)] = polygon_points
-                _json_save(POLYGON_CONFIG_FILE, presets)
+
+                try:
+                    self._db().save_video_config(
+                        self.get_video_key(video_path),
+                        polygon=[list(point) for point in polygon_points],
+                    )
+                except Exception:
+                    pass
             
             # Cerrar diálogo y cargar video
             setup.destroy()
@@ -3367,9 +3390,10 @@ class VideoPlayerOpenCV:
     def apply_official_validation(self, evidences, pending_infractions=None):
         """Reclasifica las cards del panel lateral según la validación final.
 
-        - NID = evidencia validada (✓) CON placa reconocida.
-        - NIE = el resto: sin check, placa no reconocida, o pendiente sin placa
-          (los recuadros amarillos "PENDIENTE" del pipeline oficial).
+        Nuevo flujo sin pending:
+        - NID = evidencia validada (✓) CON placa reconocida por la API.
+        - NIE = el resto: sin check o placa no reconocida.
+        (`pending_infractions` se acepta por compat pero siempre llega vacío.)
         - Muestra la transcripción de la placa cuando está disponible.
         - Refresca NID/NIE/TI/TR al final.
         """
@@ -3722,35 +3746,21 @@ class VideoPlayerOpenCV:
             messagebox.showerror("Error", str(e))
 
 
-    def remove_avenue_data(self, video_path):
-        if not os.path.exists(AVENUE_CONFIG_FILE):
-            return
+    def remove_video_config(self, video_path):
+        """Borra TODA la config del video en BD (avenida+tiempos+polígono)."""
         try:
-            data = _json_load(AVENUE_CONFIG_FILE)
-            data.pop(self.get_video_key(video_path), None)
-            _json_save(AVENUE_CONFIG_FILE, data)
-        except:
+            self._db().delete_video_config(self.get_video_key(video_path))
+        except Exception:
             pass
+
+    def remove_avenue_data(self, video_path):
+        self.remove_video_config(video_path)
 
     def remove_time_preset_data(self, video_path):
-        if not os.path.exists(PRESETS_FILE):
-            return
-        try:
-            presets = _json_load(PRESETS_FILE)
-            presets.pop(self.get_video_key(video_path), None)
-            _json_save(PRESETS_FILE, presets)
-        except:
-            pass
+        self.remove_video_config(video_path)
 
     def remove_polygon_data(self, video_path):
-        if not os.path.exists(POLYGON_CONFIG_FILE):
-            return
-        try:
-            polygons = _json_load(POLYGON_CONFIG_FILE)
-            polygons.pop(self.get_video_key(video_path), None)
-            _json_save(POLYGON_CONFIG_FILE, polygons)
-        except:
-            pass
+        self.remove_video_config(video_path)
 
     def _get_mem_mb(self):
         """RAM del proceso, muestreada como máximo cada 0.5s (no por frame)."""
@@ -4245,28 +4255,13 @@ class VideoPlayerOpenCV:
         
         try:
             video_key = self.get_video_key(self.current_video_path)
-            
-            # Limpiar polígono
-            if os.path.exists(POLYGON_CONFIG_FILE):
-                presets = _json_load(POLYGON_CONFIG_FILE)
-                if video_key in presets:
-                    del presets[video_key]
-                    _json_save(POLYGON_CONFIG_FILE, presets)
-            
-            # Limpiar avenida
-            if os.path.exists(AVENUE_CONFIG_FILE):
-                cfg = _json_load(AVENUE_CONFIG_FILE)
-                if video_key in cfg:
-                    del cfg[video_key]
-                    _json_save(AVENUE_CONFIG_FILE, cfg)
-            
-            # Limpiar tiempos
-            if os.path.exists(PRESETS_FILE):
-                presets = _json_load(PRESETS_FILE)
-                if video_key in presets:
-                    del presets[video_key]
-                    _json_save(PRESETS_FILE, presets)
-            
+
+            # Limpiar config del video en BD (polígono + avenida + tiempos)
+            try:
+                self._db().delete_video_config(video_key)
+            except Exception:
+                pass
+
             # Resetear estado interno
             self.have_polygon = False
             self.polygon_points = []

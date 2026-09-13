@@ -16,7 +16,7 @@
       "size": 6241454,
       "sha256": "8ec3b254a6c87610f037a90957462cafa11a9c03224e33a28c6a1d1ac2ac51b0",
       "required": true,
-      "description": "YOLO detector de placas"
+      "description": "YOLO localizador de placas (post-proceso 1x por infractor, no live)"
     },
     {
       "filename": "FSRCNN_x3.pb",

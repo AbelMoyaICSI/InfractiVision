@@ -17,7 +17,9 @@ def create_violation_window(container: tk.Widget, back_callback,
 
     `preloaded` trae detectores ya calientes del `AppManager` (precarga
     bloqueante al entrar): se inyectan al reproductor para no cargar
-    `torch.load` durante el análisis del video.
+    `torch.load` durante el análisis del video. Nuevo flujo: solo
+    `vehicle_detector` (YOLOv8); `plate_detector` llega None y el
+    post-proceso lo carga bajo demanda.
     """
     left = tk.Frame(container, bg="white", width=260)
     left.pack(side="left", fill="y", expand=False)

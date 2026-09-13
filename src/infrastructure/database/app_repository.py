@@ -38,7 +38,7 @@ DEFAULT_DB_PATH = Path(user_data_path("data/infractions.sqlite"))
 # Se usa como bootstrap: si la DB local no existe, se restaura una copia.
 PRESET_DB = resource_path("presets/infractions_preset.db")
 
-_SCHEMA_VERSION = "1"
+_SCHEMA_VERSION = "2"
 _DATA_MIGRATED_KEY = "data_migrated"
 
 _DDL = [
@@ -73,7 +73,8 @@ _DDL = [
     "CREATE INDEX IF NOT EXISTS idx_infractions_placa ON infractions(placa);",
     "CREATE INDEX IF NOT EXISTS idx_infractions_nombre_video ON infractions(nombre_video);",
     "CREATE INDEX IF NOT EXISTS idx_infractions_clasificacion ON infractions(clasificacion);",
-    # Configuración por video registrado (consolida avenue/times/polygon)
+    # Configuración por video registrado (consolida avenue/times/polygon).
+    # FUENTE UNICA operativa: la GUI, el pipeline y el CLI leen/escriben aqui.
     """
     CREATE TABLE IF NOT EXISTS video_configs (
         video_name   TEXT PRIMARY KEY,
@@ -83,6 +84,9 @@ _DDL = [
         red          REAL,
         time_slot    TEXT DEFAULT '',
         polygon_json TEXT,
+        danger_zone_margin_pixels REAL,
+        pre_red_seconds REAL,
+        green_skip_rate INTEGER,
         updated_at   TEXT NOT NULL
     );
     """,
@@ -125,8 +129,11 @@ _INF_COLUMNS = (
 
 _VIDEO_COLUMNS = (
     "video_name", "avenue", "green", "yellow", "red", "time_slot",
-    "polygon_json", "updated_at",
+    "polygon_json", "danger_zone_margin_pixels", "pre_red_seconds",
+    "green_skip_rate", "updated_at",
 )
+
+_CONFIGS_IMPORTED_KEY = "configs_imported_v2"
 
 _MIGRATION_COLUMNS = ("fecha", "timestamp", "registros", "estado", "details_json")
 
@@ -186,6 +193,15 @@ class AppRepository:
             conn.execute("PRAGMA busy_timeout=10000;")
             for stmt in _DDL:
                 conn.execute(stmt)
+            # Migración v1 -> v2: columnas de preset que faltaban en video_configs.
+            existing = {row[1] for row in conn.execute("PRAGMA table_info(video_configs)")}
+            for column, ddl_type in (
+                ("danger_zone_margin_pixels", "REAL"),
+                ("pre_red_seconds", "REAL"),
+                ("green_skip_rate", "INTEGER"),
+            ):
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE video_configs ADD COLUMN {column} {ddl_type}")
             conn.execute(
                 "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",
                 ("schema_version", _SCHEMA_VERSION),
@@ -224,6 +240,148 @@ class AppRepository:
         with self._connect() as conn:
             rows = conn.execute("SELECT * FROM video_configs").fetchall()
         return {r["video_name"]: dict(r) for r in rows}
+
+    # ─── Escritura de configuración por video (FUENTE UNICA) ──────────────
+
+    def save_video_config(
+        self,
+        video_name: str,
+        avenue: str = "",
+        green: float | None = None,
+        yellow: float | None = None,
+        red: float | None = None,
+        time_slot: str = "",
+        polygon: list | None = None,
+        danger_zone_margin_pixels: float | None = None,
+        pre_red_seconds: float | None = None,
+        green_skip_rate: int | None = None,
+    ) -> None:
+        """Inserta o actualiza la configuración de un video (upsert atómico).
+
+        Es la única vía de escritura: reemplaza los 3 JSON. Los campos en
+        None conservan su valor previo (upsert parcial por columna).
+        """
+        now = datetime.now().isoformat()
+        polygon_json = (
+            json.dumps(polygon, ensure_ascii=False) if polygon is not None else None
+        )
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO video_configs
+                    (video_name, avenue, green, yellow, red, time_slot,
+                     polygon_json, danger_zone_margin_pixels, pre_red_seconds,
+                     green_skip_rate, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(video_name) DO UPDATE SET
+                    avenue = COALESCE(excluded.avenue, avenue),
+                    green = COALESCE(excluded.green, green),
+                    yellow = COALESCE(excluded.yellow, yellow),
+                    red = COALESCE(excluded.red, red),
+                    time_slot = COALESCE(excluded.time_slot, time_slot),
+                    polygon_json = COALESCE(excluded.polygon_json, polygon_json),
+                    danger_zone_margin_pixels = COALESCE(excluded.danger_zone_margin_pixels, danger_zone_margin_pixels),
+                    pre_red_seconds = COALESCE(excluded.pre_red_seconds, pre_red_seconds),
+                    green_skip_rate = COALESCE(excluded.green_skip_rate, green_skip_rate),
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    video_name, avenue or "", green, yellow, red,
+                    time_slot or "", polygon_json, danger_zone_margin_pixels,
+                    pre_red_seconds, green_skip_rate, now,
+                ),
+            )
+            conn.commit()
+
+    def delete_video_config(self, video_name: str) -> bool:
+        """Borra la configuración de un video. Retorna True si existía."""
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM video_configs WHERE video_name = ?", (video_name,)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def clear_video_preset(self, video_name: str) -> bool:
+        """Borra SOLO los tiempos del semáforo (conserva avenida/polígono).
+
+        Equivale al viejo 'eliminar preset': la fila sigue existiendo.
+        """
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE video_configs
+                SET green = NULL, yellow = NULL, red = NULL, time_slot = '',
+                    updated_at = ?
+                WHERE video_name = ?
+                """,
+                (datetime.now().isoformat(), video_name),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def clear_video_configs(self) -> int:
+        """Borra TODAS las configuraciones (equivale a 'Limpiar todo')."""
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute("DELETE FROM video_configs")
+            conn.commit()
+            return cursor.rowcount
+
+    def import_legacy_configs(
+        self, project_root: str | Path | None = None, force: bool = False
+    ) -> dict[str, Any]:
+        """Importa UNA vez los 3 JSON a `video_configs` (no pisa BD).
+
+        Sin `force`, solo importa videos ausentes en BD: lo ya configurado
+        en BD manda. Con `force=True`, el JSON sobrescribe todo.
+        """
+        if self._get_meta(_CONFIGS_IMPORTED_KEY) == "1" and not force:
+            return {"skipped": True, "video_configs": self.count_rows("video_configs")}
+        root = Path(project_root) if project_root else PROJECT_ROOT
+        avenue_cfg = self._read_json(root / "config" / "avenue_config.json", {})
+        preset_cfg = self._read_json(root / "config" / "time_presets.json", {})
+        polygon_cfg = self._read_json(root / "config" / "polygon_config.json", {})
+        # APPDATA/config (frozen) prevalece sobre repo/config: ahi escribia la GUI.
+        try:
+            from src.core.utils.paths import APPDATA_DIR
+            appdata = APPDATA_DIR / "config"
+            if appdata.exists():
+                for filename, loader in (
+                    ("avenue_config.json", avenue_cfg),
+                    ("time_presets.json", preset_cfg),
+                    ("polygon_config.json", polygon_cfg),
+                ):
+                    extra = self._read_json(appdata / filename, {})
+                    if isinstance(extra, dict):
+                        loader.update(extra)
+        except Exception:
+            pass
+        names = set(avenue_cfg) | set(preset_cfg) | set(polygon_cfg)
+        imported = 0
+        for name in sorted(names):
+            if not force and self.get_video_config(name) is not None:
+                continue
+            preset = preset_cfg.get(name) or {}
+            if not isinstance(preset, dict):
+                preset = {}
+            self.save_video_config(
+                name,
+                avenue=str(avenue_cfg.get(name, "") or ""),
+                green=preset.get("green"),
+                yellow=preset.get("yellow"),
+                red=preset.get("red"),
+                time_slot=str(preset.get("time_slot", "") or ""),
+                polygon=polygon_cfg.get(name) or [],
+                danger_zone_margin_pixels=preset.get("danger_zone_margin_pixels"),
+                pre_red_seconds=preset.get("pre_red_seconds"),
+                green_skip_rate=preset.get("green_skip_rate"),
+            )
+            imported += 1
+        if not force:
+            self._set_meta(_CONFIGS_IMPORTED_KEY, "1")
+        log.info("Import JSON→BD: %d configs (force=%s)", imported, force)
+        return {"skipped": False, "imported": imported,
+                "video_configs": self.count_rows("video_configs")}
 
     def list_infractions(self, limit: int = 100, clasificacion: str | None = None) -> list[dict]:
         q = "SELECT * FROM infractions"
@@ -521,13 +679,18 @@ class AppRepository:
                     preset.get("red"),
                     preset.get("time_slot", ""),
                     json.dumps(polygon_cfg.get(name, []), ensure_ascii=False),
+                    preset.get("danger_zone_margin_pixels"),
+                    preset.get("pre_red_seconds"),
+                    preset.get("green_skip_rate"),
                     now,
                 )
                 conn.execute(
                     """
                     INSERT INTO video_configs (video_name, avenue, green, yellow,
-                                               red, time_slot, polygon_json, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                               red, time_slot, polygon_json,
+                                               danger_zone_margin_pixels, pre_red_seconds,
+                                               green_skip_rate, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(video_name) DO UPDATE SET
                         avenue = excluded.avenue,
                         green = excluded.green,
@@ -535,6 +698,9 @@ class AppRepository:
                         red = excluded.red,
                         time_slot = excluded.time_slot,
                         polygon_json = excluded.polygon_json,
+                        danger_zone_margin_pixels = excluded.danger_zone_margin_pixels,
+                        pre_red_seconds = excluded.pre_red_seconds,
+                        green_skip_rate = excluded.green_skip_rate,
                         updated_at = excluded.updated_at
                     """,
                     row,
@@ -662,44 +828,105 @@ def migrate_legacy_data(
     return repo.migrate_legacy_data(project_root=project_root, force=force)
 
 
-def create_preset(preset_path: str | Path | None = None) -> Path:
-    """Genera el preset (seed) de la BD desde los JSON de `config/`.
+def export_legacy_configs(
+    dest_dir: str | Path,
+    db_path: str | Path | None = None,
+) -> dict[str, int]:
+    """Exporta BD -> 3 JSON legacy (respaldo/debug). La BD sigue mandando."""
+    repo = AppRepository(db_path or DEFAULT_DB_PATH)
+    dest = Path(dest_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    avenue_cfg: dict = {}
+    preset_cfg: dict = {}
+    polygon_cfg: dict = {}
+    for name, row in repo.all_video_configs().items():
+        avenue_cfg[name] = row.get("avenue", "") or ""
+        preset: dict[str, Any] = {}
+        for key in ("green", "yellow", "red", "time_slot",
+                    "danger_zone_margin_pixels", "pre_red_seconds",
+                    "green_skip_rate"):
+            if row.get(key) is not None:
+                preset[key] = row[key]
+        preset_cfg[name] = preset
+        try:
+            polygon_cfg[name] = json.loads(row["polygon_json"]) if row.get("polygon_json") else []
+        except (TypeError, json.JSONDecodeError):
+            polygon_cfg[name] = []
+    out = {
+        "avenue_config.json": avenue_cfg,
+        "time_presets.json": preset_cfg,
+        "polygon_config.json": polygon_cfg,
+    }
+    counts = {}
+    for filename, payload in out.items():
+        (dest / filename).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        counts[filename] = len(payload)
+    log.info("Export BD→JSON: %s", counts)
+    return counts
 
-    El preset contiene el schema completo y `video_configs` con los presets
-    actuales (avenue/times/polygon); las tablas de datos de usuario quedan
-    vacías. Es idempotente y regenerable. No toca la DB de producción.
+
+def create_preset(preset_path: str | Path | None = None) -> Path:
+    """Genera el preset (seed) de la BD.
+
+    Fuente: la propia BD (`video_configs`, ya fuente única), con fallback a
+    los JSON legacy de `config/` si la BD está vacía. El preset contiene el
+    schema completo; las tablas de datos de usuario quedan vacías.
+    Es idempotente y regenerable. No toca la DB de producción.
     """
     preset = Path(preset_path) if preset_path else Path(PRESET_DB)
     preset.parent.mkdir(parents=True, exist_ok=True)
     now = datetime.now().isoformat()
 
-    avenue_cfg = AppRepository._read_json(
-        PROJECT_ROOT / "config" / "avenue_config.json", {}
-    )
-    preset_cfg = AppRepository._read_json(
-        PROJECT_ROOT / "config" / "time_presets.json", {}
-    )
-    polygon_cfg = AppRepository._read_json(
-        PROJECT_ROOT / "config" / "polygon_config.json", {}
-    )
-    names = set(avenue_cfg) | set(preset_cfg) | set(polygon_cfg)
+    try:
+        db_configs = AppRepository().all_video_configs()
+    except Exception:
+        db_configs = {}
+    if db_configs:
+        names = set(db_configs)
+        use_db = True
+        avenue_cfg: dict = {}
+        preset_cfg: dict = {}
+        polygon_cfg: dict = {}
+    else:
+        use_db = False
+        avenue_cfg = AppRepository._read_json(
+            PROJECT_ROOT / "config" / "avenue_config.json", {}
+        )
+        preset_cfg = AppRepository._read_json(
+            PROJECT_ROOT / "config" / "time_presets.json", {}
+        )
+        polygon_cfg = AppRepository._read_json(
+            PROJECT_ROOT / "config" / "polygon_config.json", {}
+        )
+        names = set(avenue_cfg) | set(preset_cfg) | set(polygon_cfg)
 
     with sqlite3.connect(preset) as conn:
         conn.execute("PRAGMA journal_mode=OFF;")
         for stmt in _DDL:
             conn.execute(stmt)
         for name in names:
-            p = preset_cfg.get(name) or {}
-            if not isinstance(p, dict):
-                p = {}
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO video_configs
-                    (video_name, avenue, green, yellow, red, time_slot,
-                     polygon_json, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
+            if use_db:
+                row = db_configs[name]
+                polygon = row.get("polygon_json")
+                values = (
+                    name,
+                    row.get("avenue", "") or "",
+                    row.get("green"),
+                    row.get("yellow"),
+                    row.get("red"),
+                    row.get("time_slot", "") or "",
+                    polygon if isinstance(polygon, str) else json.dumps(polygon or [], ensure_ascii=False),
+                    row.get("danger_zone_margin_pixels"),
+                    row.get("pre_red_seconds"),
+                    row.get("green_skip_rate"),
+                    now,
+                )
+            else:
+                p = preset_cfg.get(name) or {}
+                if not isinstance(p, dict):
+                    p = {}
+                values = (
                     name,
                     str(avenue_cfg.get(name, "") or ""),
                     p.get("green"),
@@ -707,8 +934,20 @@ def create_preset(preset_path: str | Path | None = None) -> Path:
                     p.get("red"),
                     p.get("time_slot", ""),
                     json.dumps(polygon_cfg.get(name, []), ensure_ascii=False),
+                    p.get("danger_zone_margin_pixels"),
+                    p.get("pre_red_seconds"),
+                    p.get("green_skip_rate"),
                     now,
-                ),
+                )
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO video_configs
+                    (video_name, avenue, green, yellow, red, time_slot,
+                     polygon_json, danger_zone_margin_pixels, pre_red_seconds,
+                     green_skip_rate, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                values,
             )
         conn.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)",

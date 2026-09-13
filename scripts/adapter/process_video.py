@@ -64,7 +64,32 @@ def _load_config(config_path: str) -> dict:
 def _load_existing_configs(
     video_basename: str,
 ) -> tuple[dict | None, dict | None, str | None]:
-    """Load polygon, semaphore times, and avenue name for a video from config/*.json."""
+    """Load polygon, semaphore times, and avenue name for a video.
+
+    Fuente única: BD (con import único de los JSON legacy). Los JSON de
+    `config/` quedan como fallback si la BD no responde.
+    """
+    try:
+        from src.infrastructure.database.app_repository import AppRepository
+
+        repo = AppRepository()
+        try:
+            repo.import_legacy_configs(project_root=PROJECT_ROOT)
+        except Exception:
+            pass
+        row = repo.get_video_config(video_basename)
+        if row:
+            semaphore = None
+            if (row.get("green") is not None and row.get("yellow") is not None
+                    and row.get("red") is not None):
+                semaphore = {"green": row["green"], "yellow": row["yellow"],
+                             "red": row["red"]}
+                if row.get("time_slot"):
+                    semaphore["time_slot"] = row["time_slot"]
+            return row.get("polygon") or None, semaphore, row.get("avenue") or None
+    except Exception:
+        pass
+
     polygon = None
     semaphore = None
     avenue = None

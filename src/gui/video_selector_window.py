@@ -622,47 +622,47 @@ class VideoSelectorWindow:
         )
         size_label.pack(anchor="w")
     
+    def _db(self):
+        from src.infrastructure.database.app_repository import AppRepository
+        return AppRepository()
+
     def get_configuration_status(self, filename):
-        """Obtener estado de configuración del video"""
+        """Obtener estado de configuración del video (BD, fuente única)."""
         status = {
             'polygon': False,
             'semaphore': False,
             'avenue': False,
             'semaphore_data': None
         }
-        
-        # Verificar polígono
+
         try:
-            if os.path.exists(self.config_files['polygon']):
-                with open(self.config_files['polygon'], 'r', encoding='utf-8') as f:
-                    polygon_config = json.load(f)
-                    if filename in polygon_config and polygon_config[filename]:
-                        status['polygon'] = True
-        except:
-            pass
-        
-        # Verificar semáforo
+            row = self._db().get_video_config(filename)
+        except Exception:
+            row = None
+        if not row:
+            return status
         try:
-            if os.path.exists(self.config_files['time_presets']):
-                with open(self.config_files['time_presets'], 'r', encoding='utf-8') as f:
-                    semaphore_config = json.load(f)
-                    if filename in semaphore_config:
-                        status['semaphore'] = True
-                        status['semaphore_data'] = semaphore_config[filename]
-        except:
+            if row.get("polygon"):
+                status['polygon'] = True
+        except Exception:
             pass
-        
-        # Verificar avenida
         try:
-            if os.path.exists(self.config_files['avenue']):
-                with open(self.config_files['avenue'], 'r', encoding='utf-8') as f:
-                    avenue_config = json.load(f)
-                    if filename in avenue_config and avenue_config[filename]:
-                        status['avenue'] = True
-                        status['avenue_name'] = avenue_config[filename]
-        except:
+            if (row.get("green") is not None and row.get("yellow") is not None
+                    and row.get("red") is not None):
+                status['semaphore'] = True
+                status['semaphore_data'] = {
+                    "green": row["green"], "yellow": row["yellow"], "red": row["red"],
+                    "time_slot": row.get("time_slot", ""),
+                }
+        except Exception:
             pass
-        
+        try:
+            if (row.get("avenue") or "").strip():
+                status['avenue'] = True
+                status['avenue_name'] = row["avenue"]
+        except Exception:
+            pass
+
         return status
     
     def display_config_status(self, status_frame, status):
@@ -856,7 +856,11 @@ class VideoSelectorWindow:
             )
             
             if response:
-                # Limpiar todos los archivos de configuración
+                # Limpiar configuraciones en BD (fuente única) + JSONs legacy
+                try:
+                    self._db().clear_video_configs()
+                except Exception:
+                    pass
                 config_files = [
                     self.config_files['polygon'],
                     self.config_files['time_presets'],
@@ -864,7 +868,7 @@ class VideoSelectorWindow:
                     writable_data_path("data/infracciones.json"),
                     writable_data_path("data/indicadores_rendimiento.json")
                 ]
-                
+
                 for config_file in config_files:
                     if os.path.exists(config_file):
                         with open(config_file, 'w', encoding='utf-8') as f:
@@ -889,19 +893,24 @@ class VideoSelectorWindow:
             messagebox.showerror("Error", f"Error limpiando configuraciones: {str(e)}", parent=self.window)
     
     def _clean_single_video_config(self, filename):
-        """Limpiar configuración de un video específico"""
+        """Limpiar configuración de un video específico (BD + JSONs legacy)."""
         print(f"🧹 Limpiando configuración para: {filename}")
+        try:
+            if self._db().delete_video_config(filename):
+                print(f"✅ Eliminada configuración en BD para {filename}")
+        except Exception as e:
+            print(f"⚠️ Error limpiando configuración en BD: {e}")
         # Limpiar de archivos de configuración
         for config_type, config_path in self.config_files.items():
             if os.path.exists(config_path):
                 try:
                     with open(config_path, 'r', encoding='utf-8') as f:
                         config_data = json.load(f)
-                    
+
                     if filename in config_data:
                         del config_data[filename]
                         print(f"✅ Eliminada configuración {config_type} para {filename}")
-                        
+
                         with open(config_path, 'w', encoding='utf-8') as f:
                             json.dump(config_data, f, indent=2)
                 except Exception as e:

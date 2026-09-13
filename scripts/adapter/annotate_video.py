@@ -56,8 +56,8 @@ def main() -> None:
         if event["type"] == "complete":
             payload = event["payload"]
             print(
-                f"  Completado: {payload.get('infractor_count', 0)} infractores con placa | "
-                f"{len(payload.get('evidence', []))} mejores crops"
+                f"  Completado: {payload.get('infractor_count', 0)} infractores | "
+                f"{len(payload.get('evidence', []))} mejores crops de carro"
             )
 
     for index, name in enumerate(names, 1):

@@ -130,7 +130,7 @@ Proyecto de tesis UPAO 2025 - Abel Jesus Moya Acosta.
   estado (Configurado / Sin configurar). Acciones: Seleccionar, Configurar,
   Limpiar, Eliminar, Importar, Actualizar, Descargar Demo.
 - Configuracion de zona: poligono de la interseccion + margen de peligro
-  (default 80 px). Se guarda en config/polygon_config.json.
+  (default 80 px). Se guarda en la BD (tabla video_configs, fuente única).
 - Configuracion de semaforo + avenida: tiempos G/Y/R + pre-rojo (0.5 s) +
   green_skip_rate (60 frames) + nombre de avenida.
 - Reproductor: play/pause, overlay SEMAFORO EN ROJO, timer HH:mm:ss y

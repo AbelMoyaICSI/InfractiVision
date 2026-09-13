@@ -15,7 +15,7 @@ from src.infrastructure.reports import ReportRepository
 
 
 class PlateReviewWindow:
-    """Show every valid evidence crop and run Plate Recognizer one by one."""
+    """Show the best crop per infractor and run Plate Recognizer one by one."""
 
     def __init__(self, parent, evidences: list[PlateEvidence], output_dir: str | Path, on_complete=None):
         self.parent = parent
@@ -53,7 +53,7 @@ class PlateReviewWindow:
     def _build(self):
         ttk.Label(
             self.window,
-            text="Mejores frames de infracciones con placa detectada",
+            text="Mejores frames de carros infractores",
             font=("Arial", 16, "bold"),
         ).pack(pady=(10, 2))
         ttk.Label(
@@ -139,7 +139,7 @@ class PlateReviewWindow:
             widget.destroy()
 
         if not self.evidences:
-            ttk.Label(self.scroll_frame, text="No hay evidencias con placa detectada.").pack(pady=30)
+            ttk.Label(self.scroll_frame, text="No hay evidencias de infractores.").pack(pady=30)
             self.status.config(text="0 evidencias válidas")
             return
 

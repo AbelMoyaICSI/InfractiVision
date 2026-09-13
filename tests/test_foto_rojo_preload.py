@@ -16,6 +16,7 @@ def test_has_plate_recognizer_token_env(monkeypatch):
 
 
 def test_preload_returns_dict_with_mocks(monkeypatch):
+    """Nuevo flujo: la precarga solo calienta YOLOv8-vehiculos (placas lazy)."""
     import src.application.services.model_preloader as mp
 
     calls: list = []
@@ -29,17 +30,8 @@ def test_preload_returns_dict_with_mocks(monkeypatch):
             calls.append(("vehicle", tuple(img.shape)))
             return []
 
-    class FakePD:
-        model = object()
-
-        def detect(self, crop, conf=0.4, draw=False):
-            calls.append(("plate", tuple(crop.shape)))
-            return []
-
     monkeypatch.setattr("src.core.detection.vehicle_detector.VehicleDetector",
                         lambda *a, **k: FakeVD(), raising=False)
-    import src.core.detection.plate_detector as pd_mod
-    monkeypatch.setattr(pd_mod, "PlateDetector", lambda *a, **k: FakePD(), raising=False)
     monkeypatch.setattr(mp, "has_plate_token", lambda: False)
     import src.core.ocr.super_resolution as sr_mod
     monkeypatch.setattr(sr_mod, "get_upscaler", lambda: (_ for _ in ()).throw(RuntimeError("sin SR")))
@@ -47,14 +39,14 @@ def test_preload_returns_dict_with_mocks(monkeypatch):
     result = mp.preload_foto_rojo_models()
     assert result["plate_token_ok"] is False
     assert isinstance(result["vehicle_detector"], FakeVD)
-    assert isinstance(result["plate_detector"], FakePD)
+    # YOLO-placas ya no se precarga en vivo (post-proceso lazy)
+    assert result["plate_detector"] is None
     assert "anpr_detector" not in result
     assert "lprnet_ok" not in result
     assert "elapsed_s" in result and "errors" in result
-    # Warm-up: una inferencia dummy por detector (evita el lagazo en amarillo)
+    # Warm-up: una inferencia dummy solo de vehículos (evita el lagazo)
     assert ("vehicle", (416, 416, 3)) in calls
-    assert ("plate", (320, 320, 3)) in calls
-    assert set(result["warmup_s"]) >= {"vehicle", "plate"}
+    assert set(result["warmup_s"]) >= {"vehicle"}
 
 
 def test_preload_reports_errors_without_crash(monkeypatch):
@@ -65,14 +57,12 @@ def test_preload_reports_errors_without_crash(monkeypatch):
 
     monkeypatch.setattr("src.core.detection.vehicle_detector.VehicleDetector",
                         _boom, raising=False)
-    import src.core.detection.plate_detector as pd_mod
-    monkeypatch.setattr(pd_mod, "PlateDetector", _boom, raising=False)
     monkeypatch.setattr(mp, "has_plate_token", lambda: True)
 
     result = mp.preload_foto_rojo_models()
     assert result["vehicle_detector"] is None
     assert result["plate_detector"] is None
-    assert len(result["errors"]) >= 2
+    assert len(result["errors"]) >= 1
 
 
 def test_async_processor_is_lazy(monkeypatch):

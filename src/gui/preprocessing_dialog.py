@@ -42,8 +42,9 @@ FULL_CAR_MIN_WIDTH = 160
 
 
 def split_viable_full_car(pending_infractions, video_name):
-    """Divide pendientes en filas de revisión (carro completo) y resto a NIE.
+    """DEPRECADO (nuevo flujo sin pending): se conserva por compat.
 
+    Divide pendientes en filas de revisión (carro completo) y resto a NIE.
     Un pendiente va a la API solo si su crop de vehículo existe y es viable
     en tamaño; la API detecta la placa sola dentro del auto. Retorna
     `(rows: list[PlateEvidence], remaining: list[dict])`.
@@ -443,19 +444,12 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             self._ui_call(self.phase_label.config, text="Preparando modelos de IA...")
             self._ui_call(self.details_label.config, text="Inicializando detectores...")
 
-            # Inicializar detectores si son necesarios (reutiliza precarga)
+            # Inicializar detectores si son necesarios (reutiliza precarga).
+            # Live = SOLO YOLOv8-vehiculos: el YOLO de placas ya no se carga
+            # aqui; el post-proceso lo pide 1x por infractor (lazy).
             if getattr(self.player, 'vehicle_detector', None) is None:
                 from src.core.detection.vehicle_detector import VehicleDetector
                 self.player.vehicle_detector = VehicleDetector(model_path=resource_path("models/yolov8n.pt"))
-
-            # Detector de placas (reutiliza precarga)
-            if getattr(self.player, 'plate_detector', None) is None:
-                from src.core.detection.plate_detector import PlateDetector
-                try:
-                    plate = PlateDetector()
-                    self.player.plate_detector = plate if getattr(plate, "model", None) is not None else None
-                except Exception:
-                    self.player.plate_detector = None
             
             # Una vez cargados los modelos, iniciar procesamiento del video
             self.process_thread = threading.Thread(target=self._process_video, daemon=True)
@@ -470,36 +464,30 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         self.current_avenue = None
         
         try:
-            # Cargar todas las configuraciones de una vez
-            configs = {}
-            config_files = {
-                'polygon': self.POLYGON_CONFIG_FILE,
-                'presets': self.PRESETS_FILE,
-                'avenue': self.AVENUE_CONFIG_FILE
-            }
-            
-            for key, path in config_files.items():
-                if os.path.exists(path):
-                    try:
-                        with open(path, "r", encoding="utf-8") as f:
-                            configs[key] = json.load(f)
-                    except Exception as e:
-                        print(f"Error al cargar {key}: {e}")
-                        configs[key] = {}
-                else:
-                    configs[key] = {}
-            
-            # Extraer datos específicos para este video usando solo el nombre del archivo
-            video_key = os.path.basename(self.video_path)
-            
-            if video_key in configs.get('polygon', {}):
-                self.polygon_points = configs['polygon'][video_key]
-                
-            if video_key in configs.get('presets', {}):
-                self.cycle_durations = configs['presets'][video_key]
-                
-            if video_key in configs.get('avenue', {}):
-                self.current_avenue = configs['avenue'][video_key]
+            # Fuente única: BD (incluye import único de los JSON legacy).
+            from src.infrastructure.database.app_repository import AppRepository
+            try:
+                row = AppRepository().get_video_config(os.path.basename(self.video_path))
+            except Exception as e:
+                print(f"Error leyendo config en BD: {e}")
+                row = None
+            row = row or {}
+
+            if row.get("polygon"):
+                self.polygon_points = [tuple(point) for point in row["polygon"]]
+
+            if (row.get("green") is not None and row.get("yellow") is not None
+                    and row.get("red") is not None):
+                durations: dict = {
+                    "green": row["green"], "yellow": row["yellow"], "red": row["red"]}
+                for key in ("time_slot", "danger_zone_margin_pixels",
+                            "pre_red_seconds", "green_skip_rate"):
+                    if row.get(key) is not None:
+                        durations[key] = row[key]
+                self.cycle_durations = durations
+
+            if (row.get("avenue") or "").strip():
+                self.current_avenue = row["avenue"]
             
             # Validación final
             valid_polygon = self.polygon_points and len(self.polygon_points) >= 3
@@ -1369,7 +1357,6 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         processor = OfficialVideoProcessor(
             project_root,
             vehicle_detector=getattr(self.player, "vehicle_detector", None),
-            plate_detector=getattr(self.player, "plate_detector", None),
             draw_state_banner=not getattr(self, "inline", False),
         )
 
@@ -1387,6 +1374,12 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             self.result_queue.put(("official_error", str(error)))
 
     def _open_official_review(self, payload):
+        """Nuevo flujo: candidatos -> cuadrante direccional -> placa -> API texto."""
+        # `to_dict()` expande el metadata a claves top-level: se recuperan
+        # (candidate_crops, direction, ...) para el post-proceso.
+        _known = {"video", "vehicle_id", "frame", "timestamp_seconds",
+                  "vehicle_class", "quality_score", "crop_path", "plate",
+                  "ocr_confidence", "ocr_method", "validated", "review_notes"}
         evidences = [PlateEvidence(
             video_name=item.get("video", Path(self.video_path).name),
             track_id=int(item.get("vehicle_id", 0)),
@@ -1399,24 +1392,27 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             ocr_confidence=float(item.get("ocr_confidence", 0)),
             ocr_method=item.get("ocr_method", ""),
             validated=bool(item.get("validated", False)),
+            review_notes=item.get("review_notes", ""),
+            metadata={k: v for k, v in item.items() if k not in _known},
         ) for item in payload.get("evidence", [])]
-        # Pendientes con crop de vehículo viable: van enteros a la API para que
-        # busque la placa (YOLO no encontró bbox). El resto sigue a NIE directo.
-        full_car_rows, remaining_pending = split_viable_full_car(
-            payload.get("pending_infractions", []), Path(self.video_path).name
-        )
-        evidences.extend(full_car_rows)
+        # Sin pending: todo lo que llega ya es infractor (rojo en live).
+        self._pending_infractions = []
         if not evidences:
-            self._pending_infractions = list(payload.get("pending_infractions", []))
             self._complete_processing()
             return
-        # Infracciones pendientes restantes (crop no viable) -> NIE directo
-        self._pending_infractions = remaining_pending
-        if self._pending_infractions:
-            try:
-                self.player.apply_official_validation([], self._pending_infractions)
-            except Exception as e:
-                print(f"⚠️ Error añadiendo cards pendientes (NIE): {e}")
+        # ACCION: en CADA candidato se recorta el cuadrante inferior segun su
+        # direccion y se evalua placa; gana la mejor imagen CON placa (si no
+        # hay, la de mayor calidad). Ese recorte va a la API en la revision.
+        try:
+            from src.application.services.plate_review_preparer import (
+                prepare_evidences_for_review,
+            )
+            evidences = prepare_evidences_for_review(
+                evidences,
+                Path(writable_data_path("data/output/official")) / "crops",
+            )
+        except Exception as e:
+            print(f"⚠️ Post-proceso de placas omitido (van carros completos): {e}")
         PlateReviewWindow(
             self.dialog,
             evidences,
@@ -1427,10 +1423,11 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
     def _on_official_validation_done(self, evidences):
         """Actualiza la barra lateral y las métricas según la validación final.
 
-        NID = evidence.validated (✓) con placa reconocida -> verde.
-        NIE = el resto, incluidos los pendientes sin placa -> rojo.
+        NID = evidence.validated (✓) con placa reconocida por la API -> verde.
+        NIE = el resto (sin texto o sin check) -> rojo.
 
-        Guarda en SQLite (única fuente) y genera indicadores coherentes.
+        Guarda en SQLite (única fuente), limpia los candidatos no elegidos
+        (ya persistidos) y genera indicadores coherentes.
         """
         try:
             self.player.apply_official_validation(evidences, getattr(self, "_pending_infractions", []))
@@ -1446,6 +1443,22 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             print(f"⚠️ Error guardando infracciones oficiales en DB: {e}")
             import traceback
             traceback.print_exc()
+
+        # Limpieza post-validacion: solo DESPUES de persistir. Borra los
+        # candidatos no elegidos; conserva recorte final, best.jpg, video y
+        # reporte. Idempotente (Exportar + Completado la disparan dos veces).
+        try:
+            from src.application.services.plate_review_preparer import (
+                cleanup_rejected_candidates,
+            )
+            summary = cleanup_rejected_candidates(
+                evidences,
+                Path(writable_data_path("data/output/official")) / "crops",
+            )
+            print(f"🧹 Limpieza post-validacion: {summary['removed']} candidatos "
+                  f"eliminados, {summary['kept']} conservados")
+        except Exception as e:
+            print(f"⚠️ Error en limpieza post-validacion: {e}")
 
         try:
             self._regenerate_indicators_after_validation(nid_entries, nie_entries)
@@ -1740,7 +1753,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 # 🎨 PREPARAR ETIQUETA (PPI SIEMPRE VISIBLE)
                 # Es un infractor si ya tiene un tracking activo o acaba de empezar uno
                 is_infrator = (current_d is not None)
-                t_color = (0, 0, 255) if is_infrator else (0, 255, 255) # Rojo si es infractor, Amarillo si no
+                t_color = (0, 0, 255) if is_infrator else (0, 255, 0) # Rojo si es infractor, verde si no
                 
                 # Texto de etiqueta: "INF #X" si es infractor, "VEH" si es candidato
                 label = f"{'INF' if is_infrator else 'VEH'} #{current_d['id'] if is_infrator else '?'} PPI:{proximity_factor:.2f}"
@@ -1767,46 +1780,23 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                     current_d['center'] = vehicle_center
                     current_d['area_history'].append(vehicle_area)
                     
-                    # Plate Check Rápido (V50: margen proporcional al vehículo, no fijo)
+                    # Nuevo flujo: en vivo NO hay detector de placas (solo YOLOv8).
+                    # El score es solo proximidad; la placa se localiza 1x en
+                    # post-proceso sobre la mejor imagen guardada.
                     has_plate_score = 0.0
-                    try:
-                        tm = max(30, int(min(x2 - x1, y2 - y1) * 0.15))
-                        v_roi = frame[max(0,y1-tm):min(h,y2+tm), max(0,x1-tm):min(w,x2+tm)]
-                        if v_roi.size > 0 and hasattr(self.player, 'plate_detector'):
-                            p_det = self.player.plate_detector.detect_plates(v_roi, confidence=0.40)
-                            if p_det: has_plate_score = 1.0
-                    except: pass
 
-                    pqi = proximity_factor * (has_plate_score if has_plate_score > 0.1 else 0.03)
-                    
+                    pqi = proximity_factor
+
                     if pqi > current_d['best_pqi']:
                         current_d['best_pqi'] = pqi
-                        
-                        # 🧬 INTEGRACIÓN LABFORENSE V50: Rectificación Inmediata (margen proporcional)
+
+                        # Contexto del vehículo para el mejor frame (sin YOLO
+                        # de placas ni rectificación en vivo).
                         plate_stripped = None
                         vehicle_ctx = None
                         try:
                             tm_ctx = max(30, int(min(x2 - x1, y2 - y1) * 0.20))
                             vehicle_ctx = frame[max(0,y1-tm_ctx):min(h,y2+tm_ctx), max(0,x1-tm_ctx):min(w,x2+tm_ctx)].copy()
-                            
-                            if hasattr(self.player, 'plate_detector'):
-                                p_det = self.player.plate_detector.detect_plates(vehicle_ctx, confidence=0.40)
-                                if p_det:
-                                    x1p, y1p, x2p, y2p = [int(v) for v in p_det[0]]
-                                    p_raw = vehicle_ctx[y1p:y2p, x1p:x2p].copy()
-
-                                    import os as _os2
-
-                                    _rect_live = _os2.getenv("IV_ENABLE_RECTIFIER_LIVE", "0") == "1"
-                                    if _rect_live:
-                                        from src.core.processing.plate_processing import rectificar_perspectiva
-                                        plate_stripped = rectificar_perspectiva(p_raw)
-                                    else:
-                                        # Dieta i3: auto_rectifier (~35 máscaras + contours)
-                                        # diferido a revisión; en vivo basta el crop.
-                                        plate_stripped = p_raw
-                                    if plate_stripped is not None:
-                                        print(f"📍 MMRP #{current_d['id']} RECTIFICADO OK ({plate_stripped.shape[1]}x{plate_stripped.shape[0]}px)")
                         except: pass
 
                         bbox_margin = max(15, int(min(x2 - x1, y2 - y1) * 0.10))
@@ -1824,12 +1814,11 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                         if sum(recent[-3:])/3 < (sum(recent[:3])/3) * 0.98:
                             current_d['mmrp_reached'] = True
 
-                    # 🚀 TRIGGER V50 (Requiere confirmación de placa para disparos rápidos)
+                    # 🚀 TRIGGER V50 (nuevo flujo: sin confirmación de placa en vivo)
                     if not current_d['async_sent']:
                         num_f = len(current_d['area_history'])
-                        plate_confirmed = (has_plate_score > 0)
-                        is_panic = (proximity_factor >= 0.88 and plate_confirmed)
-                        is_secure = (num_f >= 3 and proximity_factor >= 0.85 and plate_confirmed)
+                        is_panic = (proximity_factor >= 0.88)
+                        is_secure = (num_f >= 3 and proximity_factor >= 0.85)
                         is_peak_gold = (num_f >= 5 and current_d['mmrp_reached'] and proximity_factor >= 0.78)
                         is_heavy = (num_f >= 22 and proximity_factor >= 0.75)
                         
@@ -4895,6 +4884,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
     def _save_official_infractions_to_db(self, evidences, pending_infractions=None):
         """Guarda las infracciones validadas en SQLite (única fuente).
 
+        Nuevo flujo sin pending: `pending_infractions` se acepta por compat
+        pero siempre llega vacío; NID = validada con texto API, resto = NIE.
         Compat: mantiene el nombre legacy `_save_official_infractions_to_json`
         como alias para llamadas externas.
         """
@@ -4979,7 +4970,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             inserted = repo.insert_infractions(all_entries)
             print(f"📝 [OFICIAL][SQLite] Insertadas {inserted} infracciones ({len(nid_entries)} NID + {len(nie_entries)} NIE) para {nombre_video}")
         else:
-            print("⚠️ [OFICIAL] No se guardaron infracciones (sin evidencias ni pendientes)")
+            print("⚠️ [OFICIAL] No se guardaron infracciones (sin evidencias)")
         return nid_entries, nie_entries
 
     # Alias legacy para compatibilidad externa

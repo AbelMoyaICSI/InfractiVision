@@ -1,8 +1,14 @@
 """Official red-light video processing use case.
 
-This is the migrated implementation of the former annotate_video adapter.
-It deliberately keeps cloud OCR out of this phase: OCR is selected after the
-best evidence frames have been produced.
+Nuevo flujo:
+  LIVE: solo YOLOv8-vehiculos. Todo vehiculo que cruza el poligono en rojo
+  es infractor directo (rojo latched). No hay estados pending ni detector
+  de placas en el loop: solo se guardan los crops de carro completo con
+  mejor calidad por track.
+  ACCION (post-proceso): sobre la mejor imagen de cada auto se aplica el
+  cuadrante existente + localizacion de placa 1x y ese recorte se envia a
+  la API de Plate Recognizer para obtener el texto (ver
+  `src/application/services/plate_review_preparer.py`).
 """
 from __future__ import annotations
 
@@ -33,25 +39,35 @@ def _format_hms(seconds):
 class OfficialVideoProcessor:
     def __init__(self, project_root: str | Path, vehicle_detector=None, plate_detector=None,
                  report_repository: ReportRepository | None = None,
-                 draw_state_banner: bool = True):
+                 draw_state_banner: bool = True,
+                 max_candidates: int = 5,
+                 direction_min_px: float = 15.0):
         self.project_root = Path(project_root)
         self.vehicle_detector = vehicle_detector
+        # Compat: se acepta pero YA NO se usa en live. La localizacion de
+        # placa ocurre 1x por candidato en post-proceso
+        # (`plate_review_preparer`), que carga su propio detector lazy.
         self.plate_detector = plate_detector
         self.reports = report_repository or ReportRepository()
         self.min_plate_crop_w = 55
         self.min_plate_crop_h = 30
         self.plate_crop_margin = 0.5
+        # Legacy (sin efecto): antes limitaba a top-K crops por infractor.
+        # Ahora se guardan TODAS las imagenes del infractor en disco.
+        self.max_candidates = max(1, int(max_candidates))
+        # Desplazamiento horizontal minimo en el history para decidir si el
+        # carro va a la derecha o izquierda (cuadrante inferior der/izq).
+        self.direction_min_px = float(direction_min_px)
         # Si es False, no se pinta el cartel "SEMAFORO: X" sobre el video
         # (el estado se muestra en el widget Semaforo de la GUI).
         self.draw_state_banner = draw_state_banner
 
     def _ensure_models(self):
+        # Live = SOLO YOLOv8-vehiculos. El detector de placas NO se carga
+        # aqui: el post-proceso lo pide bajo demanda (1x por infractor).
         if self.vehicle_detector is None:
             from src.core.detection.vehicle_detector import VehicleDetector
             self.vehicle_detector = VehicleDetector(str(self.project_root / "models" / "yolov8n.pt"))
-        if self.plate_detector is None:
-            from src.core.detection.plate_detector import PlateDetector
-            self.plate_detector = PlateDetector()
 
     @staticmethod
     def _quality(crop: np.ndarray) -> float:
@@ -140,6 +156,9 @@ class OfficialVideoProcessor:
         distance = abs(cv2.pointPolygonTest(polygon, point, True))
         return inside, inside or distance <= margin
 
+    # ── Helpers de post-proceso (1x por infractor, fuera del live) ──
+    # `_quadrant` + `_plate_crop_with_margin` + `_viable_plate_crop` los usa
+    # `plate_review_preparer` sobre la mejor imagen guardada.
     def _viable_plate_crop(self, crop: np.ndarray) -> bool:
         if crop is None or crop.size == 0:
             return False
@@ -164,6 +183,27 @@ class OfficialVideoProcessor:
         return vehicle[h // 2:, :], (0, h // 2)
 
     @staticmethod
+    def _direction_from_history(history, min_px: float = 15.0) -> str:
+        """Direccion del carro desde el history del tracker (sin costo).
+
+        `history` = ultimos centros (x, y). dx positivo = se mueve a la
+        derecha => la placa trasera se busca en el cuadrante inferior
+        derecho; dx negativo => izquierdo; bajo el umbral => "unknown"
+        (cuadrante inferior completo).
+        """
+        try:
+            if not history or len(history) < 2:
+                return "unknown"
+            dx = float(history[-1][0]) - float(history[0][0])
+            if dx >= min_px:
+                return "right"
+            if dx <= -min_px:
+                return "left"
+        except Exception:
+            pass
+        return "unknown"
+
+    @staticmethod
     def _draw(frame: np.ndarray, polygon: np.ndarray, tracks: dict, state: str,
               plate_boxes: dict[int, list[tuple[int, int, int, int]]], frame_index: int,
               draw_state_banner: bool = True, elapsed_seconds: float | None = None,
@@ -172,14 +212,11 @@ class OfficialVideoProcessor:
         cv2.polylines(display, [polygon], True, (0, 0, 255), 2)
         for track_id, track in tracks.items():
             x1, y1, x2, y2 = track["bbox"]
-            # Once a violation is confirmed, its visual state is latched.
-            # Leaving the danger polygon must not turn the vehicle green.
+            # Sin pending: el infractor queda en rojo latched al cruzar en
+            # rojo. Salir del poligono no lo vuelve verde.
             infraction = track.get("infractor_confirmed", False)
-            pending = track.get("pending_infractor", False)
             if infraction:
                 color, thickness, state_label = (0, 0, 255), 3, "INFRACCION"
-            elif pending:
-                color, thickness, state_label = (0, 255, 255), 2, "PENDIENTE"
             else:
                 color, thickness, state_label = (0, 255, 0), 2, "NORMAL"
             cv2.rectangle(display, (x1, y1), (x2, y2), color, thickness)
@@ -215,12 +252,14 @@ class OfficialVideoProcessor:
     def process(self, video_path: str | Path, config: VideoConfig, output_dir: str | Path,
                 conf: float = 0.40, save_video: bool = True, save_crops: bool = True,
                 callback: Callable[[dict], None] | None = None) -> dict:
-        """Fase 1+2+3: batch GPU + placas en batch + I/O async + stats.
+        """Fase 1+2+3: batch GPU + I/O async + stats.
 
-        Comportamiento preservado (mismo planner/tracker/criterios), pero:
-        - YOLO-vehículos en batch (3x medido en 1650 Ti).
-        - YOLO-placas en batch por frame (1 inferencia para N vehículos).
-        - _quality downscale+GPU, imwrite/VideoWriter async.
+        Nuevo flujo (sin YOLO-placas en live, sin pending):
+        - YOLO-vehículos en batch + CentroidTracker + TrafficPlanner.
+        - Cruce de polígono en rojo => infractor confirmado directo (rojo).
+        - Solo se guardan crops de carro completo del mejor frame por track.
+        - La placa se localiza 1x por infractor en post-proceso y el texto
+          lo resuelve la API de Plate Recognizer en la revisión.
         """
         import os as _os
 
@@ -239,10 +278,10 @@ class OfficialVideoProcessor:
         polygon = np.asarray(config.polygon, dtype=np.int32)
         tracker = CentroidVehicleTracker()
         best: dict[int, PlateEvidence] = {}
-        pending_crossings: dict[int, int] = {}
-        pending_paths: dict[int, str] = {}
-        pending_quality: dict[int, float] = {}
-        confirmed_at: dict[int, int] = {}
+        # track_id -> frame del cruce (infractor directo, sin pending)
+        infractors: dict[int, int] = {}
+        # track_id -> top-K candidatos {quality, frame, timestamp, direction, image}
+        candidates: dict[int, list[dict]] = {}
         last_tracks: dict[int, dict] = {}
         last_plate_boxes: dict[int, list[tuple[int, int, int, int]]] = {}
         started = time.time()
@@ -306,7 +345,6 @@ class OfficialVideoProcessor:
             pass
         B = max(1, min(B, 8))
         use_batch = B > 1 and hasattr(self.vehicle_detector, "detect_batch")
-        has_plate_batch = hasattr(self.plate_detector, "detect_batch_quadrants")
 
         frame_index = 0
         first_detect_logged = False
@@ -365,8 +403,9 @@ class OfficialVideoProcessor:
                     raw = batch_raw.get(pos, [])
                     detections = self._parse_vehicle_raw(raw, conf)
                     tracks = tracker.update(detections)
-                    # Recolecta candidatos a placa para batch por frame (Fase 2).
-                    cand: list[tuple[int, dict, np.ndarray, np.ndarray, tuple]] = []
+                    # LIVE sin YOLO-placas: solo vehiculos. Cruce en rojo =>
+                    # infractor directo (rojo). Se guarda el mejor crop de
+                    # carro completo por track para el post-proceso.
                     for track_id, track in tracks.items():
                         bbox = track["bbox"]
                         inside, near = self._near_polygon(bbox, polygon, config.danger_zone_margin_pixels)
@@ -374,85 +413,44 @@ class OfficialVideoProcessor:
                         track["near_zone"] = near
                         track["class_name"] = {2: "CAR", 5: "BUS", 7: "TRUCK"}.get(track["class_id"], "VEH")
                         track["last_detection_frame"] = fi
-                        if inside and state == "red" and track_id not in pending_crossings:
-                            pending_crossings[track_id] = fi
-                        track["infractor_confirmed"] = track_id in confirmed_at
-                        track["pending_infractor"] = track_id in pending_crossings and track_id not in confirmed_at
-                        if not near and not track["infractor_confirmed"] and track_id not in pending_crossings:
+                        if inside and state == "red" and track_id not in infractors:
+                            infractors[track_id] = fi
+                            if callback is not None:
+                                callback({
+                                    "type": "infraction_detected",
+                                    "track_id": track_id,
+                                    "frame_index": fi,
+                                    "timestamp_seconds": fi / fps,
+                                    "vehicle_class": track["class_name"],
+                                })
+                        track["infractor_confirmed"] = track_id in infractors
+                        if not near and not track["infractor_confirmed"]:
+                            continue
+                        if not track["infractor_confirmed"]:
                             continue
                         x1, y1, x2, y2 = bbox
                         vehicle = frame[max(0, y1):min(height, y2), max(0, x1):min(width, x2)]
                         if vehicle.size == 0:
                             continue
-                        if track_id in pending_crossings and track_id not in confirmed_at:
-                            tq0 = time.time()
-                            pend_quality = self._quality(vehicle)
-                            stats["quality_ms"].append((time.time() - tq0) * 1000)
-                            if pend_quality > pending_quality.get(track_id, -1):
-                                pending_quality[track_id] = pend_quality
-                                p_crop = output_dir / "crops" / f"{video_path.stem}_v{track_id}_pending.jpg"
-                                _save_crop(p_crop, vehicle)
-                                pending_paths[track_id] = str(p_crop)
-                        quadrant, (ox, oy) = self._quadrant(vehicle)
-                        cand.append((track_id, track, vehicle, quadrant, (ox, oy, x1, y1)))
-                    # Una sola inferencia de placas para todos los vehículos del frame.
-                    if cand:
-                        tp0 = time.time()
-                        try:
-                            if has_plate_batch and len(cand) > 1:
-                                all_plates = self.plate_detector.detect_batch_quadrants(
-                                    [c[3] for c in cand], conf=0.40)
-                            else:
-                                all_plates = [self.plate_detector.detect(c[3], conf=0.40, draw=False)
-                                              for c in cand]
-                        except Exception:
-                            all_plates = []
-                        stats["plate_ms"].append((time.time() - tp0) * 1000 / max(len(cand), 1))
-                        for (track_id, track, vehicle, quadrant, (ox, oy, x1, y1)), plates in zip(cand, all_plates):
-                            mapped = []
-                            plate_found = False
-                            for plate in (plates or [])[:1]:
-                                px1, py1, px2, py2 = map(int, plate[:4])
-                                if px2 <= px1 or py2 <= py1:
-                                    continue
-                                local = (px1 + ox, py1 + oy, px2 + ox, py2 + oy)
-                                crop = vehicle[max(0, local[1]):min(vehicle.shape[0], local[3]), max(0, local[0]):min(vehicle.shape[1], local[2])]
-                                if crop.size == 0:
-                                    continue
-                                crop_with_margin = self._plate_crop_with_margin(vehicle, local)
-                                evidence_crop = crop_with_margin if crop_with_margin.size else crop
-                                if not self._viable_plate_crop(evidence_crop):
-                                    continue
-                                plate_found = True
-                                mapped.append((x1 + local[0], y1 + local[1], x1 + local[2], y1 + local[3]))
-                                tq1 = time.time()
-                                quality = self._quality(evidence_crop)
-                                stats["quality_ms"].append((time.time() - tq1) * 1000)
-                                crossing_frame = pending_crossings.get(track_id)
-                                if crossing_frame is not None and track_id not in confirmed_at:
-                                    confirmed_at[track_id] = fi
-                                    track["infractor_confirmed"] = True
-                                    track["pending_infractor"] = False
-                                    if callback is not None:
-                                        callback({
-                                            "type": "infraction_detected",
-                                            "track_id": track_id,
-                                            "frame_index": fi,
-                                            "timestamp_seconds": fi / fps,
-                                            "vehicle_class": track["class_name"],
-                                        })
-                                confirmation_frame = confirmed_at.get(track_id)
-                                is_valid_candidate = (
-                                    confirmation_frame is not None
-                                    and crossing_frame is not None
-                                    and fi >= crossing_frame
-                                )
-                                if is_valid_candidate and quality >= best.get(track_id, PlateEvidence("", 0, 0, 0, "", -1)).quality_score:
-                                    crop_path = output_dir / "crops" / f"{video_path.stem}_v{track_id}_best.jpg"
-                                    _save_crop(crop_path, evidence_crop)
-                                    best[track_id] = PlateEvidence(config.video_name, track_id, fi, fi / fps, track["class_name"], quality, str(crop_path))
-                            if mapped and plate_found:
-                                plate_boxes[track_id] = mapped
+                        tq0 = time.time()
+                        quality = self._quality(vehicle)
+                        stats["quality_ms"].append((time.time() - tq0) * 1000)
+                        # TODAS las imagenes del infractor van a disco de
+                        # inmediato (sin YOLO-placas en live): el writer async
+                        # absorbe el I/O y en RAM solo queda metadata liviana.
+                        # El post-proceso elige la mejor CON placa.
+                        direction = self._direction_from_history(
+                            track.get("history"), self.direction_min_px)
+                        cand_path = output_dir / "crops" / f"{video_path.stem}_v{track_id}_f{fi}.jpg"
+                        _save_crop(cand_path, vehicle)
+                        candidates.setdefault(track_id, []).append({
+                            "path": str(cand_path),
+                            "quality": quality,
+                            "frame": fi,
+                            "timestamp": fi / fps,
+                            "direction": direction,
+                            "class_name": track["class_name"],
+                        })
 
                     last_tracks = tracks
                     last_plate_boxes = plate_boxes
@@ -463,7 +461,7 @@ class OfficialVideoProcessor:
                     tracks = {
                         track_id: track
                         for track_id, track in last_tracks.items()
-                        if (track.get("infractor_confirmed", False) or track.get("pending_infractor", False))
+                        if track.get("infractor_confirmed", False)
                         and fi - track.get("last_detection_frame", fi) <= max_display_age
                     }
                     plate_boxes = {
@@ -486,6 +484,37 @@ class OfficialVideoProcessor:
                     callback({"type": "frame", "frame": display, "frame_index": fi, "total_frames": total, "state": state, "processed": should_detect})
 
         cap.release()
+        # Arma la evidencia con TODOS los candidatos guardados: el
+        # post-proceso revisa placa en CADA uno (cuadrante direccional)
+        # y elige la mejor CON placa; fallback = mayor calidad.
+        for track_id in sorted(candidates):
+            ranking = sorted(candidates[track_id], key=lambda c: c["quality"], reverse=True)
+            if not ranking:
+                continue
+            crops_meta: list[dict] = [
+                {
+                    "path": str(cand["path"]),
+                    "quality": round(float(cand["quality"]), 4),
+                    "frame": int(cand["frame"]),
+                    "timestamp_seconds": round(float(cand["timestamp"]), 3),
+                    "direction": cand.get("direction", "unknown"),
+                }
+                for cand in ranking
+            ]
+            top = ranking[0]
+            best_path = output_dir / "crops" / f"{video_path.stem}_v{track_id}_best.jpg"
+            best[track_id] = PlateEvidence(
+                config.video_name, track_id, int(top["frame"]), float(top["timestamp"]),
+                top.get("class_name", "VEH"), float(top["quality"]), str(best_path),
+                review_notes="Carro completo (placa se localiza en post-proceso)",
+                metadata={
+                    "full_car": True,
+                    "crossing_frame": infractors.get(track_id, int(top["frame"])),
+                    "direction": top.get("direction", "unknown"),
+                    "n_candidates": len(crops_meta),
+                    "candidate_crops": crops_meta,
+                },
+            )
         # Fase 3: flush async (crops + video) antes de leerlos para el reporte.
         dropped = 0
         if threaded_writer is not None:
@@ -504,29 +533,20 @@ class OfficialVideoProcessor:
                 crop_writer.shutdown()
             except Exception:
                 pass
+        # best.jpg = copia del mejor candidato (ya flusheado a disco).
+        for track_id, item in best.items():
+            try:
+                cands = (item.metadata or {}).get("candidate_crops") or []
+                if cands and save_crops:
+                    import shutil as _shutil
+                    _shutil.copyfile(cands[0]["path"], str(item.crop_path))
+            except Exception:
+                pass
         evidence = [item.to_dict() for item in sorted(best.values(), key=lambda value: value.track_id)]
-        pending_infractions = []
-        for track_id in sorted(pending_crossings):
-            if track_id in confirmed_at:
-                continue
-            crop_path = pending_paths.get(track_id, "")
-            crop_w, crop_h = 0, 0
-            if crop_path:
-                try:
-                    probe = cv2.imread(str(crop_path))
-                    if probe is not None:
-                        crop_h, crop_w = probe.shape[:2]
-                except Exception:
-                    pass
-            pending_infractions.append({
-                "vehicle_id": track_id,
-                "frame_index": pending_crossings[track_id],
-                "timestamp_seconds": round(pending_crossings[track_id] / fps, 3),
-                "vehicle_class": "VEH",
-                "crop_path": crop_path,
-                "crop_w": crop_w,
-                "crop_h": crop_h,
-            })
+        # Sin pending: todo infractor ya tiene su mejor crop de carro en
+        # `evidence`. Se mantiene la clave vacia por compat con reportes
+        # antiguos y callers externos.
+        pending_infractions: list = []
         def _avg(xs: list) -> float:
             return round(sum(xs) / len(xs), 2) if xs else 0.0
 
@@ -545,7 +565,7 @@ class OfficialVideoProcessor:
         }
         print(f"[perf] frames={perf['frames']} detect={perf['detect_frames']} "
               f"batch_cfg={B} calls={perf['batch_calls']} "
-              f"veh={perf['veh_ms_avg']}ms plate={perf['plate_ms_avg']}ms "
+              f"veh={perf['veh_ms_avg']}ms "
               f"quality={perf['quality_ms_avg']}ms draw={perf['draw_ms_avg']}ms "
               f"dropped={dropped} dev={perf['device']}")
         payload = {
@@ -557,8 +577,8 @@ class OfficialVideoProcessor:
             "config": {"green": config.green, "yellow": config.yellow, "red": config.red, "pre_red_seconds": config.pre_red_seconds, "green_skip_rate": config.green_skip_rate, "danger_zone_margin_pixels": config.danger_zone_margin_pixels, "avenue": config.avenue},
             "evidence": evidence,
             "pending_infractions": pending_infractions,
-            "infractor_count": len(confirmed_at) + len(pending_infractions),
-            "confirmed_infractor_ids": sorted(confirmed_at),
+            "infractor_count": len(infractors),
+            "confirmed_infractor_ids": sorted(infractors),
             "elapsed_seconds": round(time.time() - started, 3),
             "perf": perf,
         }

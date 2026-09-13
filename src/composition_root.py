@@ -81,8 +81,9 @@ def _build_repository(settings: Settings) -> ViolationRepositoryPort:
 
 
 def _build_ocr(settings: Settings) -> object:
-    """En vivo NO hay OCR: solo detección (bbox). La lectura la hace la API
-    de Plate Recognizer en la revisión final. Se retorna None y
+    """En vivo NO hay OCR ni YOLO-placas: solo YOLOv8-vehiculos. La placa se
+    localiza 1x por infractor en post-proceso y el texto lo lee la API de
+    Plate Recognizer en la revisión final. Se retorna None y
     `RecognizePlateUseCase` opera en modo solo-detección."""
     return None
 

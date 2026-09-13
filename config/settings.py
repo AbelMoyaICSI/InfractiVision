@@ -23,7 +23,8 @@ except ImportError:
 @dataclass(frozen=True)
 class ModelPaths:
     # Usa get_model_path para descarga selectiva (APPDATA/models en frozen).
-    # En vivo solo hay detección (YOLO); la lectura la hace la API.
+    # Live = solo YOLOv8-vehiculos; yolo_plate se usa 1x por infractor en
+    # post-proceso. La lectura la hace la API de Plate Recognizer.
     yolo_vehicle: str = field(default_factory=lambda: get_model_path("yolov8n.pt"))
     yolo_plate: str = field(default_factory=lambda: get_model_path("license_plate_detector.pt"))
     fsrcnn: str = field(default_factory=lambda: get_model_path("FSRCNN_x3.pb"))

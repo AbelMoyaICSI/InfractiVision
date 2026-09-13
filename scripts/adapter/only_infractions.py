@@ -96,6 +96,28 @@ def _load_config_json(config_path: str) -> dict:
 
 
 def _load_existing_configs(video_basename: str) -> tuple[Any, Any, Any]:
+    """Fuente única: BD (import único de JSON legacy); JSON como fallback."""
+    try:
+        from src.infrastructure.database.app_repository import AppRepository
+
+        repo = AppRepository()
+        try:
+            repo.import_legacy_configs(project_root=PROJECT_ROOT)
+        except Exception:
+            pass
+        row = repo.get_video_config(video_basename)
+        if row:
+            semaphore = None
+            if (row.get("green") is not None and row.get("yellow") is not None
+                    and row.get("red") is not None):
+                semaphore = {"green": row["green"], "yellow": row["yellow"],
+                             "red": row["red"]}
+                if row.get("time_slot"):
+                    semaphore["time_slot"] = row["time_slot"]
+            return row.get("polygon") or None, semaphore, row.get("avenue") or None
+    except Exception:
+        pass
+
     polygon, semaphore, avenue = None, None, None
 
     poly_path = PROJECT_ROOT / "config" / "polygon_config.json"
