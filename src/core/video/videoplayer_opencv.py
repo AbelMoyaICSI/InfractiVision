@@ -411,6 +411,16 @@ class VideoPlayerOpenCV:
         self.have_polygon       = False
         self.current_video_path = None
 
+        # ─── Estado de run (limpieza entre videos / reprocesos) ────
+        # Se inicializa aquí para que `reset_for_new_run` sea idempotente
+        # y no dependa de `hasattr`. NO tocar BD desde el reset.
+        self._after_id = None
+        self.processing_active = False
+        self.processing_completed = False
+        self._inline_dialog = None
+        self._video_epoch = 0
+        self._resetting = False
+
         # Cola acotada de OCR
         self.plate_queue   = queue.Queue(maxsize=1)
         self.plate_running = True
@@ -1246,48 +1256,265 @@ class VideoPlayerOpenCV:
         setup.grab_set()
         setup.wait_window()
 
+    def _cancel_playback_loop(self):
+        """Cancela el `after()` de reproducción pendiente (anti-parpadeo).
+
+        Deja `running/is_playing/is_paused` en estado pausado. Idempotente y
+        seguro si el widget ya no existe.
+        """
+        self.running = False
+        self.is_playing = False
+        self.is_paused = True
+        after_id = getattr(self, "_after_id", None)
+        if after_id:
+            try:
+                self.parent.after_cancel(after_id)
+            except Exception:
+                pass
+            self._after_id = None
+
+    def cancel_inline_processing(self):
+        """Cancela el `PreprocessingDialog` inline anterior, si sigue vivo.
+
+        Destruye sus widgets de progreso (evita frames apilados en
+        `progress_mount`) y detiene sus hilos/pumps para que no siga
+        escribiendo en `video_label`. NO toca la BD.
+        """
+        dlg = getattr(self, "_inline_dialog", None)
+        if dlg is not None:
+            self._inline_dialog = None
+            try:
+                dlg.canceled = True
+            except Exception:
+                pass
+            for _m in ("_cancel_all_after", "_inline_progress_show"):
+                try:
+                    if _m == "_inline_progress_show":
+                        getattr(dlg, _m)(False)
+                    else:
+                        getattr(dlg, _m)()
+                except Exception:
+                    pass
+            try:
+                dlg.display_active = False
+            except Exception:
+                pass
+            # Destruir la barra inline vieja: si solo se hace pack_forget se
+            # acumulan frames ocultos en progress_mount (leak + relayout).
+            for w in list(getattr(dlg, "_inline_widgets", []) or []):
+                try:
+                    w.destroy()
+                except Exception:
+                    pass
+            try:
+                dlg._inline_widgets = []
+            except Exception:
+                pass
+            try:
+                dlg._cleanup_threads()
+            except Exception as e:
+                print(f"Error cancelando procesamiento inline anterior: {e}")
+        self.processing_active = False
+        try:
+            self._show_inline_progress(False)
+        except Exception:
+            pass
+
+    def reset_for_new_run(self, reason="new_video"):
+        """Deja todo limpio para el siguiente run (solo panel lateral).
+
+        Limpia: loops `after`, diálogo inline anterior, cards del panel
+        lateral, métricas TI/TR/NID/NIE, beeps, tracks de movimiento, colas
+        del worker, flags de procesamiento y semáforo/reloj a estado
+        pausado. NO borra BD, avenida, tiempos ni polígono.
+
+        Se ejecuta en batch con un solo `update_idletasks` al final para
+        no parpadear. Idempotente y reentrante.
+        """
+        if getattr(self, "_resetting", False):
+            return
+        self._resetting = True
+        try:
+            self._video_epoch = int(getattr(self, "_video_epoch", 0) or 0) + 1
+
+            # 1) Detener todo lo que escribe en la UI.
+            try:
+                self._cancel_playback_loop()
+            except Exception:
+                pass
+            try:
+                self.cancel_inline_processing()
+            except Exception:
+                pass
+            # Drenar colas del worker: descartar anotaciones del run anterior.
+            for _q in ("_detect_in", "_detect_out"):
+                try:
+                    q = getattr(self, _q, None)
+                    if q is not None:
+                        while True:
+                            q.get_nowait()
+                except Exception:
+                    pass
+
+            # 2) Estado in-memory del run anterior.
+            self._last_annotated_frame = None
+            self._last_is_night = False
+            self._pending_timestamp = None
+            self._pending_beeps = []
+            self.beep_unique_plates = set()
+            self._motion_tracks = {}
+            self._motion_next_id = 1
+            self._night_frame_counter = 0
+            self._preview_info_time = 0.0
+            self._debug_optimized_shown = False
+            self.optimization_mode = "reproduction"
+            self._letterbox_cache = None
+            self.last_time = time.time()
+            self.fps_calc = 0.0
+            self.detection_start_time = time.time()
+            self.start_time_hour = None
+            self.start_time_minute = getattr(self, "start_time_minute", None)
+            self.processing_completed = False
+
+            # Congelar imagen para que no se vea el frame viejo intercalado.
+            try:
+                self.video_label.config(image="")
+                self.video_label.image = None
+            except Exception:
+                pass
+            try:
+                self.info_label.config(text="...")
+            except Exception:
+                pass
+
+            # 3) Panel lateral + métricas en una sola pasada.
+            try:
+                self.clear_detected_plates()
+            except Exception:
+                pass
+            # Cinturón y tirantes: forzar ceros aunque falle el panel.
+            for _attr, _txt in (
+                ("ti_label", "TI:0.0%"),
+                ("tr_label", "TR:00:00"),
+                ("nid_label", "NID:0"),
+                ("nie_label", "NIE:0"),
+            ):
+                try:
+                    lbl = getattr(self, _attr, None)
+                    if lbl is not None:
+                        lbl.config(text=_txt)
+                except Exception:
+                    pass
+            try:
+                if getattr(self, "plates_canvas", None) is not None:
+                    self.plates_canvas.yview_moveto(0.0)
+                    try:
+                        self.plates_canvas.configure(
+                            scrollregion=self.plates_canvas.bbox("all"))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # 4) Semáforo y reloj a estado pausado inicial.
+            try:
+                if getattr(self, "semaforo", None) is not None:
+                    try:
+                        self.semaforo.deactivate_semaphore()
+                    except Exception:
+                        pass
+                    try:
+                        self.semaforo.reset_execution_timer()
+                    except Exception:
+                        pass
+                    self.semaforo.current_state = "green"
+            except Exception:
+                pass
+            try:
+                ts = getattr(self, "timestamp_updater", None)
+                if ts is not None:
+                    if hasattr(ts, "stop_timestamp"):
+                        ts.stop_timestamp()
+                    elif hasattr(ts, "pause_timestamp"):
+                        ts.pause_timestamp()
+            except Exception:
+                pass
+
+            # Un solo flush al final (sin parpadeo por layouts intermedios).
+            try:
+                self.frame.update_idletasks()
+            except Exception:
+                pass
+        finally:
+            self._resetting = False
+
     def _load_video_async(self, path):
+        # Limpieza total ANTES de abrir el nuevo video: cancela loops y el
+        # diálogo inline anterior y vacía el panel lateral/métricas. Así el
+        # frame viejo nunca se intercala con el nuevo (sin parpadeo).
+        try:
+            self.reset_for_new_run("new_video")
+        except Exception as e:
+            print(f"Error en limpieza previa a carga: {e}")
         if self.cap:
-            self.cap.release()
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+            self.cap = None
         self.cap = cv2.VideoCapture(path)
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         ret, frame = self.cap.read()
         if not ret:
             self.parent.after(0, lambda: messagebox.showerror("Error", "No se pudo leer el vídeo."))
             return
-        self.parent.after(0, lambda: self._finish_loading_video(path, frame))
+        _epoch = self._video_epoch
+        self.parent.after(
+            0, lambda: self._finish_loading_video(path, frame, _epoch))
 
-    def _finish_loading_video(self, path, first_frame):
+    def _finish_loading_video(self, path, first_frame, _epoch=None):
+        # Ignorar callbacks tardíos si el usuario ya cargó otro video encima
+        # (doble clic rápido en el selector). Evita que el frame viejo
+        # sobrescriba al nuevo = sin parpadeo.
+        if _epoch is not None and _epoch != getattr(self, "_video_epoch", _epoch):
+            try:
+                print("⏭️ _finish_loading_video ignorado (epoch tardío)")
+            except Exception:
+                pass
+            return
         self.running = False  # NO iniciar automáticamente
         self.current_video_path = path
-        # Reset del worker de detección (E3): descartar análisis del video anterior
-        self._last_annotated_frame = None
-        self._last_is_night = False
-        self._pending_timestamp = None
-        self._pending_beeps = []
+        # NOTA: la limpieza total (panel lateral, métricas, loops, diálogo
+        # inline, semáforo) ya se hizo en `_load_video_async` vía
+        # `reset_for_new_run`. Aquí solo se setea lo específico del video.
         # Actualizar indicador visual
         self.current_video_label.config(text=f"📹 {os.path.basename(path)}")
         h, w = first_frame.shape[:2]
         self.orig_h, self.orig_w = h, w
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        self.video_fps = max(self.cap.get(cv2.CAP_PROP_FPS), 30)
-        
+        try:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        except Exception:
+            pass
+        try:
+            self.video_fps = max(self.cap.get(cv2.CAP_PROP_FPS), 30)
+        except Exception:
+            self.video_fps = 30
+
         # 🌙 ANÁLISIS NOCTURNO AL CARGAR VIDEO
         self._analyze_video_lighting(first_frame)
-        
+
         # Estados iniciales: pausado, esperando botón PLAY
         self.running = False
         self.is_playing = False
         self.is_paused = True
-        self.start_time_hour = None  # Reset para sincronización
-        
+
         self.load_polygon_for_video()
-        self.clear_detected_plates()
-        
-        # Reiniciar temporizador de ejecución del semáforo para el video nuevo
-        self.semaforo.reset_execution_timer()
-        
-        # Configurar semáforo pero NO activar
+
+        # Configurar semáforo pero NO activar (el reset ya lo dejó en green)
+        try:
+            self.semaforo.reset_execution_timer()
+        except Exception:
+            pass
         self.semaforo.current_state = "green"
         
         ave = self.get_avenue_for_video(path)
@@ -1407,16 +1634,25 @@ class VideoPlayerOpenCV:
         _PreprocCls(self.parent, path, self, on_preprocessing_complete)
 
     def stop_video(self):
-        self.running = False
-        if hasattr(self, "_after_id") and self._after_id:
-            self.parent.after_cancel(self._after_id)
+        try:
+            self._cancel_playback_loop()
+        except Exception:
+            self.running = False
+            self.is_playing = False
+            self.is_paused = True
             self._after_id = None
         if self.cap:
-            self.cap.release()
+            try:
+                self.cap.release()
+            except Exception:
+                pass
             self.cap = None
-        
+
         # Desactivar el semáforo cuando se detiene el video
-        self.semaforo.deactivate_semaphore()
+        try:
+            self.semaforo.deactivate_semaphore()
+        except Exception:
+            pass
 
     def toggle_play_pause(self):
         """Toggle entre PLAY y PAUSE"""
@@ -3505,42 +3741,65 @@ class VideoPlayerOpenCV:
         return blank
 
     def clear_detected_plates(self):
-        """Limpia todas las placas detectadas del panel lateral"""
+        """Limpia todas las placas detectadas del panel lateral (solo UI).
+
+        Vacía las cards y resetea `seen_plates`, historial y métricas del
+        run. NO toca la BD. Soporta shape dict (`container`) y legacy tuple.
+        """
         try:
             # Verificar que existe la lista de widgets
             if not hasattr(self, 'detected_plates_widgets'):
                 self.detected_plates_widgets = []
                 return
-            
-            # Eliminar todos los widgets de placas
-            for plate_widget in self.detected_plates_widgets:
+
+            # Eliminar todos los widgets de placas en batch (un solo layout
+            # al final para no parpadear).
+            for plate_widget in list(self.detected_plates_widgets):
                 try:
                     if isinstance(plate_widget, dict) and 'container' in plate_widget:
                         plate_widget['container'].destroy()
+                    elif isinstance(plate_widget, (list, tuple)) and plate_widget:
+                        try:
+                            plate_widget[0].destroy()
+                        except Exception:
+                            pass
                 except Exception as widget_err:
                     print(f"Error al destruir widget: {widget_err}")
-            
+
             # Limpiar listas y conjuntos
             self.detected_plates_widgets = []
-            
+
             if hasattr(self, 'seen_plates'):
                 self.seen_plates = set()
-            
+
             # Reiniciar métricas
             if hasattr(self, "plate_detection_history"):
                 self.plate_detection_history = {}
-            
+
             if hasattr(self, "registration_times"):
                 self.registration_times = []
-            
+
             # Actualizar panel de métricas
             if hasattr(self, "_update_metrics_panel"):
-                self._update_metrics_panel()
-            
-            # Forzar actualización del canvas
+                try:
+                    self._update_metrics_panel()
+                except Exception:
+                    pass
+
+            # Forzar actualización del canvas una sola vez + scroll arriba.
             if hasattr(self, "plates_inner_frame") and hasattr(self, "plates_canvas"):
-                self.plates_inner_frame.update_idletasks()
-                self.plates_canvas.configure(scrollregion=self.plates_canvas.bbox("all"))
+                try:
+                    self.plates_inner_frame.update_idletasks()
+                except Exception:
+                    pass
+                try:
+                    self.plates_canvas.configure(scrollregion=self.plates_canvas.bbox("all"))
+                except Exception:
+                    pass
+                try:
+                    self.plates_canvas.yview_moveto(0.0)
+                except Exception:
+                    pass
         
         except Exception as e:
             print(f"Error al limpiar placas: {e}")
@@ -3618,16 +3877,13 @@ class VideoPlayerOpenCV:
         """
         from src.gui.preprocessing_dialog import PreprocessingDialog as _LocalPreproc
 
-        # Pausar cualquier reproducción en curso
-        self.running = False
-        self.is_playing = False
-        self.is_paused = True
-        if hasattr(self, "_after_id") and self._after_id:
-            try:
-                self.parent.after_cancel(self._after_id)
-            except Exception:
-                pass
-            self._after_id = None
+        # Limpieza total para el nuevo run: cancela el diálogo inline
+        # anterior (si se reprocesa), vacía panel lateral/métricas y deja
+        # semáforo/reloj listos. NO toca la BD.
+        try:
+            self.reset_for_new_run("reprocess")
+        except Exception as e:
+            print(f"Error en limpieza previa a procesamiento: {e}")
 
         self.processing_active = True
         self._show_inline_progress(True)
