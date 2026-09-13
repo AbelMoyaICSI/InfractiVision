@@ -28,14 +28,22 @@ class VehicleDetector:
         # FP16 solo si realmente hay GPU usable (port de windows_machine_owner)
         self.half = self.using_gpu
         # Fase 1 GPU: cudnn benchmark para imgsz fijo + hilos CPU acotados para
-        # no saturar la CPU mientras la GPU infiere (GTX 1650 Ti 4GB).
+        # no saturar la CPU mientras la GPU infiere (i3-9100F 4C/4T: dejar aire
+        # a decode/UI; total hilos torch+cv2 <= 4 para no quitarle CPU a la GPU).
         if self.using_gpu:
             try:
                 torch.backends.cudnn.benchmark = True
             except Exception:
                 pass
             try:
-                torch.set_num_threads(max(2, (os.cpu_count() or 4) // 2))
+                import os as _os
+
+                _torch_threads = int(_os.getenv("IV_TORCH_THREADS", "2"))
+                torch.set_num_threads(max(1, min(4, _torch_threads)))
+                try:
+                    torch.set_num_interop_threads(1)
+                except Exception:
+                    pass
             except Exception:
                 pass
 
@@ -166,7 +174,15 @@ class VehicleDetector:
         # el batch queda disponible vía IV_BATCH=4 para modelos más grandes.
         gpu_mem = float(self.hardware_info['gpu'].get('memory') or 0)
         gpu_cc = float(self.hardware_info['gpu'].get('compute_capability') or 0)
-        if has_gpu and gpu_cc >= 7.0 and 3.0 <= gpu_mem < 6.0:
+        # Perfil i3-9100F + RTX 5050 8GB (Blackwell): equilibrio fluidez/GPU.
+        # 640px single FP16 alimenta bien la GPU sin cargar la CPU de prepro.
+        if has_gpu and gpu_mem >= 6.0:
+            self.imgsz = 640
+            self.conf_threshold = 0.32
+            self.max_det = 60
+            self.batch_size = 1
+            print("[GPU] Configuracion RTX5050-8GB+i3: 640px single FP16 (equilibrio)")
+        elif has_gpu and gpu_cc >= 7.0 and 3.0 <= gpu_mem < 6.0:
             self.imgsz = 480
             self.conf_threshold = 0.30
             self.max_det = 100
@@ -205,6 +221,15 @@ class VehicleDetector:
                 self.batch_size = min(self.batch_size * 2, 8)
             elif self.hardware_info['gpu']['memory'] < 4:
                 self.batch_size = 1
+
+        # Override manual (sin recompilar): IV_IMGSZ=480/640/832.
+        try:
+            _ov = int(os.getenv("IV_IMGSZ", "0") or 0)
+            if _ov in (320, 416, 480, 512, 640, 704, 768, 832):
+                self.imgsz = _ov
+                print(f"[GPU] IV_IMGSZ override: {self.imgsz}px")
+        except Exception:
+            pass
     
     def get_adaptive_conf_for_conditions(self, is_night=False, image_brightness=None):
         """Retorna umbral de confianza adaptativo según condiciones"""

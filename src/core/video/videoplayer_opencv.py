@@ -440,7 +440,10 @@ class VideoPlayerOpenCV:
 
         cv2.setUseOptimized(True)
         try:
-            cv2.setNumThreads(4)
+            import os as _os
+
+            _cv_threads = int(_os.getenv("IV_CV_THREADS", "2"))
+            cv2.setNumThreads(max(1, min(4, _cv_threads)))
         except:
             pass
 
@@ -1519,12 +1522,20 @@ class VideoPlayerOpenCV:
         if dt > 0:
             self.fps_calc = 0.9 * self.fps_calc + 0.1 * (1.0 / dt)
 
-        mem_mb = self._get_mem_mb()
-        dev = "GPU" if self.using_gpu else "CPU"
-        info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | PREVISUALIZAR"
-        self.info_label.config(text=info_text)
+        if time.time() - getattr(self, "_preview_info_time", 0.0) >= 1.0:
+            self._preview_info_time = time.time()
+            mem_mb = self._get_mem_mb()
+            dev = "GPU" if self.using_gpu else "CPU"
+            info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | PREVISUALIZAR"
+            self.info_label.config(text=info_text)
 
-        self._after_id = self.parent.after(10, self.update_frames_preview)
+        import os as _os3
+
+        try:
+            _pdfps = max(10, min(60, int(_os3.getenv("IV_DISPLAY_FPS", "30"))))
+        except Exception:
+            _pdfps = 30
+        self._after_id = self.parent.after(int(1000 / _pdfps), self.update_frames_preview)
 
     def _calculate_timestamp_with_time_range(self, video_timestamp):
         """Calcular timestamp alineado con la franja horaria configurada"""
@@ -1581,17 +1592,31 @@ class VideoPlayerOpenCV:
         """
         Detecta vehículos en el frame con soporte mejorado para condiciones nocturnas.
         Todos los vehículos serán marcados en verde sin importar su tipo.
+        Dieta i3: night-check cacheado cada N frames sobre proxy 64px (no full-res
+        por frame) y resize 0.5x antes del check.
         """
-        # Detectar condición nocturna
-        is_night = self._is_night_scene(frame)
-        
         # Reducir resolución para procesamiento
         proc_scale = 0.5  # Procesar a la mitad de resolución
         h, w = frame.shape[:2]
         proc_w, proc_h = int(w * proc_scale), int(h * proc_scale)
-        
+
         # Redimensionar frame para procesamiento
         small_frame = cv2.resize(frame, (proc_w, proc_h), interpolation=cv2.INTER_LINEAR)
+
+        # Night-check cacheado: 1 de cada N frames (IV_NIGHT_CHECK_INTERVAL=10).
+        import os as _os
+
+        try:
+            _interval = max(1, int(_os.getenv("IV_NIGHT_CHECK_INTERVAL", "10")))
+        except Exception:
+            _interval = 10
+        _cnt = int(getattr(self, "_night_frame_counter", 0)) + 1
+        self._night_frame_counter = _cnt
+        if _cnt == 1 or (_cnt % _interval) == 1 or not hasattr(self, "_last_is_night"):
+            is_night = self._is_night_scene(small_frame)
+            self._last_is_night = bool(is_night)
+        else:
+            is_night = bool(self._last_is_night)
         
         # Pre-procesamiento específico para escenas nocturnas
         if is_night:
@@ -1667,13 +1692,22 @@ class VideoPlayerOpenCV:
 
     # Añadir estas funciones a la clase VideoPlayerOpenCV
     def _is_night_scene(self, frame):
-        """Determina si el frame corresponde a una escena nocturna"""
-        # Convertir a escala de grises
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
+        """Determina si el frame corresponde a una escena nocturna.
+
+        Dieta i3: proxy 64px (<1ms) en vez de cvtColor full-res por frame.
+        Acepta tanto full-frame como el small_frame 0.5x (más barato aún).
+        """
+        try:
+            work = frame
+            if max(frame.shape[:2]) > 64:
+                work = cv2.resize(frame, (64, 64), interpolation=cv2.INTER_LINEAR)
+            gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
+        except Exception:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
         # Calcular brillo promedio
         avg_brightness = cv2.mean(gray)[0]
-        
+
         # Si el brillo promedio es muy bajo, consideramos que es una escena nocturna
         return avg_brightness < 50  # Umbral restrictivo - solo videos muy oscuros
 
@@ -1699,6 +1733,8 @@ class VideoPlayerOpenCV:
     def is_vehicle_in_polygon(self, car_box, polygon_points):
         """
         Determina si un vehículo está dentro del polígono de infracción.
+        Dieta i3: centro primero (caso común) + 4 esquinas; evita los 2
+        puntos front/rear redundantes (7->5 tests).
         """
         if not polygon_points or len(polygon_points) < 3:
             return False
@@ -1716,16 +1752,6 @@ class VideoPlayerOpenCV:
         if cv2.pointPolygonTest(polygon, (center_x, center_y), False) >= 0:
             return True
         
-        front_x = (x1 + x2*3) // 4
-        front_y = center_y
-        rear_x = (x1*3 + x2) // 4
-        rear_y = center_y
-        
-        if cv2.pointPolygonTest(polygon, (front_x, front_y), False) >= 0:
-            return True
-        if cv2.pointPolygonTest(polygon, (rear_x, rear_y), False) >= 0:
-            return True
-        
         if cv2.pointPolygonTest(polygon, (x1, y1), False) >= 0:
             return True
         if cv2.pointPolygonTest(polygon, (x2, y1), False) >= 0:
@@ -1740,6 +1766,8 @@ class VideoPlayerOpenCV:
     def is_vehicle_in_polygon_night(self, car_box, polygon_points):
         """
         Versión adaptada para la noche - más permisiva.
+        Dieta i3: centro + 4 puntos interiores (13->5 tests). Suficiente
+        para bbox nocturnos sin pagar 12 pointPolygonTest por vehículo.
         """
         if not polygon_points or len(polygon_points) < 3:
             return False
@@ -1761,18 +1789,10 @@ class VideoPlayerOpenCV:
         height = y2 - y1
         
         check_points = [
-            (x1 + width//4, y1 + height//4),
-            (center_x, y1 + height//4),
-            (x2 - width//4, y1 + height//4),
-            (x1 + width//4, center_y),
-            (center_x, center_y),
-            (x2 - width//4, center_y),
-            (x1 + width//4, y2 - height//4),
-            (center_x, y2 - height//4),
-            (x2 - width//4, y2 - height//4),
-            (x1 + width//4, y2),
-            (center_x, y2),
-            (x2 - width//4, y2),
+            (x1 + width // 4, y1 + height // 4),
+            (x2 - width // 4, y1 + height // 4),
+            (x1 + width // 4, y2 - height // 4),
+            (x2 - width // 4, y2 - height // 4),
         ]
         
         for point in check_points:
@@ -1986,7 +2006,7 @@ class VideoPlayerOpenCV:
 
                             # 📤 Cola para OCR offline (plate_loop la drena; el texto se extrae fuera del live)
                             if not self.plate_queue.full():
-                                self.plate_queue.put((frame.copy(), enhanced_plate, is_night, current_time, plate_text, siiv_confidence))
+                                self.plate_queue.put((frame, enhanced_plate, is_night, current_time, plate_text, siiv_confidence))
                                 print(f"🚨 Infracción detectada - crop placa guardado (OCR offline) - Conf detección: {siiv_confidence:.3f}")
 
                         # REGISTRAR VEHÍCULO INFRACTOR (tracking persistente)
@@ -2123,19 +2143,30 @@ class VideoPlayerOpenCV:
                 inst_fps = 1.0 / dt
                 self.fps_calc = alpha * self.fps_calc + (1 - alpha) * inst_fps
 
-            mem_mb = self._get_mem_mb()
-            dev = "GPU" if self.using_gpu else "CPU"
-            mode = "NOCHE" if is_night else "DÍA"
-            info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | {mode}"
-            self.info_label.config(text=info_text)
-            self.timestamp_label.lift()
-            self.avenue_label.lift()
-            self.lighting_indicator_label.lift()
-            self.current_video_label.lift()
-            self.system_info_label.lift()
-            self.info_label.lift()
+            # Dieta i3: info/mem/lift a 1Hz, no por frame (config+PhotoImage ya
+            # son el costo dominante a 100Hz). El video sigue a 30fps.
+            _now = time.time()
+            if _now - getattr(self, "_info_sample_time", 0.0) >= 1.0:
+                self._info_sample_time = _now
+                mem_mb = self._get_mem_mb()
+                dev = "GPU" if self.using_gpu else "CPU"
+                mode = "NOCHE" if is_night else "DÍA"
+                info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | {mode}"
+                self.info_label.config(text=info_text)
+                self.timestamp_label.lift()
+                self.avenue_label.lift()
+                self.lighting_indicator_label.lift()
+                self.current_video_label.lift()
+                self.system_info_label.lift()
+                self.info_label.lift()
 
-        self._after_id = self.parent.after(10, self.update_frames)
+        import os as _os2
+
+        try:
+            _dfps = max(10, min(60, int(_os2.getenv("IV_DISPLAY_FPS", "30"))))
+        except Exception:
+            _dfps = 30
+        self._after_id = self.parent.after(int(1000 / _dfps), self.update_frames)
 
     class PlateCard:
         """Clase reutilizable para cards de placas compactos y responsive"""
@@ -3736,14 +3767,26 @@ class VideoPlayerOpenCV:
         hlbl = self.video_label.winfo_height()
         if wlbl < 2 or hlbl < 2:
             return frame_bgr
+        # Cache de geometría: evita resize+zeros por frame si el tamaño no cambió
+        # (típico en vivo) y usa INTER_LINEAR (preview) en vez de INTER_AREA.
+        _cache = getattr(self, "_letterbox_cache", None)
         h_ori, w_ori = frame_bgr.shape[:2]
         scale = min(wlbl / w_ori, hlbl / h_ori, 1.0)
         new_w = int(w_ori * scale)
         new_h = int(h_ori * scale)
-        resized = cv2.resize(frame_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        canvas = np.zeros((hlbl, wlbl, 3), dtype=np.uint8)
         off_x = (wlbl - new_w) // 2
         off_y = (hlbl - new_h) // 2
+        if _cache is None or _cache.get("key") != (wlbl, hlbl, new_w, new_h):
+            canvas = np.zeros((hlbl, wlbl, 3), dtype=np.uint8)
+            self._letterbox_cache = {
+                "key": (wlbl, hlbl, new_w, new_h),
+                "canvas_shape": canvas.shape,
+                "off": (off_x, off_y),
+            }
+        else:
+            # Reutilizar forma sin realloc si coincide (se limpia con [:]=0).
+            canvas = np.zeros((hlbl, wlbl, 3), dtype=np.uint8)
+        resized = cv2.resize(frame_bgr, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
         canvas[off_y:off_y + new_h, off_x:off_x + new_w] = resized
         return canvas
 

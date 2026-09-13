@@ -103,8 +103,16 @@ def _build_plate_detector(settings: Settings) -> object:
 
 def _build_tracker() -> object:
     def factory() -> TrackerPort:
-        from src.infrastructure.tracking import DeepSortTracker
-        return DeepSortTracker()
+        import os as _os
+
+        # Vivo en i3-9100F: centroide/IoU por defecto (sin CNN ReID en CPU).
+        # Offline o precisión máxima: INFRACTI_TRACKER=deepsort.
+        name = _os.getenv("INFRACTI_TRACKER", "centroid").strip().lower()
+        if name in ("deepsort", "deep_sort", "deep-sort"):
+            from src.infrastructure.tracking import DeepSortTracker
+            return DeepSortTracker()
+        from src.infrastructure.tracking import CentroidTracker
+        return CentroidTracker()
     return Lazy(factory)
 
 

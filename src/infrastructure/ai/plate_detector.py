@@ -46,3 +46,29 @@ class YoloPlateDetector(PlateDetectorPort):
                 x1=x1 + px1, y1=y1 + py1, x2=x1 + px2, y2=y1 + py2
             )
         return None
+
+    def detect_batch(
+        self, crops: list[np.ndarray], conf: float = 0.40
+    ) -> list[BoundingBox | None]:
+        """Una sola inferencia GPU para N crops (evita N launches CUDA).
+
+        Los boxes se devuelven en coords locales del crop; el caller suma el
+        offset del vehículo. Retorna None por crop sin placa.
+        """
+        if not crops:
+            return []
+        try:
+            per_crop = self._detector.detect_batch_quadrants(
+                list(crops), conf=conf, classes=[0]
+            )
+        except Exception as e:
+            log.warning("Falla detect_batch: %s", e)
+            return [None for _ in crops]
+        out: list[BoundingBox | None] = []
+        for dets in per_crop:
+            if not dets:
+                out.append(None)
+                continue
+            px1, py1, px2, py2 = map(int, dets[0][:4])
+            out.append(BoundingBox(x1=px1, y1=py1, x2=px2, y2=py2))
+        return out

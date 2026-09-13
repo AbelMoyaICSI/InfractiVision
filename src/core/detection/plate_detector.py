@@ -139,7 +139,13 @@ class PlateDetector:
             
             if is_night:
                 self.detection_stats['night_detections'] += 1
-                print("[PlateDetector] Enhanced night mode activated with multi-capture")
+                # Dieta logs: este print era por crop nocturno (spam en vivo).
+                import time as _t
+
+                _now = _t.time()
+                if _now - getattr(self, "_last_night_log", 0.0) >= 5.0:
+                    self._last_night_log = _now
+                    print("[PlateDetector] Enhanced night mode activated with multi-capture")
             
             # Optimizar imagen para mejor detección con multi-capture para noche
             # Fase 2: fast-first (1 variante ~8ms). Solo si la calidad es mala

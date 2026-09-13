@@ -50,6 +50,32 @@ class DetectionSettings:
 
 
 @dataclass(frozen=True)
+class PerformanceSettings:
+    """Perfil de rendimiento para no saturar la CPU (i3-9100F 4C/4T).
+
+    Todo overridable por entorno para no recompilar:
+      IV_TORCH_THREADS, IV_CV_THREADS, IV_SKIP_GREEN, IV_SKIP_RED,
+      IV_IMGSZ (0=auto), IV_NIGHT_CHECK_INTERVAL, IV_ENABLE_RECTIFIER_LIVE,
+      IV_DISPLAY_FPS, INFRACTI_TRACKER (centroid|deepsort).
+    """
+
+    profile: str = field(default_factory=lambda: os.getenv("IV_PERF", "i3_9100F"))
+    torch_threads: int = field(default_factory=lambda: int(os.getenv("IV_TORCH_THREADS", "2")))
+    cv_threads: int = field(default_factory=lambda: int(os.getenv("IV_CV_THREADS", "2")))
+    skip_green: int = field(default_factory=lambda: int(os.getenv("IV_SKIP_GREEN", "3")))
+    skip_red: int = field(default_factory=lambda: int(os.getenv("IV_SKIP_RED", "2")))
+    imgsz_override: int = field(default_factory=lambda: int(os.getenv("IV_IMGSZ", "0")))
+    night_check_interval: int = field(
+        default_factory=lambda: int(os.getenv("IV_NIGHT_CHECK_INTERVAL", "10"))
+    )
+    enable_rectifier_live: bool = field(
+        default_factory=lambda: os.getenv("IV_ENABLE_RECTIFIER_LIVE", "0") == "1"
+    )
+    display_fps: int = field(default_factory=lambda: int(os.getenv("IV_DISPLAY_FPS", "30")))
+    tracker: str = field(default_factory=lambda: os.getenv("INFRACTI_TRACKER", "centroid"))
+
+
+@dataclass(frozen=True)
 class StoragePaths:
     videos: str = field(default_factory=lambda: user_data_path("data/videos"))
     images: str = field(default_factory=lambda: user_data_path("data/images"))
@@ -70,6 +96,7 @@ class Settings:
     database: DatabaseSettings = field(default_factory=DatabaseSettings)
     ocr: OCRSettings = field(default_factory=OCRSettings)
     detection: DetectionSettings = field(default_factory=DetectionSettings)
+    performance: PerformanceSettings = field(default_factory=PerformanceSettings)
     storage: StoragePaths = field(default_factory=StoragePaths)
     config_files: ConfigPaths = field(default_factory=ConfigPaths)
 

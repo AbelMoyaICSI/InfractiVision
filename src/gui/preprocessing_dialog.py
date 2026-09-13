@@ -1063,8 +1063,10 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
 
     def _schedule_display_poller(self):
         """Programa el poller de la cola de visualización en el hilo principal."""
+        # Dieta i3: 33ms (~30fps) en vez de 16ms (~60fps); el ojo no nota
+        # diferencia en preview pero la CPU Tk baja ~45%.
         # Usar _safe_after para que _cancel_all_after() sí lo cancele
-        self._safe_after(16, self._poll_display_queue)
+        self._safe_after(33, self._poll_display_queue)
 
     def _poll_display_queue(self):
         """[HILO PRINCIPAL] Drena `_display_queue` y muestra el frame más reciente."""
@@ -1571,9 +1573,17 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             skip_rate = 10 + self._perf_monitor['adapt_level'] # Ahorro masivo en verde
         elif current_state == "red":
             # Si hay infractores activos, ser más preciso
-            # 🚀 MODO TURBO V41: En ROJO o con infractores activos, procesamos TODO
+            # Dieta i3 (equilibrio): skip=2 en ROJO en vez de 1. El tracking
+            # centroide interpola intermedios; YOLO todos los frames satura
+            # los 4 hilos del 9100F y deja sin CPU a la GPU. Override: IV_SKIP_RED.
+            import os as _os
+
+            try:
+                _skip_red = max(1, int(_os.getenv("IV_SKIP_RED", "2")))
+            except Exception:
+                _skip_red = 2
             if current_state == "red" or (hasattr(self, '_active_infractors') and self._active_infractors):
-                skip_rate = 1 
+                skip_rate = _skip_red
             else:
                 skip_rate = 3
 
@@ -1784,9 +1794,17 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                                 if p_det:
                                     x1p, y1p, x2p, y2p = [int(v) for v in p_det[0]]
                                     p_raw = vehicle_ctx[y1p:y2p, x1p:x2p].copy()
-                                    
-                                    from src.core.processing.plate_processing import rectificar_perspectiva
-                                    plate_stripped = rectificar_perspectiva(p_raw)
+
+                                    import os as _os2
+
+                                    _rect_live = _os2.getenv("IV_ENABLE_RECTIFIER_LIVE", "0") == "1"
+                                    if _rect_live:
+                                        from src.core.processing.plate_processing import rectificar_perspectiva
+                                        plate_stripped = rectificar_perspectiva(p_raw)
+                                    else:
+                                        # Dieta i3: auto_rectifier (~35 máscaras + contours)
+                                        # diferido a revisión; en vivo basta el crop.
+                                        plate_stripped = p_raw
                                     if plate_stripped is not None:
                                         print(f"📍 MMRP #{current_d['id']} RECTIFICADO OK ({plate_stripped.shape[1]}x{plate_stripped.shape[0]}px)")
                         except: pass
@@ -2582,7 +2600,9 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 plate_img = cv2.resize(plate_img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
             
             # PASO 2: Reducir ruido preservando bordes (bilateral filter)
-            denoised = cv2.bilateralFilter(plate_img, 9, 75, 75)
+            # Dieta i3: bilateral 9,75,75 es O(d²) por crop; Gaussian 3x3 es
+            # ~10x más barato y no degrada YOLO-placas.
+            denoised = cv2.GaussianBlur(plate_img, (3, 3), 0)
             
             # PASO 3: Mejorar contraste en color usando LAB
             lab = cv2.cvtColor(denoised, cv2.COLOR_BGR2LAB)
@@ -2614,10 +2634,17 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             from src.core.ocr.recognizer import recognize_plate, calculate_siiv_confidence
 
             # ── PASO 0: Homografía v6.3 (padding → perspectiva) ──
+            # Dieta i3: solo si IV_ENABLE_RECTIFIER_LIVE=1; si no, OCR sobre
+            # el crop directo (el rectifier vive en revisión offline).
             use_autocrop = True
             try:
-                from src.core.processing.plate_processing import rectificar_perspectiva
-                plate_rect = rectificar_perspectiva(plate_img)
+                import os as _os3
+
+                if _os3.getenv("IV_ENABLE_RECTIFIER_LIVE", "0") == "1":
+                    from src.core.processing.plate_processing import rectificar_perspectiva
+                    plate_rect = rectificar_perspectiva(plate_img)
+                else:
+                    plate_rect = None
                 if plate_rect is not None:
                     # ── NUEVO: STRIP HEADER ────────────────────────
                     # Quitar franja PERU después de la homografía (igual que test_geoloc_surgical_gui)
