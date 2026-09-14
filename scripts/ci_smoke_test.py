@@ -44,7 +44,7 @@ def main() -> int:
 
     # Pines críticos de compatibilidad (no mover: rompen la inferencia)
     assert numpy.__version__.startswith("1.26"), \
-        f"numpy debe ser 1.26.x (compat torch 1.13): {numpy.__version__}"
+        f"numpy debe ser 1.26.x (compat torch 2.8+cu128): {numpy.__version__}"
     assert cv2.__version__.startswith("4.9"), \
         f"opencv debe ser 4.9.x (compat numpy 1.x): {cv2.__version__}"
 

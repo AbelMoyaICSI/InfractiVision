@@ -253,7 +253,7 @@ flowchart TD
 
 ### 7.1 Stack por capa del flujo
 
-Cada capa usa un set de librerías pineadas en `requirements.txt:1` (Python 3.10 fijo en `mise.toml`). Precaución: `torch 1.13.1` exige `numpy<2` y `opencv-python >=5` exige `numpy>=2` — por eso `numpy==1.26.4` + `opencv-python==4.9.0.80` no se tocan sin testear.
+Cada capa usa un set de librerías pineadas en `requirements.txt:1` (Python 3.10 fijo en `mise.toml`). Precaución: `torch 2.8.0+cu128` sigue compatible con `numpy<2` y `opencv-python >=5` exige `numpy>=2` — por eso `numpy==1.26.4` + `opencv-python==4.9.0.80` no se tocan sin testear.
 
 | Capa | Tecnología | Versión | Dónde se usa en el flujo |
 |------|-----------|---------|--------------------------|
@@ -261,7 +261,7 @@ Cada capa usa un set de librerías pineadas en `requirements.txt:1` (Python 3.10
 | GUI | Tkinter (stdlib) + tkcalendar | — / 1.6.1 | `src/gui/*`, `src/presentation/gui/*` — Welcome, selector, reproductor, diálogos |
 | Video | OpenCV (`opencv-python`) | 4.9.0.80 | `src/core/video/videoplayer_opencv.py` — `VideoCapture`, `VideoWriter`, overlays, `pointPolygonTest` |
 | Detección | YOLOv8 (`ultralytics`) | 8.4.120 | `src/infrastructure/ai/yolo_detector.py` — vehículos (car/bus/truck, clases 2/5/7) y placas |
-| Deep Learning | PyTorch + CUDA 11.7 | 1.13.1+cu117 / 0.14.1+cu117 | Inferencia YOLO y LPRNet (ver pins críticos en `requirements.txt:1`) |
+| Deep Learning | PyTorch + CUDA 12.8 | 2.8.0+cu128 / 0.23.0+cu128 | Inferencia YOLO (ver pins críticos en `requirements.txt:1`) |
 | OCR lectura | Plate Recognizer API | — (`requests`) | `src/infrastructure/ocr/cloud_plate_readers.py:23` — `regions=pe`, `min_interval 2s`, retry `Retry-After`. En vivo solo detección YOLO; sin OCR local |
 | OCR alternos | PaddleOCR / EasyOCR | opcionales (`requirements-ocr.txt:1`) | `src/infrastructure/ocr/paddleocr_reader.py`, `easyocr_reader.py` — seleccionables por `INFRACTI_OCR_BACKEND` |
 | OCR validación cloud | Plate Recognizer API | — (`requests`) | `src/infrastructure/ocr/cloud_plate_readers.py:23` — `regions=pe`, `min_interval 2s`, retry `Retry-After` |

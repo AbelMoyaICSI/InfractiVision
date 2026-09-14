@@ -3,8 +3,8 @@
 InfractiVision - Especificacion PyInstaller ONLINE (CPU)
 Autor: InfractiVision Team - 2025/2026
 Modo: ONEFILE ligero, SIN libs CUDA. Para GPU usa InfractiVision-CUDA.spec
-      con requirements.txt (torch 2.6+cu124). Este spec usa requirements-cpu.txt
-      (torch 1.13.1 CPU) y bundlea solo CPU.
+       con requirements.txt (torch 2.8.0+cu128). Este spec usa requirements-cpu.txt
+       (torch 2.8.0 CPU) y bundlea solo CPU.
 """
 
 import struct

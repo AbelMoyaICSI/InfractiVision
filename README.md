@@ -58,7 +58,7 @@ Cómo funciona por dentro:
 | GUI | Tkinter (stdlib) + tkcalendar | — / 1.6.1 | `src/gui/*`, `src/presentation/gui/*` |
 | Video | OpenCV | 4.9.0.80 | `VideoCapture`/`VideoWriter`, overlays, `pointPolygonTest` |
 | Detección | YOLOv8 (`ultralytics`) | 8.4.120 | `yolov8n.pt` vehículos + `license_plate_detector.pt` placas |
-| Deep Learning | PyTorch + CUDA 12.4 | 2.6.0+cu124 / 0.21.0+cu124 | Inferencia YOLO (`--extra-index-url` cu124 en `requirements.txt`) |
+| Deep Learning | PyTorch + CUDA 12.8 | 2.8.0+cu128 / 0.23.0+cu128 | Inferencia YOLO (`--extra-index-url` cu128 en `requirements.txt`) |
 | OCR (único) | Plate Recognizer API (`requests`) | — | `cloud_plate_readers.py:62`, `read():100`, `regions=pe`, intervalo 2 s |
 | Tracking | Centroide (`src/core`) | — | `process_violation_video.py:240` (DeepSORT solo en modo vivo por DI, no en video oficial) |
 | Datos | NumPy / pandas / openpyxl | 1.26.4 / 2.1.4 / 3.1.5 | Scoring del crop, exportación CSV/Excel |

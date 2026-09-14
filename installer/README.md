@@ -1,7 +1,7 @@
 # InfractiVision - Instalador ONLINE single-file (build unico CUDA con fallback CPU)
 
 ## Resumen
-Build unico compilado con CUDA (`requirements.txt` torch 2.6.0+cu124). Si hay NVIDIA usa GPU, si no hay corre en CPU (`torch.cuda.is_available()`). Sin versiones CPU/CUDA separadas, sin pip on-demand, sin checkbox.
+Build unico compilado con CUDA (`requirements.txt` torch 2.8.0+cu128). Si hay NVIDIA usa GPU, si no hay corre en CPU (`torch.cuda.is_available()`). Sin versiones CPU/CUDA separadas, sin pip on-demand, sin checkbox.
 
 | SO | Instalador | Que descarga | GPU |
 |---|---|---|---|

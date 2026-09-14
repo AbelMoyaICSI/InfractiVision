@@ -4,7 +4,7 @@
 #   o: bash installer/linux/install.sh [--prefix ~/.local/share/InfractiVision] [--with-demo|--no-demo]
 # Nota: los flags legacy --cpu/--cuda/--with-cuda-pip/--no-cuda-pip/--auto se aceptan
 # como no-op por compatibilidad, pero ya no cambian nada: siempre se instala el
-# mismo artefacto CUDA (requirements.txt torch 2.6.0+cu124), que usa GPU si hay
+# mismo artefacto CUDA (requirements.txt torch 2.8.0+cu128), que usa GPU si hay
 # NVIDIA o fallback a CPU (torch.cuda.is_available()) si no hay.
 set -euo pipefail
 
@@ -104,7 +104,7 @@ main(){
   else
     echo "[*] Sin GPU NVIDIA -> el mismo build correrá en CPU (arch=$ARCH, prefix=$PREFIX)"
   fi
-  # Paso 2: artefacto unico CUDA (compilado con requirements.txt torch 2.6.0+cu124).
+  # Paso 2: artefacto unico CUDA (compilado con requirements.txt torch 2.8.0+cu128).
   local artifact="InfractiVision-${VARIANT}-${OS_TAG}-${ARCH}.zip"
   local url="${BASE_URL}/${artifact}"
   echo "[*] Descargando $url"

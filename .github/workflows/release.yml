@@ -116,7 +116,7 @@ jobs:
             ## InfractiVision ${{ github.ref_name }} — Instalador single-file (build unico CUDA)
 
             **Build unico CUDA con fallback CPU (sin pip on-demand).**
-            - `InfractiVision-Setup-Online.exe` embebe ONEDIR CUDA completo (`dist/InfractiVision/*`, requirements.txt torch 2.6.0+cu124) comprimido con lzma2.
+            - `InfractiVision-Setup-Online.exe` embebe ONEDIR CUDA completo (`dist/InfractiVision/*`, requirements.txt torch 2.8.0+cu128) comprimido con lzma2.
             - Si hay NVIDIA usa GPU; si no hay, el mismo binario corre en CPU via `torch.cuda.is_available()`. Sin checkbox ni `pip install` en el instalador. Pagina GPU solo informativa.
             - Vídeos demo (5) y modelos (21 MB) on-demand.
 

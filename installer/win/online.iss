@@ -1,5 +1,5 @@
 ; InfractiVision Setup Online - Windows single-file (build unico CUDA con fallback CPU)
-; Modo: single-file — embebe ONEDIR CUDA completo (requirements.txt torch 2.6.0+cu124).
+; Modo: single-file — embebe ONEDIR CUDA completo (requirements.txt torch 2.8.0+cu128).
 ; - Una sola version compilada: si hay NVIDIA usa GPU, si no hay hace fallback a CPU
 ;   (torch.cuda.is_available() en vehicle_detector/plate_detector).
 ; - La pagina GPU es solo informativa: no instala dependencias ni hace pip.

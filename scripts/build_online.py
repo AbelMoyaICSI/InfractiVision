@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 build_online.py — Build helper para instalador ONLINE (ONEDIR prioritario)
-Build unico CUDA con fallback CPU (requirements.txt torch 2.6.0+cu124).
+Build unico CUDA con fallback CPU (requirements.txt torch 2.8.0+cu128).
 Uso:
   python scripts/build_online.py --variant cuda       # ONEDIR CUDA canonico (dist/InfractiVision/)
   python scripts/build_online.py --variant cuda --zip # + zip para Releases

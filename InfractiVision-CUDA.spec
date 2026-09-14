@@ -1,10 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-InfractiVision - Especificacion PyInstaller ONLINE (CUDA 12.4 / RTX 5050 sm_120)
+InfractiVision - Especificacion PyInstaller ONLINE (CUDA 12.8 / RTX 5050 sm_120)
 Autor: InfractiVision Team - 2025/2026
 Modo: ONEFILE, recursos minimos. Videos y datasets NO se empaquetan.
-      Este spec BUNDLEA libs CUDA (nvidia-* cu124) y requiere
-      requirements.txt con torch==2.6.0+cu124. Ver requirements-cpu.txt para
+       Este spec BUNDLEA libs CUDA (nvidia-* cu128) y requiere
+       requirements.txt con torch==2.8.0+cu128. Ver requirements-cpu.txt para
       el spec CPU que NO bundlea CUDA.
 """
 
@@ -111,7 +111,7 @@ hiddenimports = [
 
 pathex = [str(BASE_DIR), str(SRC_DIR)]
 binaries = []
-# CUDA build: intentar bundlear libs nvidia si están instaladas (torch 2.6+cu124).
+# CUDA build: intentar bundlear libs nvidia si están instaladas (torch 2.8.0+cu128).
 # En CI cuda estos paquetes existen (pip install -r requirements.txt); en dev sin cuda se ignora.
 try:
     from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs

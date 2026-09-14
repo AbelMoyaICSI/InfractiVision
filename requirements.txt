@@ -2,15 +2,15 @@
 # Stack compatible Windows / Linux / macOS. Python 3.10 (Windows y Linux) o 3.11.
 #
 # ⚠️  CONFLICTO CRÍTICO DE VERSIONES (no cambiar sin testear):
-#   torch 1.13.1 fue compilado contra NumPy 1.x → exige numpy<2.
+#   torch 2.8.0+cu128 sigue compatible con NumPy 1.x → se fija numpy<2.
 #   opencv-python >=5.0.0.93 exige numpy>=2 (en Python >=3.9).
 #   Por eso numpy se fija en 1.26.4 y opencv en 4.9.0.80.
 #   NO subir numpy a 2.x ni opencv a 5.x: rompe la inferencia (YOLO/OCR)
 #   con "RuntimeError: Numpy is not available".
 #
-# Instalar con soporte CUDA 12.4 (GPU NVIDIA, driver >= 550, RTX 5050/40xx OK):
+# Instalar con soporte CUDA 12.8 (GPU NVIDIA, driver >= 550, RTX 5050/40xx OK):
 #   pip install -r requirements.txt
-# El índice extra resuelve torch/torchvision +cu124 (CUDA 12.4, sm_120 Blackwell
+# El índice extra resuelve torch/torchvision +cu128 (CUDA 12.8, sm_120 Blackwell
 # incluido). Sin él, pip baja el wheel CPU-only y la app nunca usa la GPU.
 # Para máquinas SIN GPU usa: pip install -r requirements-cpu.txt
 #
@@ -33,11 +33,11 @@
 #   - opcionales (NO en este archivo): easyocr/paddleocr (requirements-ocr.txt),
 #     mysql (instalar mysql-connector-python>=8.0 si se activa el repo MySQL).
 
---extra-index-url https://download.pytorch.org/whl/cu124
+--extra-index-url https://download.pytorch.org/whl/cu128
 
 # === NÚCLEO (pins críticos de compatibilidad) ===
-# RTX 5050 (Blackwell sm_120) requiere CUDA 12.4+ → torch 2.6+cu124.
-# Se mantiene numpy 1.26.4 + opencv 4.9.0.80 (torch 2.6 sigue compatible con numpy 1.x,
+# RTX 5050 (Blackwell sm_120) requiere CUDA 12.8+ → torch 2.8.0+cu128.
+# Se mantiene numpy 1.26.4 + opencv 4.9.0.80 (torch 2.8 sigue compatible con numpy 1.x,
 # y opencv 5.x rompería con "Numpy is not available").
 numpy==1.26.4
 scipy==1.11.4
