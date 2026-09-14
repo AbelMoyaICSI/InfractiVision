@@ -2077,23 +2077,110 @@ class VideoPlayerOpenCV:
         return self.vehicle_detector
 
     def shutdown(self):
-        """Detiene y une los hilos de fondo (worker de detección + plate_loop)
-        para que ningún hilo daemon muera en medio de código CUDA nativo al
-        cerrar la app (evita SIGSEGV/'terminate called without an active
-        exception'). Es idempotente."""
+        """Detiene hilos + libera video Y modelos IA (salida de Foto Rojo).
+
+        Además de unir los hilos de fondo (evita SIGSEGV en CUDA), libera
+        `vehicle_detector`/`plate_detector` del player y los globales de la
+        sesión (`AsyncPlateProcessor`, `process_plate._plate_detector`) con
+        `release_foto_rojo_models()` + `empty_cache`. Es idempotente y nunca
+        lanza: `Volver` puede llamarse con el player a medio crear.
+        """
         if getattr(self, '_shutdown_done', False):
             return
         self._shutdown_done = True
         self.running = False
         self.plate_running = False
-        worker = self._detect_worker_thread
+        # Cancelar timers Tk pendientes (bridge semáforo, scroll, afters).
+        for _attr in ("_after_id", "_manual_scroll_timer"):
+            try:
+                _aid = getattr(self, _attr, None)
+                if _aid is not None:
+                    try:
+                        self.parent.after_cancel(_aid)
+                    except Exception:
+                        pass
+                    setattr(self, _attr, None)
+            except Exception:
+                pass
+        worker = getattr(self, '_detect_worker_thread', None)
         if worker is not None and worker.is_alive():
-            worker.join(timeout=2.0)
-        if self.plate_thread is not None and self.plate_thread.is_alive():
-            self.plate_thread.join(timeout=1.0)
-        if self.cap is not None:
+            try:
+                worker.join(timeout=2.0)
+            except Exception:
+                pass
+        try:
+            if getattr(self, 'plate_thread', None) is not None and self.plate_thread.is_alive():
+                self.plate_thread.join(timeout=1.0)
+        except Exception:
+            pass
+        if getattr(self, 'cap', None) is not None:
             try:
                 self.cap.release()
+            except Exception:
+                pass
+            self.cap = None
+        # ── Liberar modelos del player (YOLO vehículos/placas) ──
+        try:
+            from src.core.detection.model_guard import release_detector
+
+            for _attr in ("vehicle_detector", "plate_detector"):
+                try:
+                    det = getattr(self, _attr, None)
+                    if det is not None:
+                        release_detector(det)
+                    setattr(self, _attr, None)
+                except Exception:
+                    try:
+                        setattr(self, _attr, None)
+                    except Exception:
+                        pass
+        except Exception:
+            try:
+                self.vehicle_detector = None
+            except Exception:
+                pass
+            try:
+                self.plate_detector = None
+            except Exception:
+                pass
+        # ── Soltar buffers grandes en RAM (frames anotados, historial) ──
+        for _attr in ("_last_annotated_frame", "_pending_timestamp"):
+            try:
+                setattr(self, _attr, None)
+            except Exception:
+                pass
+        try:
+            self._pending_beeps = []
+        except Exception:
+            pass
+        try:
+            if hasattr(self, 'frame_history'):
+                self.frame_history.clear()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, '_motion_tracks'):
+                self._motion_tracks = {}
+        except Exception:
+            pass
+        for _q in ("_detect_in", "_detect_out", "plate_queue"):
+            try:
+                q = getattr(self, _q, None)
+                if q is not None:
+                    while True:
+                        q.get_nowait()
+            except Exception:
+                pass
+        # ── Globales de la sesión Foto Rojo (async + placas lazy) ──
+        try:
+            from src.application.services.model_preloader import release_foto_rojo_models
+
+            release_foto_rojo_models()
+        except Exception:
+            try:
+                from src.core.detection.model_guard import free_torch_memory
+
+                free_torch_memory()
             except Exception:
                 pass
 

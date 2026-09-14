@@ -715,4 +715,49 @@ class PlateDetector:
             'night_detections': self.detection_stats['night_detections'],
             'night_failures': self.detection_stats['night_failures']
         }
+
+    def release(self) -> None:
+        """Libera pesos YOLO-placas + VRAM/RAM. Idempotente, nunca lanza.
+
+        Se llama al salir de Foto Rojo (`VideoPlayerOpenCV.shutdown` vía
+        `release_foto_rojo_models` + detectores del player). Sin esto la
+        VRAM del YOLO de placas quedaba retenida entre sesiones.
+        """
+        try:
+            model = getattr(self, "model", None)
+            if model is not None:
+                try:
+                    try:
+                        model.to("cpu")  # type: ignore[union-attr]
+                    except Exception:
+                        pass
+                    for attr in ("predictor", "model", "ckpt"):
+                        try:
+                            if hasattr(model, attr):
+                                setattr(model, attr, None)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        del model
+                    except Exception:
+                        pass
+            self.model = None
+        except Exception:
+            try:
+                self.model = None
+            except Exception:
+                pass
+        try:
+            self._gamma_luts = {}
+        except Exception:
+            pass
+        try:
+            from src.core.detection.model_guard import free_torch_memory
+
+            free_torch_memory()
+        except Exception:
+            pass
     

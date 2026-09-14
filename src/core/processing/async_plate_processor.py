@@ -87,6 +87,56 @@ class AsyncPlateProcessor:
         if self.worker_thread:
             self.worker_thread.join(timeout=1.0)
         print("🛑 AsyncProcessor: Worker detenido")
+
+    def release(self) -> None:
+        """Detiene el worker y libera YOLO-placas + crops en memoria.
+
+        Idempotente, nunca lanza. Se llama al salir de Foto Rojo para no
+        retener VRAM/RAM entre sesiones. Tras `release()`, `start()` puede
+        reusarse (recarga lazy el detector solo si se necesita de nuevo).
+        """
+        try:
+            self.stop()
+        except Exception:
+            pass
+        try:
+            det = getattr(self, "plate_detector", None)
+            if det is not None:
+                try:
+                    release = getattr(det, "release", None)
+                    if callable(release):
+                        release()
+                    else:
+                        try:
+                            det.model = None
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            self.plate_detector = None
+        except Exception:
+            pass
+        try:
+            self.upscaler = None
+        except Exception:
+            pass
+        try:
+            # Los resultados guardan crops numpy (RAM): soltarlos.
+            self.processed_results = {}
+        except Exception:
+            pass
+        try:
+            # Drenar cola sin bloquear (descarta frames pendientes).
+            while True:
+                self.pending_queue.get_nowait()
+        except Exception:
+            pass
+        try:
+            from src.core.detection.model_guard import free_torch_memory
+
+            free_torch_memory()
+        except Exception:
+            pass
         
     def update_semaphore_state(self, state):
         """Actualiza el estado del semáforo para saber cuándo procesar"""
@@ -232,3 +282,27 @@ def get_async_processor():
     if _processor_instance is None:
         _processor_instance = AsyncPlateProcessor()
     return _processor_instance
+
+
+def reset_async_processor() -> None:
+    """Libera y resetea el singleton (salida de Foto Rojo).
+
+    Idempotente, nunca lanza. Tras esto `get_async_processor()` crea una
+    instancia fresca con carga lazy, sin VRAM retenida de la sesión anterior.
+    """
+    global _processor_instance
+    inst = _processor_instance
+    _processor_instance = None
+    if inst is None:
+        return
+    try:
+        release = getattr(inst, "release", None)
+        if callable(release):
+            release()
+        else:
+            try:
+                inst.stop()
+            except Exception:
+                pass
+    except Exception:
+        pass

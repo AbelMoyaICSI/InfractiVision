@@ -420,4 +420,55 @@ class VehicleDetector:
         """Retorna el nombre amigable de la clase"""
         names = {2: "Carro", 5: "Bus", 7: "Camion"}
         return names.get(cls_id, f"Vehiculo_{cls_id}")
+
+    def release(self) -> None:
+        """Libera pesos YOLO + VRAM/RAM. Idempotente, nunca lanza.
+
+        Al salir de Foto Rojo (`VideoPlayerOpenCV.shutdown`) se llama para
+        que la RAM/VRAM no quede retenida por el caching allocator de torch.
+        Sin esto cada re-entrada a Foto Rojo sumaba memoria.
+        """
+        try:
+            model = getattr(self, "model", None)
+            if model is not None:
+                try:
+                    # Intentar bajar a CPU antes de soltar (suelta VRAM ya).
+                    try:
+                        model.to("cpu")  # type: ignore[union-attr]
+                    except Exception:
+                        pass
+                    # Ultralytics guarda predictor/modelo interno: soltarlo.
+                    for attr in ("predictor", "model", "ckpt"):
+                        try:
+                            if hasattr(model, attr):
+                                setattr(model, attr, None)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        del model
+                    except Exception:
+                        pass
+            self.model = None
+        except Exception:
+            try:
+                self.model = None
+            except Exception:
+                pass
+        try:
+            self.last_detections = []
+        except Exception:
+            pass
+        try:
+            self.last_frame_hash = None
+        except Exception:
+            pass
+        try:
+            from src.core.detection.model_guard import free_torch_memory
+
+            free_torch_memory()
+        except Exception:
+            pass
     

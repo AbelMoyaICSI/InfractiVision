@@ -1428,16 +1428,34 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
 
         Guarda en SQLite (única fuente), limpia los candidatos no elegidos
         (ya persistidos) y genera indicadores coherentes.
+
+        Si YOLO-placas fallo, el texto OCR del carro completo solo se usa como
+        clave de dedup de NIE: los duplicados se excluyen del guardado pero
+        quedan como NIE (nunca se promueven a NID aqui).
         """
         try:
             self.player.apply_official_validation(evidences, getattr(self, "_pending_infractions", []))
         except Exception as e:
             print(f"⚠️ Error sincronizando validación en panel lateral: {e}")
 
+        evidences_for_save = list(evidences or [])
+        try:
+            from src.application.services.plate_review_preparer import (
+                deduplicate_nie_by_plate,
+            )
+            kept, duplicates = deduplicate_nie_by_plate(evidences_for_save)
+            if duplicates:
+                print(f"🧬 Dedup NIE por OCR: {len(evidences_for_save)} -> {len(kept)} "
+                      f"({len(duplicates)} duplicadas por placa, quedan como NIE)")
+            evidences_for_save = kept
+        except Exception as e:
+            print(f"⚠️ Dedup NIE omitido: {e}")
+            evidences_for_save = list(evidences or [])
+
         nid_entries, nie_entries = [], []
         try:
             nid_entries, nie_entries = self._save_official_infractions_to_db(
-                evidences, getattr(self, "_pending_infractions", [])
+                evidences_for_save, getattr(self, "_pending_infractions", [])
             )
         except Exception as e:
             print(f"⚠️ Error guardando infracciones oficiales en DB: {e}")
@@ -1447,6 +1465,8 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         # Limpieza post-validacion: solo DESPUES de persistir. Borra los
         # candidatos no elegidos; conserva recorte final, best.jpg, video y
         # reporte. Idempotente (Exportar + Completado la disparan dos veces).
+        # Se usa `evidences` original (incluye duplicadas) para limpiar tambien
+        # sus candidatos huerfanos.
         try:
             from src.application.services.plate_review_preparer import (
                 cleanup_rejected_candidates,
@@ -2066,11 +2086,28 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 # Acceso único al predictor
                 predictor = get_lprnet_predictor()
                 
-                if not hasattr(ocr_worker_task, '_plate_detector'):
+                # Detector compartido a nivel de diálogo (liberado en
+                # `_cleanup_threads` al salir): antes vivía solo como attr de
+                # la función y su VRAM quedaba retenida tras el análisis.
+                _cached = getattr(self, "_ocr_plate_detector", None)
+                if _cached is not None and getattr(_cached, "model", None) is not None:
+                    plate_detector = _cached
+                    ocr_worker_task._plate_detector = _cached
+                elif hasattr(ocr_worker_task, '_plate_detector') and getattr(
+                        ocr_worker_task._plate_detector, "model", None) is not None:
+                    plate_detector = ocr_worker_task._plate_detector
+                    try:
+                        self._ocr_plate_detector = plate_detector
+                    except Exception:
+                        pass
+                else:
                     model_path = resource_path("models/license_plate_detector.pt")
-                    ocr_worker_task._plate_detector = PlateDetector(model_path) if os.path.exists(model_path) else PlateDetector()
-                
-                plate_detector = ocr_worker_task._plate_detector
+                    plate_detector = PlateDetector(model_path) if os.path.exists(model_path) else PlateDetector()
+                    ocr_worker_task._plate_detector = plate_detector
+                    try:
+                        self._ocr_plate_detector = plate_detector
+                    except Exception:
+                        pass
                 
                 # MMRP: Selección y Procesamiento de Candidatos
                 mmrp_frame = infraction.get('mmrp_frame')
@@ -5100,9 +5137,14 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             print(f"Error cerrando diálogo de procesamiento: {e}")
 
     def _cleanup_threads(self):
-        """Detiene y une los hilos de fondo del diálogo para que ningún hilo
-        daemon muera en medio de código CUDA nativo al cerrar (evita
-        SIGSEGV/'terminate called without an active exception')."""
+        """Detiene hilos de fondo y libera el YOLO-placas local del diálogo.
+
+        Los hilos daemon se unen para que ninguno muera en medio de código
+        CUDA nativo al cerrar (evita SIGSEGV/'terminate called...'). Además
+        se libera `self._ocr_plate_detector` (antes quedaba retenido en el
+        attr de `ocr_worker_task` y su VRAM no se devolvía al salir).
+        Los modelos del player/globales los libera `VideoPlayer.shutdown()`.
+        """
         self.display_active = False
         for attr in ("display_thread", "process_thread", "preload_thread",
                      "analysis_worker_thread"):
@@ -5115,6 +5157,35 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 ap.stop()
             except Exception as e:
                 print(f"Error deteniendo async_processor: {e}")
+        # El singleton global lo libera VideoPlayer.shutdown() a la salida
+        # de Foto Rojo; aquí solo se suelta la referencia local.
+        try:
+            self.async_processor = None
+        except Exception:
+            pass
+        try:
+            det = getattr(self, "_ocr_plate_detector", None)
+            if det is not None:
+                try:
+                    release = getattr(det, "release", None)
+                    if callable(release):
+                        release()
+                    else:
+                        try:
+                            det.model = None
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            self._ocr_plate_detector = None
+        except Exception:
+            pass
+        try:
+            from src.core.detection.model_guard import free_torch_memory
+
+            free_torch_memory()
+        except Exception:
+            pass
 
     def _on_video_label_destroy(self, event):
         if event is None or getattr(event, "widget", None) is not self.video_label:

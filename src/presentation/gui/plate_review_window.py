@@ -235,17 +235,35 @@ class PlateReviewWindow:
         row = self.rows[index]
         evidence: PlateEvidence = row["evidence"]
         previous = (evidence.plate_text or "").strip().upper()
+        meta = getattr(evidence, "metadata", None) or {}
+        # Fallback YOLO: el crop es carro completo. El texto OCR solo sirve
+        # como clave de dedup de NIE: se conserva pero queda como NIE
+        # (sin auto-validar). El operador aun puede tildar manual a NID.
+        is_fallback = bool(meta.get("fallback_by_quality") or meta.get("dedup_eligible") or meta.get("full_car"))
         if text:
             evidence.plate_text = text
             evidence.ocr_confidence = confidence
             evidence.ocr_method = "plate_recognizer"
             row["text"].set(text)
-            row["confidence"].config(text=f"Confianza: {confidence:.2f}")
-            # Auto-validar por defecto: Plate Recognizer sí detectó placa.
-            # El usuario aún puede desmarcar manualmente antes de Completar/Exportar.
-            evidence.validated = True
-            row["validated"].set(True)
-            row["check"].state(["!disabled"])
+            if is_fallback:
+                try:
+                    evidence.metadata["dedup_key"] = text.strip().upper()
+                except Exception:
+                    pass
+                row["confidence"].config(
+                    text=f"Confianza: {confidence:.2f} — YOLO no localizó, queda NIE (solo clave dedup)"
+                )
+                # Queda NIE por defecto: check habilitado para promocion manual.
+                evidence.validated = False
+                row["validated"].set(False)
+                row["check"].state(["!disabled"])
+            else:
+                row["confidence"].config(text=f"Confianza: {confidence:.2f}")
+                # Auto-validar por defecto: Plate Recognizer sí detectó placa.
+                # El usuario aún puede desmarcar manualmente antes de Completar/Exportar.
+                evidence.validated = True
+                row["validated"].set(True)
+                row["check"].state(["!disabled"])
         elif previous:
             # Fallback: la API falló/offline o no vio placa; se conserva el
             # texto previo (si lo hay) en vez de vaciarlo.

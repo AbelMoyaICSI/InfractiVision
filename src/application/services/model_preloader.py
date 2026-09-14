@@ -100,3 +100,56 @@ def preload_foto_rojo_models(
         "warmup_s": warmup_s,
         "elapsed_s": round(time.monotonic() - t0, 2),
     }
+
+
+def release_foto_rojo_models() -> None:
+    """Libera todo lo cargado por la sesión de Foto Rojo. Idempotente.
+
+    Se llama al salir de Foto Rojo (`VideoPlayerOpenCV.shutdown`, disparado
+    por `Volver` / `_clear_root` vía `<Destroy>`). Libera:
+
+    - Singleton `AsyncPlateProcessor` (YOLO-placas + crops numpy + worker).
+    - `process_plate._plate_detector` (YOLO-placas lazy del post-proceso).
+    - Caché torch CUDA (`empty_cache`) + `gc.collect()`.
+
+    NO toca el FSRCNN singleton (40KB CPU, recarga barata y se reusa).
+    Los detectores del player (`vehicle_detector`/`plate_detector`) los
+    libera el propio `shutdown()`; aquí solo van los globales. Nunca lanza.
+    """
+    try:
+        from src.core.processing.async_plate_processor import reset_async_processor
+
+        try:
+            reset_async_processor()
+        except Exception:
+            pass
+    except Exception:
+        pass
+    try:
+        from src.core.processing import plate_processing as _pp
+
+        det = getattr(getattr(_pp, "process_plate", None), "_plate_detector", None)
+        if det is not None:
+            try:
+                release = getattr(det, "release", None)
+                if callable(release):
+                    release()
+                else:
+                    try:
+                        det.model = None
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                _pp.process_plate._plate_detector = None
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        from src.core.detection.model_guard import free_torch_memory
+
+        free_torch_memory()
+    except Exception:
+        pass

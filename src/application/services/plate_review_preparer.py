@@ -31,6 +31,12 @@ MIN_PLATE_W = 55
 MIN_PLATE_H = 30
 PLATE_CONF = 0.40
 
+# Dedup de NIE por texto OCR (fallback): evita filas NIE duplicadas del mismo
+# auto cuando YOLO-placas fallo pero la API si leyo el carro completo.
+# Se mantiene como NIE: el texto solo es clave de agrupacion.
+NIE_DEDUP_MIN_LEN = 5
+NIE_DEDUP_MIN_CONF = 0.30
+
 
 def _quadrant(vehicle: np.ndarray, direction: str = "unknown") -> tuple[np.ndarray, tuple[int, int]]:
     """Mismo algoritmo de cuadrante del live: mitad inferior der/izq/completa."""
@@ -150,6 +156,7 @@ def select_best_with_plate(evidence: PlateEvidence, plate_detector=None,
         evidence.quality_score = float(cand.get("quality", evidence.quality_score))
         evidence.metadata["full_car"] = False
         evidence.metadata["fallback_by_quality"] = False
+        evidence.metadata["dedup_eligible"] = False
         evidence.metadata["plate_bbox"] = bbox
         evidence.metadata["plate_score"] = round(score, 4)
         evidence.metadata["selected_candidate_frame"] = int(cand.get("frame", -1))
@@ -164,7 +171,12 @@ def select_best_with_plate(evidence: PlateEvidence, plate_detector=None,
 
 
 def _apply_fallback(evidence: PlateEvidence, best_cand: dict, reason: str) -> None:
-    """Fallback por parametros: el candidato de mayor calidad, carro completo."""
+    """Fallback por parametros: el candidato de mayor calidad, carro completo.
+
+    El texto OCR que luego devuelva la API sobre este crop SOLO sirve como
+    clave de dedup de NIE: la ventana de revision lo conserva como NIE
+    (ver `PlateReviewWindow._show_result`). `dedup_eligible=True` lo marca.
+    """
     path = str(best_cand.get("path", "") or "")
     if path:
         evidence.crop_path = path
@@ -173,6 +185,7 @@ def _apply_fallback(evidence: PlateEvidence, best_cand: dict, reason: str) -> No
     evidence.quality_score = float(best_cand.get("quality", evidence.quality_score))
     evidence.metadata["full_car"] = True
     evidence.metadata["fallback_by_quality"] = True
+    evidence.metadata["dedup_eligible"] = True
     evidence.metadata["selected_candidate_frame"] = int(best_cand.get("frame", -1))
     evidence.metadata["selected_candidate_direction"] = str(
         best_cand.get("direction") or evidence.metadata.get("direction") or "unknown")
@@ -191,11 +204,15 @@ def localize_plate_for_evidence(evidence: PlateEvidence, plate_detector=None,
     crop_path = str(evidence.crop_path or "")
     if not crop_path or not Path(crop_path).exists():
         evidence.metadata["full_car"] = True
+        evidence.metadata["fallback_by_quality"] = True
+        evidence.metadata["dedup_eligible"] = True
         evidence.metadata["plate_error"] = "crop no disponible"
         return evidence
     vehicle = cv2.imread(crop_path)
     if vehicle is None or vehicle.size == 0:
         evidence.metadata["full_car"] = True
+        evidence.metadata["fallback_by_quality"] = True
+        evidence.metadata["dedup_eligible"] = True
         evidence.metadata["plate_error"] = "crop ilegible"
         return evidence
 
@@ -203,6 +220,8 @@ def localize_plate_for_evidence(evidence: PlateEvidence, plate_detector=None,
     if detector is None:
         log.warning("Sin YOLO-placas en post-proceso: track=%s va entero a la API", evidence.track_id)
         evidence.metadata["full_car"] = True
+        evidence.metadata["fallback_by_quality"] = True
+        evidence.metadata["dedup_eligible"] = True
         evidence.metadata["plate_error"] = "sin modelo de placas"
         return evidence
 
@@ -212,6 +231,8 @@ def localize_plate_for_evidence(evidence: PlateEvidence, plate_detector=None,
     hit = _try_localize_in_image(vehicle, direction, detector, out_dir, stem)
     if hit is None:
         evidence.metadata["full_car"] = True
+        evidence.metadata["fallback_by_quality"] = True
+        evidence.metadata["dedup_eligible"] = True
         evidence.metadata["plate_error"] = "placa no localizada: carro completo a la API"
         if not evidence.review_notes:
             evidence.review_notes = "Vehículo completo (placa no localizada en cuadrante)"
@@ -219,6 +240,8 @@ def localize_plate_for_evidence(evidence: PlateEvidence, plate_detector=None,
     plate_path, bbox, score = hit
     evidence.crop_path = plate_path
     evidence.metadata["full_car"] = False
+    evidence.metadata["fallback_by_quality"] = False
+    evidence.metadata["dedup_eligible"] = False
     evidence.metadata["plate_bbox"] = bbox
     evidence.metadata["plate_score"] = round(score, 4)
     evidence.metadata["selected_candidate_direction"] = direction
@@ -297,5 +320,94 @@ def prepare_evidences_for_review(evidences: list[PlateEvidence],
         except Exception as exc:
             log.warning("Evidencia track=%s sin localizar: %s", getattr(evidence, "track_id", "?"), exc)
             evidence.metadata["full_car"] = True
+            evidence.metadata["fallback_by_quality"] = True
+            evidence.metadata["dedup_eligible"] = True
             out.append(evidence)
     return out
+
+
+def _nie_dedup_key(plate_text: str) -> str:
+    """Clave de dedup: placa normalizada (sin guiones/espacios, A-Z0-9)."""
+    try:
+        from src.infrastructure.ocr.cloud_plate_readers import normalize_plate
+        return normalize_plate(plate_text or "")
+    except Exception:
+        import re as _re
+        return _re.sub(r"[^A-Z0-9]", "", (plate_text or "").upper())
+
+
+def deduplicate_nie_by_plate(
+    evidences: list[PlateEvidence],
+    min_len: int = NIE_DEDUP_MIN_LEN,
+    min_conf: float = NIE_DEDUP_MIN_CONF,
+) -> tuple[list[PlateEvidence], list[PlateEvidence]]:
+    """Agrupa NIE duplicados por texto OCR reutilizado del fallback.
+
+    Solo actua sobre evidencias NIE (no `validated` con texto): si dos o mas
+    comparten la misma placa normalizada (leida de carro completo cuando YOLO
+    fallo), conserva la de mayor `(ocr_confidence, quality_score)` y marca el
+    resto con `metadata.duplicate_of_track`. Siempre quedan como NIE: nunca
+    promueve a NID.
+
+    Reusa el `plate_text` ya obtenido por `PlateReviewWindow` (cero llamadas
+    extra a la API). Idempotente: una segunda llamada sobre la lista ya
+    filtrada no elimina nada mas.
+
+    Retorna `(kept, duplicates)`.
+    """
+    items = list(evidences or [])
+    if not items:
+        return [], []
+    groups: dict[str, list[PlateEvidence]] = {}
+    passthrough: list[PlateEvidence] = []
+    for ev in items:
+        # NID validados nunca se fusionan aqui.
+        if bool(getattr(ev, "validated", False)) and (getattr(ev, "plate_text", "") or "").strip():
+            passthrough.append(ev)
+            continue
+        key = _nie_dedup_key(getattr(ev, "plate_text", "") or "")
+        conf = float(getattr(ev, "ocr_confidence", 0.0) or 0.0)
+        if len(key) < min_len or conf < min_conf:
+            passthrough.append(ev)
+            continue
+        groups.setdefault(key, []).append(ev)
+    kept: list[PlateEvidence] = list(passthrough)
+    duplicates: list[PlateEvidence] = []
+    for key in sorted(groups):
+        group = groups[key]
+        if len(group) <= 1:
+            kept.extend(group)
+            continue
+        ranked = sorted(
+            group,
+            key=lambda e: (
+                -float(getattr(e, "ocr_confidence", 0.0) or 0.0),
+                -float(getattr(e, "quality_score", 0.0) or 0.0),
+                int(getattr(e, "track_id", 0) or 0),
+            ),
+        )
+        winner = ranked[0]
+        try:
+            winner.metadata["dedup_key"] = key
+            winner.metadata["dedup_group_size"] = len(ranked)
+        except Exception:
+            pass
+        kept.append(winner)
+        for dup in ranked[1:]:
+            try:
+                dup.metadata["duplicate_of_track"] = int(getattr(winner, "track_id", 0) or 0)
+                dup.metadata["dedup_key"] = key
+                notes = getattr(dup, "review_notes", "") or ""
+                suffix = f"Duplicado NIE de track {getattr(winner, 'track_id', '?')} por placa {key} (queda NIE)"
+                dup.review_notes = f"{notes} | {suffix}" if notes else suffix
+            except Exception:
+                pass
+            duplicates.append(dup)
+    # Orden estable por track para no alterar la UI/reportes.
+    kept.sort(key=lambda e: int(getattr(e, "track_id", 0) or 0))
+    if duplicates:
+        log.info(
+            "Dedup NIE por OCR: %d evidencias -> %d unicas (%d duplicadas)",
+            len(items), len(kept), len(duplicates),
+        )
+    return kept, duplicates
