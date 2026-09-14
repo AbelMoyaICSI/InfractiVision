@@ -41,8 +41,8 @@
 # y opencv 5.x rompería con "Numpy is not available").
 numpy==1.26.4
 scipy==1.11.4
-torch==2.6.0+cu124
-torchvision==0.21.0+cu124
+torch==2.8.0+cu128
+torchvision==0.23.0+cu128
 scikit-learn==1.4.2
 scikit-image==0.23.2
 
