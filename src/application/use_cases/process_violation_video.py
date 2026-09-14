@@ -96,12 +96,16 @@ class OfficialVideoProcessor:
                         cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
                     ).cuda(non_blocking=True).float()
                     contrast = min(float(g.std().item()) / 50.0, 1.0)
-                    # Nitidez: varianza del Laplaciano vía conv 3x3 en GPU.
-                    k = torch.tensor([[0., 1., 0.], [1., -4., 1.], [0., 1., 0.]],
-                                     device=g.device).view(1, 1, 3, 3)
-                    lap = torch.nn.functional.conv2d(
-                        g.unsqueeze(0).unsqueeze(0), k, padding=1).var().item()
-                    sharpness = min(float(lap) / 100.0, 1.0)
+                    # Nitidez: varianza del Laplaciano con ops puntuales (sin
+                    # conv2d: con cudnn.benchmark activo, cada forma nueva de
+                    # crop disparaba autotune de cuDNN -> picos de 100-500ms
+                    # por frame del infractor).
+                    if min(g.shape) >= 3:
+                        lap = (4.0 * g[1:-1, 1:-1] - g[:-2, 1:-1] - g[2:, 1:-1]
+                               - g[1:-1, :-2] - g[1:-1, 2:])
+                        sharpness = min(float(lap.var().item()) / 100.0, 1.0)
+                    else:
+                        sharpness = 0.0
                     h2, w2 = g.shape
                     size_score = min((w2 * h2) / 1500.0, 1.0)
                     # edge_score aproximado por gradiente medio (sin Canny).
@@ -280,6 +284,9 @@ class OfficialVideoProcessor:
         best: dict[int, PlateEvidence] = {}
         # track_id -> frame del cruce (infractor directo, sin pending)
         infractors: dict[int, int] = {}
+        # track_id -> mejor quality vista (gate de guardado por mejora:
+        # solo el mejor crop va a disco, no todos los frames).
+        best_quality: dict[int, float] = {}
         # track_id -> top-K candidatos {quality, frame, timestamp, direction, image}
         candidates: dict[int, list[dict]] = {}
         last_tracks: dict[int, dict] = {}
@@ -428,6 +435,11 @@ class OfficialVideoProcessor:
                             continue
                         if not track["infractor_confirmed"]:
                             continue
+                        # Gate de zona: el mejor frame siempre está cerca del
+                        # polígono. Confirmado-pero-lejos: display latched sin
+                        # costo por frame (sin _quality ni imwrite).
+                        if not near:
+                            continue
                         x1, y1, x2, y2 = bbox
                         vehicle = frame[max(0, y1):min(height, y2), max(0, x1):min(width, x2)]
                         if vehicle.size == 0:
@@ -435,9 +447,16 @@ class OfficialVideoProcessor:
                         tq0 = time.time()
                         quality = self._quality(vehicle)
                         stats["quality_ms"].append((time.time() - tq0) * 1000)
-                        # TODAS las imagenes del infractor van a disco de
-                        # inmediato (sin YOLO-placas en live): el writer async
-                        # absorbe el I/O y en RAM solo queda metadata liviana.
+                        # Gate de mejora: solo el mejor crop va a disco (el
+                        # primer frame near siempre supera el -1 inicial).
+                        # Sin esto, cada frame del infractor pagaba JPEG +
+                        # lista sin cota + N YOLOs extra en post-proceso.
+                        if quality <= best_quality.get(track_id, -1.0):
+                            continue
+                        best_quality[track_id] = quality
+                        # Solo mejoras van a disco de inmediato (sin
+                        # YOLO-placas en live): el writer async absorbe el
+                        # I/O y en RAM solo queda metadata liviana.
                         # El post-proceso elige la mejor CON placa.
                         direction = self._direction_from_history(
                             track.get("history"), self.direction_min_px)

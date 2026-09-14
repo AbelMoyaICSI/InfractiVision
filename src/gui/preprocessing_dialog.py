@@ -432,6 +432,45 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             print(f"⚠️ Pipeline Asíncrono no disponible: {e}")
         return getattr(self, "async_processor", None)
 
+    def _tmp_crop_dir(self) -> str:
+        """Dir tmp escribible para crops de infracción (spill a disco)."""
+        d = writable_data_path("data/tmp/crops")
+        try:
+            os.makedirs(d, exist_ok=True)
+        except Exception:
+            pass
+        return d
+
+    def _spill_crop_to_disk(self, crop, inf_id, frame_idx) -> str | None:
+        """Vuelca un crop pequeño a disco tmp. Retorna ruta o None.
+
+        Solo crops (nunca frames completos). El worker async lo lee y lo
+        borra tras consumirlo; ver `_cleanup_tmp_crops` para barridos.
+        """
+        try:
+            if crop is None or getattr(crop, "size", 0) == 0:
+                return None
+            path = os.path.join(
+                self._tmp_crop_dir(), f"inf_{inf_id}_f{int(frame_idx)}.jpg")
+            if cv2.imwrite(path, crop):
+                return path
+        except Exception as e:
+            print(f"⚠️ No se pudo volcar crop a disco: {e}")
+        return None
+
+    def _cleanup_tmp_crops(self) -> None:
+        """Borra los tmp de crops de la sesión (idempotente, nunca lanza)."""
+        try:
+            d = self._tmp_crop_dir()
+            for name in os.listdir(d):
+                if name.startswith("inf_") and name.endswith(".jpg"):
+                    try:
+                        os.remove(os.path.join(d, name))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
     def _preload_models(self):
         """Precarga los modelos de IA antes de procesar el video.
 
@@ -1200,17 +1239,22 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
     
     # _update_monitor_image eliminado (Fase 1 limpia)
 
-    def _deep_analyze_infraction(self, frame, infraction, absolute_frame, segment_id):
+    def _deep_analyze_infraction(self, frame, infraction, absolute_frame, segment_id,
+                                   frame_is_crop=False):
         """Realiza el análisis pesado de una infracción detectada (Fase 2)"""
         try:
-            # Recortar el vehículo con MARGEN EXTRA (10%) para mejorar detección de bordes
-            car_bbox = infraction['bbox']
-            cx1, cy1, cx2, cy2 = [int(v) for v in car_bbox]
-            vh, vw = frame.shape[:2]
-            mw, mh = int((cx2-cx1)*0.1), int((cy2-cy1)*0.1)
-            x1, y1 = max(0, cx1-mw), max(0, cy1-mh)
-            x2, y2 = min(vw, cx2+mw), min(vh, cy2+mh+mh) # Un poco más de margen abajo por la placa
-            vehicle_roi = frame[y1:y2, x1:x2].copy()
+            if frame_is_crop:
+                # El productor ya entregó el recorte del vehículo.
+                vehicle_roi = frame
+            else:
+                # Recortar el vehículo con MARGEN EXTRA (10%) para mejorar detección de bordes
+                car_bbox = infraction['bbox']
+                cx1, cy1, cx2, cy2 = [int(v) for v in car_bbox]
+                vh, vw = frame.shape[:2]
+                mw, mh = int((cx2-cx1)*0.1), int((cy2-cy1)*0.1)
+                x1, y1 = max(0, cx1-mw), max(0, cy1-mh)
+                x2, y2 = min(vw, cx2+mw), min(vh, cy2+mh+mh) # Un poco más de margen abajo por la placa
+                vehicle_roi = frame[y1:y2, x1:x2].copy()
             
             # Verificar si existe el detector ANPR
             has_anpr = hasattr(self.player, 'anpr_detector') and self.player.anpr_detector is not None
@@ -1810,23 +1854,33 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                     if pqi > current_d['best_pqi']:
                         current_d['best_pqi'] = pqi
 
-                        # Contexto del vehículo para el mejor frame (sin YOLO
-                        # de placas ni rectificación en vivo).
+                        # Crop-only: se guarda SOLO el recorte del vehículo
+                        # con margen (nunca el frame completo). En vivo no hay
+                        # YOLO de placas ni rectificación; la placa se
+                        # localiza 1x en post-proceso sobre este crop.
                         plate_stripped = None
-                        vehicle_ctx = None
                         try:
-                            tm_ctx = max(30, int(min(x2 - x1, y2 - y1) * 0.20))
-                            vehicle_ctx = frame[max(0,y1-tm_ctx):min(h,y2+tm_ctx), max(0,x1-tm_ctx):min(w,x2+tm_ctx)].copy()
-                        except: pass
-
-                        bbox_margin = max(15, int(min(x2 - x1, y2 - y1) * 0.10))
-                        current_d['mmrp_frame'] = {
-                            'img': frame.copy(),
-                            'bbox': (max(0, x1 - bbox_margin), max(0, y1 - bbox_margin), min(w, x2 + bbox_margin), min(h, y2 + bbox_margin)),
-                            'f': self._prep_frame_index,
-                            'plate_stripped': plate_stripped,
-                            'vehicle_context': vehicle_ctx
-                        }
+                            bbox_margin = max(15, int(min(x2 - x1, y2 - y1) * 0.10))
+                            ex1 = max(0, x1 - bbox_margin)
+                            ey1 = max(0, y1 - bbox_margin)
+                            ex2 = min(w, x2 + bbox_margin)
+                            ey2 = min(h, y2 + bbox_margin)
+                            vehicle_crop = frame[ey1:ey2, ex1:ex2].copy()
+                        except Exception:
+                            vehicle_crop = None
+                        if vehicle_crop is not None and vehicle_crop.size > 0:
+                            ch, cw = vehicle_crop.shape[:2]
+                            current_d['mmrp_frame'] = {
+                                'img': vehicle_crop,
+                                'bbox': (0, 0, cw, ch),
+                                'bbox_abs': (ex1, ey1, ex2, ey2),
+                                'origin': (ex1, ey1),
+                                'f': self._prep_frame_index,
+                                'is_crop': True,
+                                'crop_path': None,
+                                'plate_stripped': plate_stripped,
+                                'vehicle_context': None,
+                            }
 
                     # Detección de Pico
                     if not current_d['mmrp_reached'] and len(current_d['area_history']) >= 6:
@@ -1848,12 +1902,41 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                         if ready:
                             ap = self._get_async_processor(create=True)
                             if ap is not None:
-                                ap.add_infraction(
-                                    track_id=current_d['id'],
-                                    frame_img=current_d['mmrp_frame']['img'] if current_d['mmrp_frame'] else frame.copy(),
-                                    bbox=current_d['mmrp_frame']['bbox'] if current_d['mmrp_frame'] else (x1,y1,x2,y2),
-                                    frame_index=self._prep_frame_index
-                                )
+                                # Spill a disco: solo el crop, nunca el frame.
+                                # El worker lo lee y lo borra tras consumirlo.
+                                mmrp = current_d.get('mmrp_frame')
+                                crop_path = None
+                                fallback_crop = None
+                                if mmrp is not None and mmrp.get('img') is not None:
+                                    crop_path = self._spill_crop_to_disk(
+                                        mmrp['img'], current_d['id'],
+                                        self._prep_frame_index)
+                                    mmrp['crop_path'] = crop_path
+                                    if crop_path is None:
+                                        fallback_crop = mmrp['img']
+                                else:
+                                    try:
+                                        _m = max(15, int(min(x2 - x1, y2 - y1) * 0.10))
+                                        _crop = frame[max(0, y1 - _m):min(h, y2 + _m),
+                                                      max(0, x1 - _m):min(w, x2 + _m)].copy()
+                                        crop_path = self._spill_crop_to_disk(
+                                            _crop, current_d['id'],
+                                            self._prep_frame_index)
+                                        if crop_path is None:
+                                            fallback_crop = _crop
+                                    except Exception:
+                                        pass
+                                if crop_path is None and fallback_crop is None:
+                                    print(f"⚠️ TRIGGER #{current_d['id']}: sin crop válido, se omite envío async")
+                                else:
+                                    ap.add_infraction(
+                                        track_id=current_d['id'],
+                                        bbox=(mmrp['bbox'] if mmrp is not None
+                                              else (x1, y1, x2, y2)),
+                                        frame_index=self._prep_frame_index,
+                                        vehicle_crop=fallback_crop,
+                                        crop_path=crop_path,
+                                    )
                             current_d['async_sent'] = True
                             p_str = "[PEAK]" if is_peak_gold else "[PANIC]" if is_panic else "[PERSIST]"
                             print(f"🚀 {p_str} TRIGGER #{current_d['id']} PPI:{proximity_factor:.2f} (Frames: {num_f})")
@@ -2162,15 +2245,32 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 
                 for cand in candidates[:8]:
                     try:
-                        cand_img = cand['img']
-                        x1, y1, x2, y2 = [int(v) for v in cand['bbox']]
-                        vh_c, vw_c = cand_img.shape[:2]
-                        
-                        # ROI del Vehículo con margen extra
-                        mw, mh = int((x2-x1)*0.1), int((y2-y1)*0.1)
-                        vx1, vy1 = max(0, x1-mw), max(0, y1-mh)
-                        vx2, vy2 = min(vw_c, x2+mw), min(vh_c, y2+mh)
-                        vehicle_img = cand_img[vy1:vy2, vx1:vx2].copy()
+                        # Crop-only: si el candidato ya ES el recorte del
+                        # vehículo (is_crop), se usa directo sin re-cortar
+                        # sobre un frame completo. Legacy (frame+bbox abs)
+                        # mantiene el flujo anterior.
+                        if cand.get('is_crop'):
+                            cand_img = cand.get('img')
+                            if cand_img is None and cand.get('crop_path'):
+                                try:
+                                    cand_img = cv2.imread(
+                                        str(cand['crop_path']), cv2.IMREAD_COLOR)
+                                except Exception:
+                                    cand_img = None
+                            if cand_img is None or getattr(cand_img, 'size', 0) == 0:
+                                continue
+                            vehicle_img = cand_img if isinstance(
+                                cand_img, np.ndarray) else np.asarray(cand_img)
+                        else:
+                            cand_img = cand['img']
+                            x1, y1, x2, y2 = [int(v) for v in cand['bbox']]
+                            vh_c, vw_c = cand_img.shape[:2]
+
+                            # ROI del Vehículo con margen extra
+                            mw, mh = int((x2-x1)*0.1), int((y2-y1)*0.1)
+                            vx1, vy1 = max(0, x1-mw), max(0, y1-mh)
+                            vx2, vy2 = min(vw_c, x2+mw), min(vh_c, y2+mh)
+                            vehicle_img = cand_img[vy1:vy2, vx1:vx2].copy()
                         
                         # Guardar imagen del vehículo (mejor toma provisional)
                         if best_vehicle_img is None: 
@@ -2760,10 +2860,24 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                     
                     if state == "red":
                         for inf in new_infractions:
-                            # 🚀 TRIGGER FASE 2: ANÁLISIS PROFUNDO ASÍNCRONO
+                            # Crop-only: encolar el recorte del vehículo, no
+                            # el frame completo (el consumidor `_deep_analyze`
+                            # ya recorta de nuevo con margen; aquí se acota).
+                            try:
+                                _bx = [int(v) for v in inf.get('bbox', (0, 0, 0, 0))]
+                                _fh, _fw = frame.shape[:2]
+                                _qx1 = max(0, _bx[0])
+                                _qy1 = max(0, _bx[1])
+                                _qx2 = min(_fw, _bx[2])
+                                _qy2 = min(_fh, _bx[3])
+                                _crop = (frame[_qy1:_qy2, _qx1:_qx2].copy()
+                                         if _qx2 > _qx1 and _qy2 > _qy1 else None)
+                            except Exception:
+                                _crop = None
                             self.analysis_queue.put({
                                 'type': 'deep_analysis',
-                                'frame': frame.copy(),
+                                'frame': _crop if _crop is not None else frame.copy(),
+                                'frame_is_crop': _crop is not None,
                                 'infraction': inf,
                                 'absolute_frame': abs_f,
                                 'segment_id': segment_id
@@ -3882,6 +3996,25 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             
             # PASO 5: Actualizar la lista final de infracciones
             self.detected_infractions = unique_vehicle_infractions
+
+            # Limpieza RAM: los crops MMRP ya se consumieron en Fase 2 y la
+            # evidencia final vive en data/output + detected_infractions.
+            # Se liberan los ndarrays intermedios (eran frames completos).
+            try:
+                for _store in (getattr(self, '_active_infractors', {}) or {}).values():
+                    _mm = _store.get('mmrp_frame') if isinstance(_store, dict) else None
+                    if isinstance(_mm, dict):
+                        _mm['img'] = None
+                        _mm['vehicle_context'] = None
+                        _mm['plate_stripped'] = None
+                for _inf in getattr(self, '_captured_infractions', []) or []:
+                    _mm = _inf.get('mmrp_frame') if isinstance(_inf, dict) else None
+                    if isinstance(_mm, dict):
+                        _mm['img'] = None
+                        _mm['vehicle_context'] = None
+                        _mm['plate_stripped'] = None
+            except Exception:
+                pass
             
             # MEJORA: Mostrar alertas avanzadas cuando no hay detecciones
             if len(self.detected_infractions) == 0:
@@ -5163,6 +5296,22 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             self.async_processor = None
         except Exception:
             pass
+        # Limpieza crop-only: soltar ndarrays MMRP intermedios y barrer los
+        # tmp de crops (los consumidos ya los borró el worker; esto cubre
+        # descartes por cola llena y sesiones canceladas).
+        try:
+            for _store in (getattr(self, '_active_infractors', {}) or {}).values():
+                _mm = _store.get('mmrp_frame') if isinstance(_store, dict) else None
+                if isinstance(_mm, dict):
+                    _mm['img'] = None
+                    _mm['vehicle_context'] = None
+                    _mm['plate_stripped'] = None
+        except Exception:
+            pass
+        try:
+            self._cleanup_tmp_crops()
+        except Exception:
+            pass
         try:
             det = getattr(self, "_ocr_plate_detector", None)
             if det is not None:
@@ -5212,6 +5361,10 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         if not self.canceled:
             self.canceled = True
             self._cancel_all_after()   # ← Añadir esta línea
+            try:
+                self._cleanup_tmp_crops()
+            except Exception:
+                pass
             
             # 🚀 LIMPIAR: Detener visualización fluida
             self.display_active = False

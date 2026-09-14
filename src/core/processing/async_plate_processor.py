@@ -142,18 +142,43 @@ class AsyncPlateProcessor:
         """Actualiza el estado del semáforo para saber cuándo procesar"""
         self.current_semaphore_state = state
         
-    def add_infraction(self, track_id, frame_img, bbox, frame_index):
-        """Añade una infracción a la cola de procesamiento"""
+    def add_infraction(self, track_id, frame_img=None, bbox=None,
+                       frame_index=0, vehicle_crop=None, crop_path=None):
+        """Añade una infracción a la cola de procesamiento.
+
+        Flujo crop-only: el productor recorta el vehículo, lo vuelca a
+        disco tmp y pasa solo `crop_path` (cero copias de frame completo
+        en RAM). `vehicle_crop` (ndarray pequeño) es fallback si el spill
+        a disco falla. `frame_img`+`bbox` se mantienen por compat legacy.
+        """
         try:
-            self.pending_queue.put_nowait({
+            item = {
                 'track_id': track_id,
-                'frame_img': frame_img.copy(),
                 'bbox': bbox,
                 'frame_index': frame_index,
-                'added_time': time.time()
-            })
+                'added_time': time.time(),
+            }
+            if crop_path:
+                item['crop_path'] = str(crop_path)
+            elif vehicle_crop is not None:
+                try:
+                    item['vehicle_crop'] = vehicle_crop.copy()
+                except Exception:
+                    item['vehicle_crop'] = vehicle_crop
+            elif frame_img is not None:
+                # Legacy: frame completo (evitar en código nuevo).
+                item['frame_img'] = frame_img.copy()
+            else:
+                return
+            self.pending_queue.put_nowait(item)
         except queue.Full:
             print(f"⚠️ AsyncProcessor: cola llena, descartando infracción del track {track_id}")
+            # Limpieza: si el productor ya volcó el tmp y no entró a la
+            # cola, borrarlo aquí para no dejar basura en disco.
+            try:
+                self._discard_crop_path(crop_path)
+            except Exception:
+                pass
         
     def _worker_loop(self):
         """Loop principal del worker - procesa durante VERDE/AMARILLO"""
@@ -181,26 +206,68 @@ class AsyncPlateProcessor:
                 print(f"⚠️ AsyncProcessor error: {e}")
                 time.sleep(0.1)
                 
-    def _process_item(self, item):
-        """Procesa una infracción: recorte + super-resolución"""
-        start_time = time.time()
-        
-        track_id = item['track_id']
-        frame_img = item['frame_img']
-        bbox = item['bbox']
-        
+    @staticmethod
+    def _discard_crop_path(crop_path) -> None:
+        """Borra un tmp de crop solo si vive bajo un dir temporal seguro."""
+        try:
+            if not crop_path:
+                return
+            s = str(crop_path)
+            # Salvaguarda: nunca borrar evidencia final, solo tmp/crops.
+            if "tmp" not in s and "crops" not in s:
+                return
+            import os as _os
+            if _os.path.exists(s):
+                _os.remove(s)
+        except Exception:
+            pass
+
+    def _resolve_vehicle_img(self, item):
+        """Resuelve el crop del vehículo sin copiar frames completos.
+
+        Orden: crop_path (disco) -> vehicle_crop (RAM pequeña) ->
+        frame_img+bbox (legacy). Retorna (vehicle_img, tmp_to_cleanup).
+        """
+        crop_path = item.get('crop_path')
+        if crop_path:
+            try:
+                img = cv2.imread(str(crop_path), cv2.IMREAD_COLOR)
+                if img is not None and img.size > 0:
+                    return img, str(crop_path)
+            except Exception:
+                pass
+            # Si el tmp falló, degradar a lo que haya en el item.
+        if item.get('vehicle_crop') is not None:
+            return item['vehicle_crop'], None
+        frame_img = item.get('frame_img')
+        bbox = item.get('bbox')
+        if frame_img is None or bbox is None:
+            return None, None
         try:
             x1, y1, x2, y2 = [int(v) for v in bbox]
             h, w = frame_img.shape[:2]
             x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(w, x2), min(h, y2)
-            
             if x2 <= x1 or y2 <= y1:
-                return
-                
+                return None, None
             # Recortar vehículo con margen amplio (150px como en test_geoloc_surgical_gui)
             m = min(150, y1, x1, h-y2, w-x2)  # No exceder bordes
-            vehicle_img = frame_img[max(0,y1-m):min(h,y2+m), max(0,x1-m):min(w,x2+m)].copy()
+            return frame_img[max(0,y1-m):min(h,y2+m), max(0,x1-m):min(w,x2+m)].copy(), None
+        except Exception:
+            return None, None
+
+    def _process_item(self, item):
+        """Procesa una infracción: recorte + super-resolución"""
+        start_time = time.time()
+
+        track_id = item['track_id']
+        bbox = item.get('bbox')
+        tmp_to_cleanup = None
+
+        try:
+            vehicle_img, tmp_to_cleanup = self._resolve_vehicle_img(item)
+            if vehicle_img is None or vehicle_img.size == 0:
+                return
             
             # Detectar placa dentro del vehículo
             plate_crop = None
@@ -252,7 +319,7 @@ class AsyncPlateProcessor:
                     sr_applied = True
                     self.stats['sr_applied_count'] += 1
             
-            # Guardar resultado
+            # Guardar resultado (acotado: evita RAM sin cota con muchos tracks)
             self.processed_results[track_id] = {
                 'plate_crop': plate_crop,
                 'vehicle_img': vehicle_img,
@@ -260,19 +327,37 @@ class AsyncPlateProcessor:
                 'frame_index': item['frame_index'],
                 'bbox': bbox
             }
-            
+            try:
+                while len(self.processed_results) > 20:
+                    self.processed_results.pop(next(iter(self.processed_results)))
+            except Exception:
+                pass
+
             # Actualizar estadísticas
             processing_time = (time.time() - start_time) * 1000
             self.stats['processed_count'] += 1
             self.stats['avg_processing_time_ms'] = (
-                (self.stats['avg_processing_time_ms'] * (self.stats['processed_count'] - 1) + processing_time) 
+                (self.stats['avg_processing_time_ms'] * (self.stats['processed_count'] - 1) + processing_time)
                 / self.stats['processed_count']
             )
-            
+
             print(f"⚡ Async: Track {track_id} procesado en {processing_time:.1f}ms (SR: {sr_applied})")
-            
+
         except Exception as e:
             print(f"⚠️ Error procesando track {track_id}: {e}")
+        finally:
+            # Limpieza garantizada: el tmp volcado por el productor se
+            # borra tras consumirlo (éxito o error). Solo toca tmp/crops.
+            try:
+                self._discard_crop_path(tmp_to_cleanup)
+            except Exception:
+                pass
+            # Soltar referencias grandes del item encolado.
+            try:
+                item.pop('frame_img', None)
+                item.pop('vehicle_crop', None)
+            except Exception:
+                pass
             
 _processor_instance = None
 
