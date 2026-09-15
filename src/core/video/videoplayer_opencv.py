@@ -2534,11 +2534,16 @@ class VideoPlayerOpenCV:
         MAX_CARD_H = 140
         
         def __init__(self, parent, plate_text, classification, timestamp, confidence, 
-                     razon_text, vehicle_img=None, plate_img=None, track_id=None):
+                     razon_text, vehicle_img=None, plate_img=None, track_id=None,
+                     processing_seconds=None):
             self.parent = parent
             self.plate_text = plate_text
             self.classification = classification
             self.timestamp = timestamp
+            # TR individual: wall-clock real de procesamiento (segundos desde
+            # el inicio de detección hasta el registro). Si no se provee, se
+            # usa el timestamp del video como fallback (comportamiento previo).
+            self.processing_seconds = processing_seconds
             self.confidence = confidence
             self.razon_text = razon_text
             self.track_id = track_id
@@ -2721,9 +2726,14 @@ class VideoPlayerOpenCV:
             )
             self.status_label.pack(fill="x", pady=0, anchor="nw")
             
-            # 3. TR dual en TODOS los tamaños (decimal + sexagesimal)
-            if self.timestamp is not None:
-                mins_decimal = self.timestamp / 60.0
+            # 3. TR dual en TODOS los tamaños (decimal + sexagesimal).
+            # Fuente: wall-clock real de procesamiento si se proveyó
+            # (processing_seconds); si no, fallback al timestamp del video.
+            _tr_source = self.processing_seconds
+            if _tr_source is None:
+                _tr_source = self.timestamp
+            if _tr_source is not None:
+                mins_decimal = float(_tr_source) / 60.0
                 sexa = format_time_sexagesimal(mins_decimal)
 
                 # Dual compacto según espacio disponible
@@ -3138,28 +3148,15 @@ class VideoPlayerOpenCV:
                 pass
 
     def _safe_add_plate_to_panel(self, plate_img, plate_text, timestamp=None, confidence=None, 
-                                 vehicle_img=None, classification=None, reason=None, track_id=None):
+                                 vehicle_img=None, classification=None, reason=None, track_id=None,
+                                 processing_seconds=None):
         """
         Añade una placa detectada al panel lateral usando PlateCard compacto.
+
+        El texto de placa se usa tal cual lo entrega el OCR / Plate
+        Recognizer (normalizado a mayúsculas), sin reescrituras ni
+        mapeos manuales: lo que devuelve el modelo es lo que se muestra.
         """
-        hardcoded_mappings = {
-            'T3E153': 'T3J-538', 'T3E-153': 'T3J-538',
-            'A9G886': 'A96-8B6', 'A9G-886': 'A96-8B6',
-            'AE6061': 'A3K-961', 'AE-6061': 'A3K-961',
-            'T8B147': 'APH-188', 'T8B-147': 'APH-188',
-            'A96886': 'A96-8B6', 'A-96886': 'A96-8B6', 'A96-886': 'A96-8B6',
-            'THI642': 'H1G-421', 'THI-642': 'H1G-421',
-            'L4A326': 'T4A-376', 'L4A-326': 'T4A-376',
-            'T1R538': 'T3J-538', 'T1R-538': 'T3J-538',
-            'T5T601': 'T6D-138', 'T5T-601': 'T6D-138',
-            'TFI621': 'H1G-621', 'TFI-621': 'H1G-621',
-            'T5A349': 'A3K-961', 'T5A-349': 'A3K-961',
-            'EAV619': 'AV6-190', 'EAV-619': 'AV6-190',
-        }
-        plate_text_clean = plate_text.replace('-', '').replace(' ', '').upper()
-        if plate_text_clean in hardcoded_mappings:
-            plate_text = hardcoded_mappings[plate_text_clean]
-        
         # Verificaciones básicas
         if plate_img is None or not isinstance(plate_text, str):
             print(f"Error: Datos de placa inválidos - img: {plate_img is not None}, text: {plate_text}")
@@ -3316,7 +3313,8 @@ class VideoPlayerOpenCV:
                     razon_text=razon_natural,
                     vehicle_img=vehicle_img,  # Usar vehicle_img del parámetro
                     plate_img=plate_img,
-                    track_id=track_id
+                    track_id=track_id,
+                    processing_seconds=processing_seconds,
                 )
                 
                 print(f"✅ CARD CREADA: Placa {plate_text} con clasificación {classification}")
@@ -3798,8 +3796,15 @@ class VideoPlayerOpenCV:
             parent.after(300, self._update_metrics_panel)
 
     def _create_card_for_validation(self, classification, plate_text, track_id,
-                                    timestamp, crop_path, vehicle_class="VEH", ocr_confidence=0.0):
-        """Crea una card nueva desde el resultado de validación (si no existía)."""
+                                    timestamp, crop_path, vehicle_class="VEH", ocr_confidence=0.0,
+                                    processing_seconds=None):
+        """Crea una card nueva desde el resultado de validación (si no existía).
+
+        El TR individual usa wall-clock real de procesamiento: segundos desde
+        `detection_start_time` (mismo reloj que el numerador del TR global)
+        hasta el registro de la tarjeta. Si no se puede medir, la card usa el
+        timestamp del video como fallback.
+        """
         img = None
         if crop_path and os.path.exists(crop_path):
             try:
@@ -3810,6 +3815,12 @@ class VideoPlayerOpenCV:
                 img = None
         reason = ("✅ Placa leída correctamente" if classification == "NID"
                   else "🔍 Sin placa detectada (NIE)")
+        if processing_seconds is None:
+            try:
+                _t0 = getattr(self, "detection_start_time", None)
+                processing_seconds = max(0.0, time.time() - _t0) if _t0 else None
+            except Exception:
+                processing_seconds = None
         self._safe_add_plate_to_panel(
             plate_img=img if img is not None else self._empty_plate_fallback(),
             plate_text=plate_text or "NIE",
@@ -3819,6 +3830,7 @@ class VideoPlayerOpenCV:
             classification=classification,
             reason=reason,
             track_id=track_id,
+            processing_seconds=processing_seconds,
         )
         # _safe_add_plate_to_panel re-clasifica internamente; forzamos la
         # clasificación de validación una vez creada la card.
