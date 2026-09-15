@@ -26,10 +26,18 @@ class VehicleDetector:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if (os.environ.get("IV_DEVICE", "auto") or "auto").strip().lower() == "cuda" \
                 and self.device.type != "cuda":
-            raise RuntimeError(
-                "IV_DEVICE=cuda pero no hay GPU CUDA usable: "
-                f"device={self.device}, is_available={torch.cuda.is_available()}. "
-                "Ver log [hardware].")
+            # Portabilidad: preferencia no satisfecha -> warning + CPU limpio
+            # (nunca lanzar: el software debe correr en cualquier laptop).
+            try:
+                from src.core.logger import get_logger as _get_log_hw
+
+                _get_log_hw("hardware").warning(
+                    "IV_DEVICE=cuda pero no hay GPU CUDA usable "
+                    "(is_available=%s). Se sigue en Solo CPU.",
+                    torch.cuda.is_available())
+            except Exception:
+                pass
+            print("[VehicleDetector] IV_DEVICE=cuda sin GPU usable: Solo CPU.")
         self.using_gpu = self.device.type == 'cuda'
         # FP16 solo si realmente hay GPU usable (port de windows_machine_owner)
         self.half = self.using_gpu
@@ -61,23 +69,19 @@ class VehicleDetector:
             # cada predict() y ultralytics hace half() después del fuse.
         except Exception as e:
             if self.device.type == 'cuda':
+                # Fallback adaptativo: GPU falló -> CPU limpio con warning
+                # (portabilidad: jamás lanzar ni bloquear por esto).
                 try:
                     from src.core.logger import get_logger as _get_log
 
                     _get_log("hardware").warning(
                         "No se pudo usar la GPU (%s, torch %s, cuda %s): %s. "
-                        "%s",
+                        "Se sigue en Solo CPU.",
                         self.device, getattr(torch, "__version__", "?"),
-                        getattr(getattr(torch, "version", None), "cuda", "?"), e,
-                        "IV_DEVICE=cuda para exigir GPU en vez de seguir en CPU."
-                        if (os.environ.get("IV_DEVICE", "auto") or "auto").strip().lower() != "cuda"
-                        else "Modo estricto: se aborta en vez de caer a CPU.")
+                        getattr(getattr(torch, "version", None), "cuda", "?"), e)
                 except Exception:
                     pass
-                if (os.environ.get("IV_DEVICE", "auto") or "auto").strip().lower() == "cuda":
-                    raise RuntimeError(
-                        f"IV_DEVICE=cuda pero el modelo no entró a GPU: {e}") from e
-                print(f"[VehicleDetector] Falló mover modelo a GPU: {e} | Fallback a CPU temporal")
+                print(f"[VehicleDetector] Falló mover modelo a GPU: {e} | Fallback a CPU")
                 self.device = torch.device('cpu')
                 self.using_gpu = False
                 self.half = False
