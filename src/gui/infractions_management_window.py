@@ -18,6 +18,33 @@ INF_FILE = writable_data_path("data/infracciones.json")
 # Ruta centralizada del archivo de infracciones NIE (incorrectamente registradas)
 NIE_FILE = writable_data_path("data/nie_infracciones.json")
 
+# === UTILIDAD DE CENTRADO DE VENTANAS EMERGENTES (Toplevel) ===
+def center_toplevel(win, width, height):
+    """Centra un `Toplevel` respecto a la pantalla principal del monitor.
+
+    Uso: `center_toplevel(mi_ventana, 820, 620)` tras crear el Toplevel.
+    Es segura: nunca lanza excepción aunque la ventana esté destruida.
+    """
+    try:
+        try:
+            win.update_idletasks()
+        except Exception:
+            pass
+        sw = win.winfo_screenwidth()
+        sh = win.winfo_screenheight()
+        x = (sw - int(width)) // 2
+        y = (sh - int(height)) // 2
+        if x < 0:
+            x = 0
+        if y < 0:
+            y = 0
+        win.geometry(f"{int(width)}x{int(height)}")
+        win.geometry("+{}+{}".format(x, y))
+        return (x, y)
+    except Exception as e:
+        print(f"⚠️ No se pudo centrar ventana emergente: {e}")
+        return None
+
 # === HISTORIAL DE MIGRACIONES (BD SQLite) ===
 
 def add_migration_to_history(num_infractions, estado="Exitosa"):
@@ -730,7 +757,9 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             # Crear ventana de informe
             report_window = tk.Toplevel(window)
             report_window.title("Indicadores de Rendimiento - InfractiVision")
-            report_window.geometry("700x600")
+            # [RESPALDO centrado] Código anterior (no borrar): abría en esquina/descentrado.
+            # report_window.geometry("700x600")
+            center_toplevel(report_window, 700, 600)
             report_window.minsize(600, 500)
             
             # Estilos y configuración
@@ -914,7 +943,9 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
         # Cuadro de diálogo para elegir formato de exportación
         export_win = tk.Toplevel(window)
         export_win.title("Exportar Infracciones")
-        export_win.geometry("400x300")
+        # [RESPALDO centrado] Código anterior (no borrar): abría en esquina/descentrado.
+        # export_win.geometry("400x300")
+        center_toplevel(export_win, 400, 300)
         export_win.resizable(False, False)
         export_win.configure(bg="#ffffff")
         export_win.grab_set()
@@ -1205,23 +1236,271 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             child.destroy()
 
     def create_show_plate_func(plate_path, placa_text):
+        """Abre el visor de evidencia con zoom interactivo (canvas + lupa).
+
+        Ubicación del render del recorte:
+        - Miniatura: `build_infraction_card` -> `img_box` (Label con thumbnail).
+        - Detalle ampliado: aquí, en un `Toplevel` con `Canvas` + scrollbars.
+        """
         def show_plate_func():
-            if plate_path and os.path.exists(plate_path):
-                try:
-                    plate_window = tk.Toplevel(window)
-                    plate_window.title(f"Placa: {placa_text}")
-                    from PIL import Image, ImageTk
-                    img = Image.open(plate_path)
-                    photo = ImageTk.PhotoImage(img)
-                    img_label = tk.Label(plate_window, image=photo)
-                    img_label.image = photo
-                    img_label.pack(padx=20, pady=20)
-                    tk.Button(plate_window, text="Cerrar",
-                              command=plate_window.destroy).pack(pady=10)
-                except Exception as e:
-                    messagebox.showerror("Error", f"No se pudo cargar la imagen: {e}")
-            else:
+            if not (plate_path and os.path.exists(plate_path)):
                 messagebox.showinfo("Información", "No hay imagen de placa disponible")
+                return
+            try:
+                from PIL import Image, ImageTk
+                orig_img = Image.open(plate_path)
+                # Normalizar modo para evitar problemas con RGBA/P en Tk
+                if orig_img.mode not in ("RGB", "RGBA"):
+                    orig_img = orig_img.convert("RGB")
+                orig_w, orig_h = orig_img.size
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo cargar la imagen: {e}")
+                return
+
+            plate_window = tk.Toplevel(window)
+            plate_window.title(f"Placa: {placa_text} — Visor de evidencia")
+            # [RESPALDO centrado] Código anterior (no borrar): abría en esquina/descentrado.
+            # plate_window.geometry("820x620")
+            center_toplevel(plate_window, 820, 620)
+            plate_window.minsize(560, 420)
+            plate_window.configure(bg="#2b2b2b")
+            try:
+                plate_window.transient(window)
+            except Exception:
+                pass
+
+            # ---- Estado del zoom (clausura) ----
+            state = {"scale": 1.0, "fit_scale": 1.0, "photo": None}
+            MIN_SCALE = 0.10   # 10% del tamaño original
+            MAX_SCALE = 8.0    # 800% para inspeccionar píxeles de la placa
+
+            # ---- Barra de herramientas ----
+            toolbar = tk.Frame(plate_window, bg="#2b2b2b")
+            toolbar.pack(fill="x", padx=10, pady=(10, 6))
+
+            tk.Label(
+                toolbar, text=f"🔍 {placa_text}",
+                font=("Arial", 11, "bold"), bg="#2b2b2b", fg="white"
+            ).pack(side="left", padx=(0, 12))
+
+            zoom_label = tk.Label(
+                toolbar, text="100%", font=("Arial", 10, "bold"),
+                bg="#3a3a3a", fg="#ffd54f", width=8
+            )
+            zoom_label.pack(side="right", padx=(8, 0))
+
+            hint = tk.Label(
+                toolbar, text="Ctrl+rueda: zoom  •  Arrastrar: mover  •  Doble-clic: acercar",
+                font=("Arial", 8), bg="#2b2b2b", fg="#bbbbbb"
+            )
+            hint.pack(side="right", padx=8)
+
+            def _make_btn(parent, text, cmd, bg="#3a3a3a"):
+                return tk.Button(
+                    parent, text=text, command=cmd, bg=bg, fg="white",
+                    activebackground="#4a4a4a", activeforeground="white",
+                    font=("Arial", 10, "bold"), bd=0, cursor="hand2",
+                    padx=10, pady=4
+                )
+
+            btn_bar = tk.Frame(plate_window, bg="#2b2b2b")
+            btn_bar.pack(fill="x", padx=10, pady=(0, 6))
+            # ---- Área de canvas con scrollbars ----
+            view_frame = tk.Frame(plate_window, bg="#1e1e1e", bd=1, relief="sunken")
+            view_frame.pack(fill="both", expand=True, padx=10, pady=(0, 6))
+
+            v_canvas = tk.Canvas(view_frame, bg="#1e1e1e", highlightthickness=0)
+            h_scroll = tk.Scrollbar(view_frame, orient="horizontal", command=v_canvas.xview)
+            v_scroll = tk.Scrollbar(view_frame, orient="vertical", command=v_canvas.yview)
+            v_canvas.configure(xscrollcommand=h_scroll.set, yscrollcommand=v_scroll.set)
+            v_canvas.grid(row=0, column=0, sticky="nsew")
+            v_scroll.grid(row=0, column=1, sticky="ns")
+            h_scroll.grid(row=1, column=0, sticky="ew")
+            view_frame.grid_rowconfigure(0, weight=1)
+            view_frame.grid_columnconfigure(0, weight=1)
+
+            def _render():
+                """Re-renderiza la imagen al `state['scale']` actual sin romper el layout."""
+                scale = max(MIN_SCALE, min(MAX_SCALE, state["scale"]))
+                state["scale"] = scale
+                nw = max(1, int(orig_w * scale))
+                nh = max(1, int(orig_h * scale))
+                # LANCZOS para calidad general; NEAREST al ampliar mucho (>3x)
+                # para ver píxeles nítidos de la placa sin blur.
+                filt = Image.NEAREST if scale >= 3.0 else Image.LANCZOS
+                try:
+                    resized = orig_img.resize((nw, nh), filt)
+                except Exception:
+                    resized = orig_img.resize((nw, nh))
+                photo = ImageTk.PhotoImage(resized)
+                state["photo"] = photo  # evitar GC de Tk
+                v_canvas.delete("IMG")
+                # Centrar si la imagen es más pequeña que el viewport,
+                # anclar arriba-izquierda si es más grande (permite scroll).
+                cw = max(1, v_canvas.winfo_width())
+                ch = max(1, v_canvas.winfo_height())
+                x = max(cw // 2, nw // 2) if nw < cw else nw // 2
+                y = max(ch // 2, nh // 2) if nh < ch else nh // 2
+                v_canvas.create_image(x, y, image=photo, anchor="center", tags="IMG")
+                v_canvas.configure(scrollregion=(-2, -2, max(nw, cw) + 2, max(nh, ch) + 2))
+                zoom_label.config(text=f"{int(round(scale * 100))}%")
+
+            def _zoom_step(factor):
+                # Zoom anclado al centro del viewport (fluido y predecible).
+                # Se conserva la posición relativa del scroll para no "saltar".
+                try:
+                    x0, x1 = v_canvas.xview()
+                    y0, y1 = v_canvas.yview()
+                    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+                except Exception:
+                    cx, cy = 0.5, 0.5
+                state["scale"] = max(MIN_SCALE, min(MAX_SCALE, state["scale"] * factor))
+                _render()
+                try:
+                    # Re-centrar aproximadamente donde estaba el usuario
+                    v_canvas.xview_moveto(max(0.0, min(1.0, cx)))
+                    v_canvas.yview_moveto(max(0.0, min(1.0, cy)))
+                except Exception:
+                    pass
+
+            def zoom_in(_e=None):
+                _zoom_step(1.25)
+
+            def zoom_out(_e=None):
+                _zoom_step(0.80)
+
+            def zoom_reset():
+                state["scale"] = 1.0
+                _render()
+                _center_view()
+
+            def zoom_fit():
+                try:
+                    cw = max(1, v_canvas.winfo_width() - 4)
+                    ch = max(1, v_canvas.winfo_height() - 4)
+                    fit = min(cw / float(orig_w), ch / float(orig_h))
+                    fit = max(MIN_SCALE, min(fit, MAX_SCALE))
+                except Exception:
+                    fit = 1.0
+                state["fit_scale"] = fit
+                state["scale"] = fit
+                _render()
+                _center_view()
+
+            def _center_view():
+                try:
+                    v_canvas.xview_moveto(0.0)
+                    v_canvas.yview_moveto(0.0)
+                    v_canvas.update_idletasks()
+                    # Si la imagen cabe, el render ya la centra; si no,
+                    # dejar el inicio arriba-izquierda.
+                except Exception:
+                    pass
+
+            _make_btn(btn_bar, "➕ Acercar", zoom_in, bg="#3366FF").pack(side="left", padx=3)
+            _make_btn(btn_bar, "➖ Alejar", zoom_out, bg="#3a3a3a").pack(side="left", padx=3)
+            _make_btn(btn_bar, "⟳ 100%", zoom_reset, bg="#3a3a3a").pack(side="left", padx=3)
+            _make_btn(btn_bar, "⛶ Ajustar", zoom_fit, bg="#27ae60").pack(side="left", padx=3)
+            _make_btn(btn_bar, "Cerrar", plate_window.destroy, bg="#e74c3c").pack(side="right", padx=3)
+
+            info_lbl = tk.Label(
+                plate_window,
+                text=f"{os.path.basename(plate_path)}  •  Original: {orig_w}×{orig_h}px",
+                font=("Arial", 8), bg="#2b2b2b", fg="#999999"
+            )
+            info_lbl.pack(fill="x", padx=12, pady=(0, 10))
+
+            # ---- Interacción: rueda = zoom con Ctrl, scroll vertical si no ----
+            def _on_wheel(event):
+                # Ctrl+rueda -> zoom (estándar en visores). Rueda sola -> scroll.
+                is_zoom = bool(event.state & 0x0004)  # Control mask en Tk
+                if is_zoom:
+                    if event.delta > 0:
+                        zoom_in()
+                    elif event.delta < 0:
+                        zoom_out()
+                    return "break"
+                # Scroll vertical suave dentro del visor
+                try:
+                    v_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                except Exception:
+                    pass
+                return "break"  # no propagar al scroll global de tarjetas
+
+            def _on_shift_wheel(event):
+                try:
+                    v_canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+                except Exception:
+                    pass
+                return "break"
+
+            def _on_button4(_e):  # Linux scroll-up
+                try:
+                    v_canvas.yview_scroll(-1, "units")
+                except Exception:
+                    pass
+                return "break"
+
+            def _on_button5(_e):  # Linux scroll-down
+                v_canvas.yview_scroll(1, "units")
+                return "break"
+
+            v_canvas.bind("<MouseWheel>", _on_wheel)
+            v_canvas.bind("<Shift-MouseWheel>", _on_shift_wheel)
+            v_canvas.bind("<Button-4>", _on_button4)
+            v_canvas.bind("<Button-5>", _on_button5)
+
+            # Arrastrar para mover (pan fluido tipo lupa/visor)
+            def _pan_start(event):
+                v_canvas.scan_mark(event.x, event.y)
+
+            def _pan_move(event):
+                try:
+                    v_canvas.scan_dragto(event.x, event.y, gain=10)
+                except Exception:
+                    pass
+
+            v_canvas.bind("<ButtonPress-1>", _pan_start)
+            v_canvas.bind("<B1-Motion>", _pan_move)
+            # Doble-clic izquierdo = acercar rápido (lupa)
+            def _on_double_click(_e):
+                zoom_in()
+                return "break"
+            v_canvas.bind("<Double-Button-1>", _on_double_click)
+            # Atajos de teclado del visor
+            plate_window.bind("<plus>", lambda e: zoom_in())
+            plate_window.bind("<minus>", lambda e: zoom_out())
+            plate_window.bind("<equal>", lambda e: zoom_in())  # '+' sin shift en ES
+            plate_window.bind("<0>", lambda e: zoom_fit())
+            plate_window.bind("<Escape>", lambda e: plate_window.destroy())
+
+            # Render inicial: ajustar a ventana cuando el canvas ya tiene tamaño
+            def _initial_render():
+                try:
+                    if v_canvas.winfo_width() <= 1:
+                        plate_window.after(30, _initial_render)
+                        return
+                    zoom_fit()
+                except Exception:
+                    pass
+
+            # Re-ajustar solo si el usuario no ha hecho zoom manual:
+            # si está en modo "fit", mantener encaje al redimensionar.
+            def _on_view_resize(_event=None):
+                try:
+                    if abs(state["scale"] - state.get("fit_scale", -1.0)) < 1e-6:
+                        zoom_fit()
+                    else:
+                        _render()
+                except Exception:
+                    pass
+
+            v_canvas.bind("<Configure>", _on_view_resize)
+            plate_window.after(50, _initial_render)
+            try:
+                plate_window.focus_set()
+            except Exception:
+                pass
         return show_plate_func
 
     def create_delete_func(infraction_data):
@@ -1250,14 +1529,22 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
         def show_details_func():
             details_window = tk.Toplevel(window)
             details_window.title(f"Detalles - Placa: {infraction_data.get('placa', 'No identificada')}")
-            details_window.geometry("500x400")
+            # [RESPALDO centrado] Código anterior de centrado manual (no borrar, respaldo).
+            # details_window.geometry("500x400")
+            # details_window.update_idletasks()
+            # width, height = 500, 400
+            # x = (details_window.winfo_screenwidth() - width) // 2
+            # y = (details_window.winfo_screenheight() - height) // 2
+            # details_window.geometry(f"{width}x{height}+{x}+{y}")
+            center_toplevel(details_window, 500, 400)
             details_window.configure(bg="#f8f9fa")
 
-            details_window.update_idletasks()
-            width, height = 500, 400
-            x = (details_window.winfo_screenwidth() - width) // 2
-            y = (details_window.winfo_screenheight() - height) // 2
-            details_window.geometry(f"{width}x{height}+{x}+{y}")
+            # [RESPALDO centrado] Bloque manual anterior (no borrar, respaldo).
+            # details_window.update_idletasks()
+            # width, height = 500, 400
+            # x = (details_window.winfo_screenwidth() - width) // 2
+            # y = (details_window.winfo_screenheight() - height) // 2
+            # details_window.geometry(f"{width}x{height}+{x}+{y}")
 
             tk.Label(
                 details_window,
@@ -1405,7 +1692,8 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
         ).pack(pady=(0, 6))
 
         # --- Acciones ---
-        plate_path = inf.get('plate_path', '')
+        # Fallback a vehicle_path para que "Ver placa" abra evidencia aunque falte el recorte
+        plate_path = inf.get('plate_path') or inf.get('vehicle_path', '')
         show_plate_func = create_show_plate_func(plate_path, placa_text)
         delete_func = create_delete_func(inf)
         show_details_func = create_show_details_func(inf)

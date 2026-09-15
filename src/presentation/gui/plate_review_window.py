@@ -14,6 +14,48 @@ from src.domain.entities.plate_evidence import PlateEvidence
 from src.infrastructure.ocr.cloud_plate_readers import PlateRecognizerSnapshotReader
 from src.infrastructure.reports import ReportRepository
 
+# Intento de reutilizar la utilidad compartida de centrado. Si el módulo
+# `src.gui.infractions_management_window` no está disponible (ej. falta
+# `tkcalendar` en el entorno), se usa la implementación local de respaldo.
+try:
+    from src.gui.infractions_management_window import center_toplevel as _shared_center_toplevel
+except Exception:
+    _shared_center_toplevel = None
+
+
+def center_toplevel(win, width, height):
+    """Centra un `Toplevel` respecto a la pantalla principal del monitor.
+
+    Uso: `center_toplevel(mi_ventana, 900, 700)` tras crear el Toplevel.
+    Es segura: nunca lanza excepción aunque la ventana esté destruida.
+    Misma firma/comportamiento que la utilidad de
+    `src/gui/infractions_management_window.py`.
+    """
+    if _shared_center_toplevel is not None:
+        try:
+            return _shared_center_toplevel(win, width, height)
+        except Exception as exc:
+            print(f"⚠️ Falló utilidad compartida de centrado, uso local: {exc}")
+    try:
+        try:
+            win.update_idletasks()
+        except Exception:
+            pass
+        sw = win.winfo_screenwidth()
+        sh = win.winfo_screenheight()
+        x = (sw - int(width)) // 2
+        y = (sh - int(height)) // 2
+        if x < 0:
+            x = 0
+        if y < 0:
+            y = 0
+        win.geometry(f"{int(width)}x{int(height)}")
+        win.geometry("+{}+{}".format(x, y))
+        return (x, y)
+    except Exception as e:
+        print(f"⚠️ No se pudo centrar ventana emergente: {e}")
+        return None
+
 
 def compute_zoomed_size(orig_w: int, orig_h: int, zoom: float) -> tuple[int, int]:
     """Calcula el tamaño en píxeles para un factor de zoom (lógica pura, testeable)."""
@@ -55,7 +97,9 @@ class EvidenceZoomDialog:
 
         self.window = tk.Toplevel(parent)
         self.window.title(f"Lupa — {title}")
-        self.window.geometry("900x700")
+        # [RESPALDO centrado] Código anterior (no borrar): abría en esquina/descentrado.
+        # self.window.geometry("900x700")
+        center_toplevel(self.window, 900, 700)
         # transient: se mantiene sobre la ventana de revisión sin bloquearla
         # (sin grab_set para no interrumpir el flujo de validación/OCR).
         try:
@@ -234,7 +278,9 @@ class PlateReviewWindow:
 
         self.window = tk.Toplevel(parent)
         self.window.title("Validación secuencial de placas")
-        self.window.geometry("1050x760")
+        # [RESPALDO centrado] Código anterior (no borrar): abría en esquina/descentrado.
+        # self.window.geometry("1050x760")
+        center_toplevel(self.window, 1050, 760)
         self.window.transient(parent)
         self.window.protocol("WM_DELETE_WINDOW", self._on_close)
         self._build()
