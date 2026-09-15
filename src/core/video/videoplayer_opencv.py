@@ -602,8 +602,17 @@ class VideoPlayerOpenCV:
         self.target_time     = time.time() + times[self.semaforo.get_current_state()]
 
     def first_time_setup(self, video_path):
-        if ( self.get_avenue_for_video(video_path) is not None and
-             self.get_time_preset_for_video(video_path) is not None ):
+        # Precargar lo que ya exista en SQLite (config parcial: avenida o
+        # tiempos guardados antes). Si está completo, no hay nada que pedir.
+        try:
+            existing_avenue = self.get_avenue_for_video(video_path)
+        except Exception:
+            existing_avenue = None
+        try:
+            existing_times = self.get_time_preset_for_video(video_path)
+        except Exception:
+            existing_times = None
+        if existing_avenue is not None and existing_times is not None:
             messagebox.showinfo(
                 "Info",
                 "Este video ya fue configurado. Para abrirlo, use 'Gestionar Cámaras'.",
@@ -611,41 +620,187 @@ class VideoPlayerOpenCV:
             )
             return
 
-        # Usar función responsive para crear ventana de configuración
-        setup, content_frame = self._create_responsive_window(
-            self.parent, 
-            "Configuración Inicial del Video",
-            min_width=450,
-            min_height=350
-        )
-        
-        set_window_icon(setup)
+        # Frame de vista previa para el canvas del panel derecho.
+        preview_frame = None
+        try:
+            cap_tmp = cv2.VideoCapture(video_path)
+            ret_tmp, frame_tmp = cap_tmp.read()
+            cap_tmp.release()
+            if ret_tmp:
+                preview_frame = frame_tmp
+        except Exception:
+            preview_frame = None
 
-        # NOTA geometría: `_create_responsive_window` ya empaquetó con `pack`
-        # un frame de contenido dentro de `setup`. TODOS los widgets de esta
-        # ventana deben colgarse de `content_frame` usando UN solo manager
-        # (`grid`); ponerlos directo en `setup` mezcla pack+grid en el mismo
-        # contenedor y Tkinter colapsa con:
-        #   TclError: cannot use geometry manager grid inside ... slaves managed by pack
-        tk.Label(content_frame, text="Nombre de la Avenida:")\
+        # Ventana propia de 2 paneles (izq: datos, der: canvas+polígono).
+        # NOTA geometría: cada contenedor usa UN solo manager para no
+        # reintroducir el choque pack vs grid (TclError + ventana en blanco):
+        # `setup`/`main_frame`/paneles -> pack; `fields_frame` -> grid.
+        setup = tk.Toplevel(self.parent)
+        setup.title("Configuración Inicial del Video")
+        set_window_icon(setup)
+        setup.geometry("1100x660")
+        setup.resizable(True, True)
+        try:
+            setup.update_idletasks()
+            sw = setup.winfo_screenwidth()
+            sh = setup.winfo_screenheight()
+            x = (sw - 1100) // 2
+            y = (sh - 660) // 2
+            setup.geometry(f"1100x660+{x}+{y}")
+        except Exception:
+            pass
+
+        main_frame = tk.Frame(setup)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        config_frame = tk.Frame(main_frame, bd=2, relief=tk.GROOVE)
+        config_frame.pack(side="left", fill="both", padx=5, pady=5)
+
+        tk.Label(config_frame, text="Datos del Video",
+                 font=("Arial", 12, "bold")).pack(pady=10)
+
+        fields_frame = tk.Frame(config_frame)
+        fields_frame.pack(fill="x", padx=20, pady=10)
+
+        tk.Label(fields_frame, text="Nombre de la Avenida:")\
           .grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        avenue_entry = tk.Entry(content_frame, width=30)
+        avenue_entry = tk.Entry(fields_frame, width=30)
         avenue_entry.grid(row=0, column=1, padx=5, pady=5)
 
-        tk.Label(content_frame, text="Tiempo Verde (s):")\
+        tk.Label(fields_frame, text="Tiempo Verde (s):")\
           .grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        green_entry = tk.Entry(content_frame, width=10)
+        green_entry = tk.Entry(fields_frame, width=10)
         green_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        tk.Label(content_frame, text="Tiempo Amarillo (s):")\
+        tk.Label(fields_frame, text="Tiempo Amarillo (s):")\
           .grid(row=2, column=0, sticky="w", padx=5, pady=5)
-        yellow_entry = tk.Entry(content_frame, width=10)
+        yellow_entry = tk.Entry(fields_frame, width=10)
         yellow_entry.grid(row=2, column=1, padx=5, pady=5)
 
-        tk.Label(content_frame, text="Tiempo Rojo (s):")\
+        tk.Label(fields_frame, text="Tiempo Rojo (s):")\
           .grid(row=3, column=0, sticky="w", padx=5, pady=5)
-        red_entry = tk.Entry(content_frame, width=10)
+        red_entry = tk.Entry(fields_frame, width=10)
         red_entry.grid(row=3, column=1, padx=5, pady=5)
+
+        # Autocompletar con lo recuperado de SQLite (no más campos en blanco).
+        if existing_avenue:
+            avenue_entry.insert(0, existing_avenue)
+        if existing_times:
+            green_entry.insert(0, str(existing_times.get("green", "")))
+            yellow_entry.insert(0, str(existing_times.get("yellow", "")))
+            red_entry.insert(0, str(existing_times.get("red", "")))
+
+        # Panel derecho: vista previa + canvas para el área restringida.
+        preview_container = tk.Frame(main_frame, bd=2, relief=tk.GROOVE)
+        preview_container.pack(side="right", fill="both", expand=True,
+                               padx=5, pady=5)
+
+        tk.Label(preview_container, text="Definición de Área Restringida",
+                 font=("Arial", 12, "bold")).pack(pady=10)
+        tk.Label(
+            preview_container,
+            text="Haga clic en la imagen para definir los vértices del área.\n"
+                 "Se requieren al menos 3 puntos.",
+            wraplength=450).pack(pady=5)
+
+        polygon_points = []
+        polygon_items = []
+        scale = 1.0
+        canvas = None
+
+        status_var = tk.StringVar()
+        status_var.set("Estado: No se ha definido área restringida")
+
+        if preview_frame is not None:
+            h, w = preview_frame.shape[:2]
+            scale = min(620 / w, 420 / h)
+            new_w, new_h = int(w * scale), int(h * scale)
+            preview_resized = cv2.resize(preview_frame, (new_w, new_h))
+            preview_rgb = cv2.cvtColor(preview_resized, cv2.COLOR_BGR2RGB)
+
+            canvas = tk.Canvas(preview_container, width=new_w, height=new_h,
+                               highlightthickness=1, highlightbackground="gray")
+            canvas.pack(pady=10)
+            img_tk = ImageTk.PhotoImage(image=Image.fromarray(preview_rgb))
+            canvas.create_image(0, 0, anchor="nw", image=img_tk)
+            canvas.image = img_tk
+
+            def redraw_polygon():
+                for item_id in list(polygon_items):
+                    try:
+                        canvas.delete(item_id)
+                    except Exception:
+                        pass
+                polygon_items.clear()
+                pts = [(int(px * scale), int(py * scale))
+                       for (px, py) in polygon_points]
+                for (cx, cy) in pts:
+                    polygon_items.append(canvas.create_oval(
+                        cx - 4, cy - 4, cx + 4, cy + 4,
+                        fill="red", outline="white"))
+                if len(pts) > 1:
+                    polygon_items.append(canvas.create_line(
+                        [c for pt in pts for c in pt],
+                        fill="yellow", width=2))
+                    if len(pts) > 2:
+                        polygon_items.append(canvas.create_line(
+                            pts[-1][0], pts[-1][1], pts[0][0], pts[0][1],
+                            fill="yellow", width=2, dash=(5, 2)))
+                if len(polygon_points) >= 3:
+                    status_var.set(
+                        f"Estado: Área definida con {len(polygon_points)} puntos")
+                elif polygon_points:
+                    status_var.set(
+                        f"Estado: Definiendo área "
+                        f"({len(polygon_points)}/3 puntos mínimos)")
+                else:
+                    status_var.set("Estado: No se ha definido área restringida")
+
+            def on_canvas_click(event):
+                polygon_points.append(
+                    (int(event.x / scale), int(event.y / scale)))
+                redraw_polygon()
+
+            canvas.bind("<Button-1>", on_canvas_click)
+
+            # Precargar el polígono ya guardado en SQLite y dibujarlo.
+            try:
+                row = self._db().get_video_config(
+                    self.get_video_key(video_path))
+                saved_poly = (row or {}).get("polygon") or []
+                if len(saved_poly) >= 3:
+                    for pt in saved_poly:
+                        polygon_points.append((int(pt[0]), int(pt[1])))
+                    redraw_polygon()
+            except Exception:
+                pass
+        else:
+            tk.Label(preview_container,
+                     text="No se pudo leer el video para la vista previa.\n"
+                          "Aún puede guardar avenida y tiempos.",
+                     fg="red").pack(pady=20)
+
+        status_label = tk.Label(preview_container, textvariable=status_var,
+                                fg="red")
+        status_label.pack(pady=5)
+
+        def clear_polygon():
+            polygon_points.clear()
+            if canvas is not None:
+                for item_id in list(polygon_items):
+                    try:
+                        canvas.delete(item_id)
+                    except Exception:
+                        pass
+                polygon_items.clear()
+            status_var.set("Estado: No se ha definido área restringida")
+
+        if canvas is not None:
+            tk.Button(preview_container, text="Borrar Puntos",
+                      command=clear_polygon).pack(pady=5)
+
+        button_frame = tk.Frame(setup)
+        button_frame.pack(fill="x", pady=15)
 
         def guardar():
             ave = avenue_entry.get().strip()
@@ -665,13 +820,48 @@ class VideoPlayerOpenCV:
                 return
             self.set_avenue_for_video(video_path, ave)
             self.current_avenue = ave
-            self.avenue_label.config(text=ave)
-            self.set_time_preset_for_video(video_path, {"green":g,"yellow":y,"red":r})
-            messagebox.showinfo("Éxito","Configuración guardada.",parent=setup)
-            setup.destroy()
+            try:
+                self.avenue_label.config(text=ave)
+            except Exception:
+                pass
+            self.set_time_preset_for_video(video_path, {"green": g, "yellow": y, "red": r})
+            if len(polygon_points) >= 3:
+                self.polygon_points = list(polygon_points)
+                self.have_polygon = True
+                try:
+                    self._db().save_video_config(
+                        self.get_video_key(video_path),
+                        polygon=[list(pt) for pt in polygon_points],
+                    )
+                except Exception:
+                    pass
+            messagebox.showinfo("Éxito", "Configuración guardada.", parent=setup)
+            try:
+                setup.destroy()
+            except Exception:
+                pass
+            # Recarga automática para aplicar avenida, tiempos y polígono.
+            try:
+                self._load_video_async(video_path)
+            except Exception as e:
+                try:
+                    messagebox.showerror(
+                        "Error",
+                        f"Configuración guardada, pero falló la recarga del video:\n{e}",
+                    )
+                except Exception:
+                    pass
+                try:
+                    self._repaint_after_failed_load()
+                except Exception:
+                    pass
 
-        tk.Button(content_frame, text="Guardar Configuración", command=guardar)\
-          .grid(row=4, column=0, columnspan=2,pady=10)
+        tk.Button(button_frame, text="Guardar Configuración", command=guardar,
+                  bg="#4CAF50", fg="white",
+                  font=("Arial", 11)).pack(side="right", padx=10)
+        tk.Button(button_frame, text="Cancelar", command=setup.destroy,
+                  bg="#f44336", fg="white",
+                  font=("Arial", 11)).pack(side="right", padx=10)
 
         setup.transient(self.parent)
         setup.grab_set()
