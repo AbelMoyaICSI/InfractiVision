@@ -621,24 +621,30 @@ class VideoPlayerOpenCV:
         
         set_window_icon(setup)
 
-        tk.Label(setup, text="Nombre de la Avenida:")\
+        # NOTA geometría: `_create_responsive_window` ya empaquetó con `pack`
+        # un frame de contenido dentro de `setup`. TODOS los widgets de esta
+        # ventana deben colgarse de `content_frame` usando UN solo manager
+        # (`grid`); ponerlos directo en `setup` mezcla pack+grid en el mismo
+        # contenedor y Tkinter colapsa con:
+        #   TclError: cannot use geometry manager grid inside ... slaves managed by pack
+        tk.Label(content_frame, text="Nombre de la Avenida:")\
           .grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        avenue_entry = tk.Entry(setup, width=30)
+        avenue_entry = tk.Entry(content_frame, width=30)
         avenue_entry.grid(row=0, column=1, padx=5, pady=5)
 
-        tk.Label(setup, text="Tiempo Verde (s):")\
+        tk.Label(content_frame, text="Tiempo Verde (s):")\
           .grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        green_entry = tk.Entry(setup, width=10)
+        green_entry = tk.Entry(content_frame, width=10)
         green_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        tk.Label(setup, text="Tiempo Amarillo (s):")\
+        tk.Label(content_frame, text="Tiempo Amarillo (s):")\
           .grid(row=2, column=0, sticky="w", padx=5, pady=5)
-        yellow_entry = tk.Entry(setup, width=10)
+        yellow_entry = tk.Entry(content_frame, width=10)
         yellow_entry.grid(row=2, column=1, padx=5, pady=5)
 
-        tk.Label(setup, text="Tiempo Rojo (s):")\
+        tk.Label(content_frame, text="Tiempo Rojo (s):")\
           .grid(row=3, column=0, sticky="w", padx=5, pady=5)
-        red_entry = tk.Entry(setup, width=10)
+        red_entry = tk.Entry(content_frame, width=10)
         red_entry.grid(row=3, column=1, padx=5, pady=5)
 
         def guardar():
