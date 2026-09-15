@@ -13,7 +13,7 @@ on:
 
 jobs:
   build-setup-win:
-    name: Build Setup Online single-file (CUDA unico)
+    name: Build Setup Online + ZIP ONEDIR (CUDA unico)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,6 +65,16 @@ jobs:
           test -f dist/InfractiVision/InfractiVision.exe || (echo "ERROR: ONEDIR exe no generado" && ls -R dist | head -n 80 && exit 1)
           echo "Smoke ONEDIR cuda OK (mismo binario corre en CPU si no hay NVIDIA)"
           ls -lh dist/InfractiVision/ | head -n 20
+      - name: Zip ONEDIR CUDA portable (Win-x64)
+        shell: pwsh
+        run: |
+          $zip = "dist/InfractiVision-cuda-Win-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path dist/InfractiVision/* -DestinationPath $zip -CompressionLevel Optimal
+          Get-Item $zip | Format-List Name, Length
+          $sz = (Get-Item $zip).Length
+          Write-Host "ZIP bytes: $sz"
+          if ($sz -gt 2147483647) { Write-Error "ZIP >2GB"; exit 1 }
       - name: Install Inno Setup
         run: choco install innosetup -y
       - name: Build Setup-Online.exe single-file (embebe ONEDIR lzma2)
@@ -83,9 +93,14 @@ jobs:
           name: InfractiVision-Setup-Online-Win
           path: dist/InfractiVision-Setup-Online.exe
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: InfractiVision-ONEDIR-Win
+          path: dist/InfractiVision-cuda-Win-x64.zip
+          if-no-files-found: error
 
   release:
-    name: Publish Release single-file
+    name: Publish Release (Setup + ZIP ONEDIR)
     needs: [build-setup-win]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -96,27 +111,36 @@ jobs:
         with:
           name: InfractiVision-Setup-Online-Win
           path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: InfractiVision-ONEDIR-Win
+          path: release-assets
       - name: List assets
         run: |
           ls -lhR release-assets
           echo "--- Tamaños ---"
-          ls -lh release-assets/*.exe 2>/dev/null || true
-          for f in release-assets/*.exe; do
+          ls -lh release-assets/*.exe release-assets/*.zip 2>/dev/null || true
+          for f in release-assets/*.exe release-assets/*.zip; do
             [ -f "$f" ] || continue
             SZ=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
             echo "$f: $SZ bytes"
             if [ "$SZ" -gt 2147483647 ]; then echo "::error::$f >2GB"; exit 1; fi
           done
-      - name: Publish GitHub Release single-file
+          test -f release-assets/InfractiVision-Setup-Online.exe || (echo "::error::Falta Setup-Online.exe" && exit 1)
+          test -f release-assets/InfractiVision-cuda-Win-x64.zip || (echo "::error::Falta ZIP ONEDIR" && exit 1)
+      - name: Publish GitHub Release (Setup + ZIP ONEDIR)
         uses: softprops/action-gh-release@v2
         with:
-          files: release-assets/InfractiVision-Setup-Online.exe
+          files: |
+            release-assets/InfractiVision-Setup-Online.exe
+            release-assets/InfractiVision-cuda-Win-x64.zip
           generate_release_notes: true
           body: |
-            ## InfractiVision ${{ github.ref_name }} — Instalador single-file (build unico CUDA)
+            ## InfractiVision ${{ github.ref_name }} — Instalador + portable (build unico CUDA)
 
             **Build unico CUDA con fallback CPU (sin pip on-demand).**
             - `InfractiVision-Setup-Online.exe` embebe ONEDIR CUDA completo (`dist/InfractiVision/*`, requirements.txt torch 2.8.0+cu128) comprimido con lzma2.
+            - `InfractiVision-cuda-Win-x64.zip` es el mismo ONEDIR CUDA en portable: descomprimir y doble click a `InfractiVision/InfractiVision.exe` (sin instalador, sin accesos directos, sin VC++ auto-instalado).
             - Si hay NVIDIA usa GPU; si no hay, el mismo binario corre en CPU via `torch.cuda.is_available()`. Sin checkbox ni `pip install` en el instalador. Pagina GPU solo informativa.
             - Vídeos demo (5) y modelos (21 MB) on-demand.
 
@@ -124,3 +148,8 @@ jobs:
             1. Descarga `InfractiVision-Setup-Online.exe` abajo
             2. Doble click → ventana GPU muestra `✅ usará GPU` o `❌ correrá en CPU` (informativo) → elige carpeta → instalación sin descarga extra (offline-capable)
             3. Si falta VC++ Redist: https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+            ### Portable Windows (ZIP ONEDIR)
+            1. Descarga `InfractiVision-cuda-Win-x64.zip`, descomprímelo donde quieras
+            2. Ejecuta `InfractiVision/InfractiVision.exe`
+            3. Si falla con "DLL load failed while importing cv2", instala VC++ Redist x64 (link de arriba) y reintenta.
