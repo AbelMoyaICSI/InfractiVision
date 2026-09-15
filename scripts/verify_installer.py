@@ -85,7 +85,9 @@ def test_build_helper():
 def test_workflow_exists():
     assert (ROOT/".github/workflows/release.yml").exists()
     txt = (ROOT/".github/workflows/release.yml").read_text()
-    assert "Setup Online" in txt or "Setup-Online" in txt
+    # Solo artifacts ONEDIR (sin online/Setup): Win CUDA + Linux CPU
+    assert "InfractiVision-ONEDIR-Win" in txt, "workflow debe subir artifact Win"
+    assert "InfractiVision-ONEDIR-Linux" in txt, "workflow debe subir artifact Linux"
 
 def test_gpu_detection_unit():
     sh = (ROOT/"installer/linux/install.sh").read_text()
