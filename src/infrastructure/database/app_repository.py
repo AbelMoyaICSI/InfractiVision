@@ -342,50 +342,59 @@ class AppRepository:
     def save_video_config(
         self,
         video_name: str,
-        avenue: str = "",
+        avenue: str | None = None,
         green: float | None = None,
         yellow: float | None = None,
         red: float | None = None,
-        time_slot: str = "",
+        time_slot: str | None = None,
         polygon: list | None = None,
         danger_zone_margin_pixels: float | None = None,
         pre_red_seconds: float | None = None,
         green_skip_rate: int | None = None,
     ) -> None:
-        """Inserta o actualiza la configuración de un video (upsert atómico).
+        """Inserta o actualiza la configuración de un video (upsert parcial real).
 
-        Es la única vía de escritura: reemplaza los 3 JSON. Los campos en
-        None conservan su valor previo (upsert parcial por columna).
+        Es la única vía de escritura: reemplaza los 3 JSON. Solo se tocan las
+        columnas cuyo argumento NO es None (`None` = conservar valor previo).
+        Esto evita el viejo bug del bucle de configuración: guardar tiempos
+        con `avenue=""` por defecto BORRABA la avenida ya guardada (y el
+        verificador volvía a pedirla). `""` explícito sí escribe vacío.
         """
         now = datetime.now().isoformat()
-        polygon_json = (
-            json.dumps(polygon, ensure_ascii=False) if polygon is not None else None
-        )
+        fields: dict[str, Any] = {}
+        if avenue is not None:
+            fields["avenue"] = avenue
+        if green is not None:
+            fields["green"] = green
+        if yellow is not None:
+            fields["yellow"] = yellow
+        if red is not None:
+            fields["red"] = red
+        if time_slot is not None:
+            fields["time_slot"] = time_slot
+        if polygon is not None:
+            fields["polygon_json"] = json.dumps(polygon, ensure_ascii=False)
+        if danger_zone_margin_pixels is not None:
+            fields["danger_zone_margin_pixels"] = danger_zone_margin_pixels
+        if pre_red_seconds is not None:
+            fields["pre_red_seconds"] = pre_red_seconds
+        if green_skip_rate is not None:
+            fields["green_skip_rate"] = green_skip_rate
+        if not fields:
+            return
+        columns = ["video_name", *fields.keys(), "updated_at"]
+        values = [video_name, *fields.values(), now]
+        updates = ", ".join(f"{col} = excluded.{col}" for col in fields)
         with self._lock, self._connect() as conn:
             conn.execute(
-                """
-                INSERT INTO video_configs
-                    (video_name, avenue, green, yellow, red, time_slot,
-                     polygon_json, danger_zone_margin_pixels, pre_red_seconds,
-                     green_skip_rate, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                f"""
+                INSERT INTO video_configs ({", ".join(columns)})
+                VALUES ({", ".join("?" * len(columns))})
                 ON CONFLICT(video_name) DO UPDATE SET
-                    avenue = COALESCE(excluded.avenue, avenue),
-                    green = COALESCE(excluded.green, green),
-                    yellow = COALESCE(excluded.yellow, yellow),
-                    red = COALESCE(excluded.red, red),
-                    time_slot = COALESCE(excluded.time_slot, time_slot),
-                    polygon_json = COALESCE(excluded.polygon_json, polygon_json),
-                    danger_zone_margin_pixels = COALESCE(excluded.danger_zone_margin_pixels, danger_zone_margin_pixels),
-                    pre_red_seconds = COALESCE(excluded.pre_red_seconds, pre_red_seconds),
-                    green_skip_rate = COALESCE(excluded.green_skip_rate, green_skip_rate),
+                    {updates},
                     updated_at = excluded.updated_at
                 """,
-                (
-                    video_name, avenue or "", green, yellow, red,
-                    time_slot or "", polygon_json, danger_zone_margin_pixels,
-                    pre_red_seconds, green_skip_rate, now,
-                ),
+                values,
             )
             conn.commit()
 
@@ -462,12 +471,12 @@ class AppRepository:
                 preset = {}
             self.save_video_config(
                 name,
-                avenue=str(avenue_cfg.get(name, "") or ""),
+                avenue=(str(avenue_cfg.get(name) or "") or None),
                 green=preset.get("green"),
                 yellow=preset.get("yellow"),
                 red=preset.get("red"),
-                time_slot=str(preset.get("time_slot", "") or ""),
-                polygon=polygon_cfg.get(name) or [],
+                time_slot=(str(preset.get("time_slot") or "") or None),
+                polygon=polygon_cfg.get(name) or None,
                 danger_zone_margin_pixels=preset.get("danger_zone_margin_pixels"),
                 pre_red_seconds=preset.get("pre_red_seconds"),
                 green_skip_rate=preset.get("green_skip_rate"),

@@ -250,7 +250,7 @@ class Semaforo:
                     green=times.get("green"),
                     yellow=times.get("yellow"),
                     red=times.get("red"),
-                    time_slot=str(times.get("time_slot", "") or ""),
+                    time_slot=(str(times.get("time_slot") or "") or None),
                 )
         except Exception:
             pass

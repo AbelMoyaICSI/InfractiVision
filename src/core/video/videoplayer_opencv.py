@@ -557,8 +557,9 @@ class VideoPlayerOpenCV:
 
     def set_avenue_for_video(self, video_path, avenue_name):
         try:
+            # None si vacío = conservar (no borrar la avenida con "").
             self._db().save_video_config(
-                self.get_video_key(video_path), avenue=avenue_name or "")
+                self.get_video_key(video_path), avenue=avenue_name or None)
         except Exception:
             pass
 
@@ -591,7 +592,8 @@ class VideoPlayerOpenCV:
                 green=times.get("green"),
                 yellow=times.get("yellow"),
                 red=times.get("red"),
-                time_slot=str(times.get("time_slot", "") or ""),
+                # None si vacío = conservar slot previo (no borrarlo con "").
+                time_slot=(str(times.get("time_slot") or "") or None),
                 danger_zone_margin_pixels=times.get("danger_zone_margin_pixels"),
                 pre_red_seconds=times.get("pre_red_seconds"),
                 green_skip_rate=times.get("green_skip_rate"),
@@ -818,6 +820,16 @@ class VideoPlayerOpenCV:
                     "Error", "Debe ingresar nombre de avenida.", parent=setup
                 )
                 return
+            # Sin polígono el verificador (iniciar_preprocesamiento) seguirá
+            # marcando 📐 ❌: confirmar antes de cerrar para no entrar en bucle.
+            if len(polygon_points) < 3:
+                resp = messagebox.askyesno(
+                    "Advertencia",
+                    "No se ha definido un área restringida válida.\n"
+                    "¿Desea continuar sin definir un área?",
+                    parent=setup)
+                if not resp:
+                    return
             self.set_avenue_for_video(video_path, ave)
             self.current_avenue = ave
             try:
@@ -835,6 +847,19 @@ class VideoPlayerOpenCV:
                     )
                 except Exception:
                     pass
+            # Verificación post-guardado con las MISMAS claves del verificador:
+            # si algo no quedó en BD, no cerrar (evita el bucle de diálogo).
+            ok_ave = self.get_avenue_for_video(video_path) is not None
+            ok_times = self.get_time_preset_for_video(video_path) is not None
+            if not (ok_ave and ok_times):
+                messagebox.showerror(
+                    "Error",
+                    "No se pudo persistir la configuración "
+                    f"(avenida={'✅' if ok_ave else '❌'}, "
+                    f"tiempos={'✅' if ok_times else '❌'}). "
+                    "Intente de nuevo.",
+                    parent=setup)
+                return
             messagebox.showinfo("Éxito", "Configuración guardada.", parent=setup)
             try:
                 setup.destroy()
