@@ -87,36 +87,105 @@ def _detect_cuda_compatibility() -> bool:
         print(f"[core.utils] CUDA usable detectada: {props.name} (cap={props.major}.{props.minor})")
         return True
     except Exception as e:
-        # Silenciar "No module named torch" en CI sin GPU; log solo si torch existe
+        # Sin fallback silencioso: si torch VE la GPU pero el probe falla
+        # (DLLs CUDA ausentes en frozen, driver roto...), se avisa FUERTE con
+        # la causa. Ese era el "Solo CPU" fantasma: is_available()==True pero
+        # el tensor de prueba no corría y nadie lo decía.
         try:
             import torch as _t
 
             if _t.cuda.is_available():
                 print(f"[core.utils] CUDA no usable: {e}")
+                try:
+                    from src.core.logger import get_logger as _get_log
+
+                    _get_log("hardware").warning(
+                        "torch ve CUDA pero el probe falló (%s). "
+                        "La app seguirá en CPU. Revisa DLLs CUDA del bundle "
+                        "(spec CUDA) o driver NVIDIA.", e)
+                except Exception:
+                    pass
         except Exception:
             pass
         return False
 
 
+def _device_override() -> str:
+    """Modo de dispositivo pedido por env: auto (defecto), cuda o cpu.
+
+    `IV_DEVICE=cuda` es estricto: si la GPU no pasa el probe se LANZA
+    RuntimeError en vez de caer a CPU en silencio.
+    `IV_DEVICE=cpu` fuerza CPU a propósito (máquinas sin GPU).
+    """
+    return (os.environ.get("IV_DEVICE", "auto") or "auto").strip().lower()
+
+
 def get_default_device():
-    """Devuelve torch.device('cuda:0') si la GPU pasa el probe, else cpu. Lazy + cache."""
+    """Devuelve torch.device('cuda:0') si la GPU pasa el probe, else cpu. Lazy + cache.
+
+    Respeta `IV_DEVICE`: cuda = estricto (lanza si no hay GPU usable, nunca
+    cae a CPU en silencio); cpu = fuerza CPU; auto = probe con warning fuerte
+    si torch ve CUDA pero el probe falla.
+    """
     global USE_CUDA
+    mode = _device_override()
+    if mode == "cpu":
+        USE_CUDA = False
+        try:
+            import torch
+
+            return torch.device("cpu")
+        except ImportError:
+            return None
     # Si ya se evaluo, reutilizar sin re-probear
     if USE_CUDA is not None:
         try:
             import torch
 
+            if mode == "cuda" and not USE_CUDA:
+                raise RuntimeError(
+                    "IV_DEVICE=cuda pero no hay GPU CUDA usable "
+                    "(ver log [hardware] para la causa).")
             return torch.device("cuda:0") if USE_CUDA else torch.device("cpu")
         except ImportError:
+            if mode == "cuda":
+                raise RuntimeError(
+                    "IV_DEVICE=cuda pero torch no está instalado.") from None
             return None
     try:
         import torch
 
         USE_CUDA = _detect_cuda_compatibility()
+        if mode == "cuda" and not USE_CUDA:
+            raise RuntimeError(
+                "IV_DEVICE=cuda pero el probe CUDA falló "
+                f"(is_available={torch.cuda.is_available()}). "
+                "Ver log [hardware]. Revisa DLLs CUDA del bundle o driver NVIDIA.")
+        if not USE_CUDA:
+            # CPU honesto y ruidoso: decir POR QUÉ (sin GPU vs GPU no usable).
+            try:
+                from src.core.logger import get_logger as _get_log2
+
+                if torch.cuda.is_available():
+                    _get_log2("hardware").warning(
+                        "GPU detectada pero NO usable -> CPU. Causa en log [hardware]/[core.utils].")
+                else:
+                    _get_log2("hardware").info(
+                        "Sin GPU CUDA (torch %s, cuda build %s) -> CPU.",
+                        getattr(torch, "__version__", "?"),
+                        getattr(getattr(torch, "version", None), "cuda", "?"))
+            except Exception:
+                pass
         return torch.device("cuda:0") if USE_CUDA else torch.device("cpu")
     except ImportError:
         USE_CUDA = False
+        if mode == "cuda":
+            raise RuntimeError(
+                "IV_DEVICE=cuda pero torch no está instalado.") from None
         return None
+    except RuntimeError:
+        # Modo estricto: nunca tragar el error (sería el fallback silencioso).
+        raise
     except Exception:
         USE_CUDA = False
         try:

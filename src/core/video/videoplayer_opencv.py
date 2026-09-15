@@ -4994,8 +4994,14 @@ class VideoPlayerOpenCV:
         }
         try:
             from src.core.logger import get_logger as _get_log2
+            try:
+                import torch as _tinfo
+                _tver = getattr(_tinfo, "__version__", "?")
+            except Exception:
+                _tver = "ausente"
             _get_log2("videoplayer").info(
-                "hardware: using_gpu=%s name=%s", self.using_gpu, self.gpu_info['name'])
+                "hardware: using_gpu=%s name=%s torch=%s",
+                self.using_gpu, self.gpu_info['name'], _tver)
         except Exception:
             pass
 

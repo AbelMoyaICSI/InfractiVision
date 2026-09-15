@@ -129,6 +129,29 @@ try:
     binaries += _nvidia_bins
     if _nvidia_bins:
         print(f"[spec CUDA] nvidia/triton libs bundled: {len(_nvidia_bins)} binaries, {len(_nvidia_datas)} datas")
+    # Guardia anti-"Solo CPU" silencioso (torch 2.8+cu128 vendorea CUDA en
+    # torch/lib en vez de paquetes nvidia-*: el loop de arriba puede dar 0
+    # bins y ESO ESTÁ BIEN solo si torch trae sus DLLs). Si no hay ni una ni
+    # otra, el bundle reportaría torch.cuda.is_available()==False y la app
+    # caería a CPU sin avisar: fallar el build aquí es más barato.
+    _vendored = []
+    try:
+        import torch as _tbuild
+        _tlib = Path(_tbuild.__file__).resolve().parent / "lib"
+        if _tlib.is_dir():
+            _vendored = [p.name for p in _tlib.glob("*.dll")
+                         if p.name.lower().startswith(("cudart", "cublas", "cudnn", "c10_cuda"))]
+    except Exception as _e:
+        print(f"[spec CUDA] no se pudo inspeccionar torch/lib: {_e}")
+    if not _nvidia_bins and not _vendored:
+        raise SystemExit(
+            "[spec CUDA] ERROR: torch sin CUDA usable en el env de build "
+            "(sin paquetes nvidia-* y sin DLLs cudart/cublas/cudnn en torch/lib). "
+            "El bundle resultante correría en CPU. Instala requirements.txt "
+            "(torch 2.8.0+cu128) y reconstruye.")
+    print(f"[spec CUDA] CUDA DLLs vendoreadas en torch/lib: {len(_vendored)}")
+except SystemExit:
+    raise
 except Exception as e:
     print(f"[spec CUDA] nvidia collect skipped (no cuda venv): {e}")
 
@@ -187,4 +210,4 @@ exe = EXE(
     uac_uiaccess=False,
 )
 
-print("InfractiVision-CUDA.spec ONLINE listo (CUDA 12.4 / RTX 5050 sm_120, nvidia libs bundled si disponible) [64bit]")
+print("InfractiVision-CUDA.spec ONLINE listo (CUDA 12.8 / RTX 5050 sm_120, nvidia libs bundled si disponible) [64bit]")
