@@ -187,7 +187,7 @@ sequenceDiagram
 - `PlateReviewWindow._process_next` (`src/presentation/gui/plate_review_window.py:132`) procesa de a uno, con `_wait_between_requests` de 2 s (`src/infrastructure/ocr/cloud_plate_readers.py:34`) y reintentos 429 con backoff.
 - El texto se normaliza con `normalize_plate` (solo A-Z0-9, mayúsculas). Si `PLATE_RECOGNIZER_API_TOKEN` falta, `read()` lanza `RuntimeError`.
 - `NID` = `evidence.validated and plate_text` (check habilitado solo si hubo texto); `NIE` = resto + `pending_infractions` (vehículos que cruzaron en rojo sin placa viable).
-- `AppRepository.compute_indicators_report` calcula `TI = NID/(NID+NIE)*100` y `TR = duración / NID` en minutos por infracción.
+- `AppRepository.compute_indicators_report` calcula `TI = NID/(NID+NIE)*100`, `TIR = NID+NIE` y `TR = tiempo de procesamiento / TIR` en minutos por infracción procesada.
 - `firestore_migrator.migrate_single_video_to_firestore` (`src/automations/firestore_migrator.py:153`) usa `uuid4()` como ID de documento para permitir re-procesar el mismo video sin sobrescribir. Lee `settings` desde `video_configs` en SQLite.
 
 ---

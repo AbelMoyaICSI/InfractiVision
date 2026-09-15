@@ -180,7 +180,8 @@ Paso 6 - Revisa en Gestion de Infracciones: filtra por fecha o placa,
 - NID: evidencias validadas con placa.
 - NIE: pendientes sin placa + no validados.
 - TI = NID / (NID+NIE) * 100 (%).
-- TR = duracion del video (min) / NID (min por infraccion).
+- TIR = NID + NIE (total infracciones procesadas).
+- TR = tiempo de procesamiento (min) / TIR (min por infraccion).
 
 
 5. COMPILAR BUILD (desarrolladores)

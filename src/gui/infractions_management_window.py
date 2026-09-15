@@ -9,6 +9,7 @@ import queue
 import threading
 from src.path_helper import resource_path
 from src.core.utils.paths import writable_data_path
+from src.core.utils.timestamp import format_time_sexagesimal
 
 
 # Ruta centralizada del archivo de infracciones (escribible: APPDATA en frozen)
@@ -405,7 +406,7 @@ def generate_performance_indicators_json(software_infractions, software_processi
         },
         "resumen_global": {
             "ti_porcentaje_acierto": f"{ti_percentage:.1f}%",
-            "tiempo_registro_minutos": f"{sw_min:.2f} min",
+            "tiempo_registro_minutos": f"{sw_min:.2f} min ({format_time_sexagesimal(sw_min)})",
             "infracciones_detectadas_hoy": nid_today,
             "nid_total": nid_count,
             "nie_total": nie_count,
@@ -691,7 +692,7 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                 },
                 "resumen_global": {
                     "ti_porcentaje_acierto": f"{ti_percentage:.1f}%",
-                    "tiempo_registro_minutos": f"{software_avg_time_minutes:.2f} min",
+                    "tiempo_registro_minutos": f"{software_avg_time_minutes:.2f} min ({format_time_sexagesimal(software_avg_time_minutes)})",
                     "infracciones_detectadas_hoy": nid_today
                 }
             }
@@ -714,8 +715,8 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             Porcentaje de acierto: {ti_percentage:.1f}%
             
             🟦 INDICADOR 2: Tiempo de Registro (TR)
-            Sin software: {pnp_avg_time_minutes:.2f} minutos
-            Con software: {software_avg_time_minutes:.2f} minutos
+            Sin software: {pnp_avg_time_minutes:.2f} minutos ({format_time_sexagesimal(pnp_avg_time_minutes)})
+            Con software: {software_avg_time_minutes:.2f} minutos ({format_time_sexagesimal(software_avg_time_minutes)})
             Reducción: {tr_reduction:.1f}% ({tr_speedup:.1f}x más rápido)
             
             🟦 INDICADOR 3: Número de Infracciones Diarias (NID)
@@ -723,7 +724,7 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             Promedio diario: {software_daily_average:.1f} infracciones
             
             ✅ RESUMEN: El sistema automatizado tiene {ti_percentage:.1f}% de acierto
-            y registra cada infracción en {software_avg_time_minutes:.2f} minutos.
+            y registra cada infracción en {software_avg_time_minutes:.2f} minutos ({format_time_sexagesimal(software_avg_time_minutes)}).
             """
             
             # Crear ventana de informe
@@ -1389,7 +1390,19 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
         tk.Label(
             card, text=f"📅 {inf.get('fecha', '')}  {inf.get('hora', '')}",
             font=("Arial", 9), bg=card_bg, fg="#888888"
-        ).pack(pady=(2, 6))
+        ).pack(pady=(2, 0))
+
+        # TR individual dual (decimal + sexagesimal) — UX sin cambiar matemática
+        try:
+            _tr_sec = float(inf.get('tiempo_procesamiento', 0) or 0)
+        except (TypeError, ValueError):
+            _tr_sec = 0.0
+        _tr_min = _tr_sec / 60.0
+        tk.Label(
+            card, text=f"⏱️ TR: {_tr_min:.2f} min ({format_time_sexagesimal(_tr_min)})",
+            font=("Arial", 9), bg=card_bg, fg="#7f8c8d",
+            wraplength=280, justify="center"
+        ).pack(pady=(0, 6))
 
         # --- Acciones ---
         plate_path = inf.get('plate_path', '')

@@ -124,8 +124,9 @@ Calculados en `AppRepository.compute_indicators_report()` (`app_repository.py:38
 |-----------|-------------|---------|
 | **NID** | Validadas con placa | evidencias con check ✓ |
 | **NIE** | Pendientes | sin placa viable + no validadas |
+| **TIR** | Total infracciones procesadas | `NID + NIE` |
 | **TI** | Tasa de infracciones (%) | `NID / (NID+NIE) * 100` |
-| **TR** | Minutos por infracción validada | `duración video (min) / NID` |
+| **TR** | Minutos por infracción procesada | `tiempo de procesamiento (min) / TIR` |
 
 Config por video (`video_config_repository.py:10`): `polygon`, `green/yellow/red`, `avenue`, `danger_zone_margin_pixels=80`, `pre_red_seconds=0.5`, `green_skip_rate=60` (desde `config/polygon_config.json`, `time_presets.json`, `avenue_config.json`).
 

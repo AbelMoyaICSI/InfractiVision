@@ -784,6 +784,10 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         En lugar de dibujar verde/amarillo/rojo sobre el video, se enciende la
         luz correspondiente en el Semaforo de la pantalla (y se activa si está
         inactivo durante el procesamiento).
+
+        Esta es la función frame-a-frame que mueve el semáforo durante el
+        procesamiento: aquí también se re-ancla el reloj del widget y se
+        refresca el timer visual ("Semáforo Inteligente"). Solo UI.
         """
         try:
             semaforo = getattr(self.player, "semaforo", None)
@@ -793,9 +797,26 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 if not semaforo.active:
                     semaforo.active = True
                 semaforo.start_meta_timer()
-                semaforo.current_state = state
+                # Re-anclar target_time al cambiar de estado (misma fórmula
+                # que Semaforo.update_lights; no toca el algoritmo, solo el
+                # reloj que lee el label de cuenta regresiva).
+                if semaforo.current_state != state:
+                    semaforo.current_state = state
+                    try:
+                        semaforo.target_time = time.time() + float(
+                            (semaforo.cycle_durations or {}).get(state, 0)
+                        )
+                    except Exception:
+                        pass
+                else:
+                    semaforo.current_state = state
                 semaforo.show_state()
                 semaforo.set_state_display()
+                # Refrescar el timer visual en cada frame procesado.
+                try:
+                    semaforo._update_countdown_label()
+                except Exception:
+                    pass
         except Exception as e:
             print(f"Error sincronizando semáforo inline: {e}")
 
@@ -833,6 +854,16 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 self.nie_label.config(text=f"⚠️ NIE: {total_inf - nid_count}")
                 # Vehículos muestra el total de infracciones registradas (NID + NIE)
                 self.v_count_label.config(text=f"🚗 Vehículos: {total_inf}")
+
+                # Timer visual del semáforo (panel izquierdo): refresco cada
+                # tick de 50ms para la cuenta regresiva. Solo UI: lee
+                # target_time - now, no altera detección ni ciclo.
+                try:
+                    _sem = getattr(getattr(self, "player", None), "semaforo", None)
+                    if _sem is not None and hasattr(_sem, "_update_countdown_label"):
+                        _sem._update_countdown_label()
+                except Exception:
+                    pass
                 
                 # Actualizar label principal de infracciones para que coincida con el total
                 if self.progress_value >= 100:

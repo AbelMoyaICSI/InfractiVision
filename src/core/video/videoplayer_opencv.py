@@ -21,6 +21,7 @@ from src.core.detection.plate_detector import PlateDetector
 from src.core.detection.vehicle_detector import VehicleDetector
 from src.path_helper import resource_path
 from src.core.utils.paths import writable_config_path, writable_data_path
+from src.core.utils.timestamp import format_time_sexagesimal
 
 # Archivos de configuración (escribibles: APPDATA en frozen con seed del bundle)
 POLYGON_CONFIG_FILE = writable_config_path("polygon_config.json")
@@ -1395,7 +1396,7 @@ class VideoPlayerOpenCV:
             # Cinturón y tirantes: forzar ceros aunque falle el panel.
             for _attr, _txt in (
                 ("ti_label", "TI:0.0%"),
-                ("tr_label", "TR:00:00"),
+                ("tr_label", "TR:0.00min (00:00)"),
                 ("nid_label", "NID:0"),
                 ("nie_label", "NIE:0"),
             ):
@@ -2559,7 +2560,7 @@ class VideoPlayerOpenCV:
                 borderwidth=1,
                 bg="#f8f9fa" if self.classification == "NID" else "#fff5f5",
                 padx=self.padding_x,
-                pady=self.padding_y
+                pady=max(1, self.padding_y // 2)
             )
             
             # Usar márgenes dinámicos calculados
@@ -2651,12 +2652,12 @@ class VideoPlayerOpenCV:
             
             # Frame de texto (columna 0)
             self.text_frame = tk.Frame(self.card_frame, bg=self.card_frame['bg'])
-            self.text_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=2)
+            self.text_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=0)
             
             # Frame de imagen (columna 1)
             self.img_frame = tk.Frame(self.card_frame, bg=self.card_frame['bg'], 
                                     width=self.img_w, height=self.img_h)
-            self.img_frame.grid(row=0, column=1, sticky="ne", padx=0, pady=2)
+            self.img_frame.grid(row=0, column=1, sticky="ne", padx=0, pady=0)
             self.img_frame.grid_propagate(False)
             
         def create_vertical_layout(self):
@@ -2668,12 +2669,12 @@ class VideoPlayerOpenCV:
             
             # Frame de texto (fila 0)
             self.text_frame = tk.Frame(self.card_frame, bg=self.card_frame['bg'])
-            self.text_frame.grid(row=0, column=0, sticky="ew", padx=2, pady=2)
+            self.text_frame.grid(row=0, column=0, sticky="ew", padx=2, pady=0)
             
             # Frame de imagen compacta (fila 1)
             self.img_frame = tk.Frame(self.card_frame, bg=self.card_frame['bg'], 
                                     width=self.img_w, height=self.img_h)
-            self.img_frame.grid(row=1, column=0, sticky="ew", padx=2, pady=(0, 2))
+            self.img_frame.grid(row=1, column=0, sticky="ew", padx=2, pady=0)
             self.img_frame.grid_propagate(False)
         
         def create_text_content(self):
@@ -2691,11 +2692,11 @@ class VideoPlayerOpenCV:
                 font=("Segoe UI", self.font_title, "bold"),
                 bg=self.text_frame['bg'],
                 fg="#2c3e50",
-                anchor="w",
+                anchor="nw",
                 justify="left",
                 wraplength=self.wraplength
             )
-            self.plate_label.pack(fill="x", pady=0)
+            self.plate_label.pack(fill="x", pady=0, anchor="nw")
             
             # 2. Estado NID/NIE (progresivamente compacto)
             symbol = "✅" if self.classification == "NID" else "❌"
@@ -2714,26 +2715,24 @@ class VideoPlayerOpenCV:
                 font=("Segoe UI", self.font_normal, "bold"),
                 bg=self.text_frame['bg'],
                 fg=status_color,
-                anchor="w",
+                anchor="nw",
                 justify="left",
                 wraplength=self.wraplength
             )
-            self.status_label.pack(fill="x", pady=0)
+            self.status_label.pack(fill="x", pady=0, anchor="nw")
             
-            # 3. TR - Progresivamente compacto
+            # 3. TR dual en TODOS los tamaños (decimal + sexagesimal)
             if self.timestamp is not None:
-                total_seconds = int(float(self.timestamp))
                 mins_decimal = self.timestamp / 60.0
-                
-                # Formato progresivo según espacio disponible
+                sexa = format_time_sexagesimal(mins_decimal)
+
+                # Dual compacto según espacio disponible
                 if self.panel_size in ['xs']:
-                    tr_text = f"{mins_decimal:.2f}min"  # Solo valor
-                elif self.panel_size in ['small']:
-                    tr_text = f"TR: {mins_decimal:.2f}min"  # TR + valor
+                    tr_text = f"{mins_decimal:.2f} ({sexa})"  # Compacto dual
                 else:
-                    tr_text = f"TR: {mins_decimal:.2f}min ({total_seconds}s)"  # Completo
+                    tr_text = f"TR: {mins_decimal:.2f}min ({sexa})"  # Dual UX
             else:
-                tr_text = "0.00min" if self.panel_size in ['xs'] else ("TR: 0.00min" if self.panel_size in ['small'] else "TR: 0.00min (0s)")
+                tr_text = "0.00 (00:00)" if self.panel_size in ['xs'] else "TR: 0.00min (00:00)"
                 
             self.tr_label = tk.Label(
                 self.text_frame,
@@ -2741,11 +2740,11 @@ class VideoPlayerOpenCV:
                 font=("Segoe UI", self.font_normal),
                 bg=self.text_frame['bg'],
                 fg="#7f8c8d",
-                anchor="w",
+                anchor="nw",
                 justify="left",
                 wraplength=self.wraplength
             )
-            self.tr_label.pack(fill="x", pady=0)
+            self.tr_label.pack(fill="x", pady=0, anchor="nw")
             
             # 4. Precisión OCR % (TESIS MASTER)
             validated_conf = max(0.0, min(1.0, self.confidence))
@@ -2772,11 +2771,11 @@ class VideoPlayerOpenCV:
                 font=("Segoe UI", self.font_normal, "bold"),
                 bg=self.text_frame['bg'],
                 fg=conf_color,
-                anchor="w",
+                anchor="nw",
                 justify="left",
                 wraplength=self.wraplength
             )
-            self.conf_label.pack(fill="x", pady=0)
+            self.conf_label.pack(fill="x", pady=0, anchor="nw")
 
             # 5. Razón Técnica (TESIS MASTER)
             if self.razon_text and self.razon_text.strip():
@@ -2788,11 +2787,11 @@ class VideoPlayerOpenCV:
                     font=("Segoe UI", self.font_small, "italic"),
                     bg=self.text_frame['bg'],
                     fg=reason_color,
-                    anchor="w",
+                    anchor="nw",
                     justify="left",
                     wraplength=self.wraplength
                 )
-                self.reason_label.pack(fill="x", pady=(2, 0))
+                self.reason_label.pack(fill="x", pady=0, anchor="nw")
             else:
                 self.reason_label = None
         
@@ -3467,64 +3466,80 @@ class VideoPlayerOpenCV:
             return 300
     
     def _create_large_indicators(self):
-        """Indicadores para panel grande - una fila, texto completo"""
-        self.ti_label = tk.Label(
-            self.metrics_frame, text="TI:0.0%",
-            bg="#3498db", fg="white", font=("Arial", 10, "bold"),
-            padx=4, pady=2, relief="flat", width=8
-        )
-        self.ti_label.pack(side="left", padx=2)
-        
-        self.tr_label = tk.Label(
-            self.metrics_frame, text="TR:0.00min",
-            bg="#e67e22", fg="white", font=("Arial", 9, "bold"),
-            padx=4, pady=2, relief="flat", width=14
-        )
-        self.tr_label.pack(side="left", padx=2)
-        
-        self.nid_label = tk.Label(
-            self.metrics_frame, text="NID: 0",
-            bg="#27ae60", fg="white", font=("Arial", 10, "bold"),
-            padx=4, pady=2, relief="flat", width=12
-        )
-        self.nid_label.pack(side="left", padx=2)
-        
-        self.nie_label = tk.Label(
-            self.metrics_frame, text="NIE:0",
-            bg="#f39c12", fg="white", font=("Arial", 10, "bold"),
-            padx=4, pady=2, relief="flat", width=8
-        )
-        self.nie_label.pack(side="left", padx=2)
-    
-    def _create_medium_indicators(self):
-        """Indicadores para panel mediano - texto compacto"""
+        """Indicadores para panel grande - una fila, texto completo.
+
+        Grid de 4 columnas proporcionales (TI 2 / TR 5 / NID 2 / NIE 2):
+        reparte el ancho fijo del panel (~300px) sin recortar ningún
+        indicador. El TR dual es más largo, por eso lleva más peso,
+        fuente un punto menor y sin ancho fijo en caracteres.
+        """
+        for _col, _weight in ((0, 2), (1, 5), (2, 2), (3, 2)):
+            self.metrics_frame.columnconfigure(_col, weight=_weight, uniform="metrics")
+
         self.ti_label = tk.Label(
             self.metrics_frame, text="TI:0.0%",
             bg="#3498db", fg="white", font=("Arial", 9, "bold"),
-            padx=3, pady=1, relief="flat", width=6
+            padx=2, pady=2, relief="flat", justify="center"
         )
-        self.ti_label.pack(side="left", padx=1)
-        
+        self.ti_label.grid(row=0, column=0, padx=1, sticky="ew")
+
         self.tr_label = tk.Label(
-            self.metrics_frame, text="TR:0.00min",
+            self.metrics_frame, text="TR:0.00min (00:00)",
             bg="#e67e22", fg="white", font=("Arial", 8, "bold"),
-            padx=3, pady=1, relief="flat", width=10
+            padx=2, pady=2, relief="flat", justify="center"
         )
-        self.tr_label.pack(side="left", padx=1)
-        
+        self.tr_label.grid(row=0, column=1, padx=1, sticky="ew")
+
         self.nid_label = tk.Label(
-            self.metrics_frame, text="NID:0",
+            self.metrics_frame, text="NID: 0",
             bg="#27ae60", fg="white", font=("Arial", 9, "bold"),
-            padx=3, pady=1, relief="flat", width=6
+            padx=2, pady=2, relief="flat", justify="center"
         )
-        self.nid_label.pack(side="left", padx=1)
-        
+        self.nid_label.grid(row=0, column=2, padx=1, sticky="ew")
+
         self.nie_label = tk.Label(
             self.metrics_frame, text="NIE:0",
             bg="#f39c12", fg="white", font=("Arial", 9, "bold"),
-            padx=3, pady=1, relief="flat", width=6
+            padx=2, pady=2, relief="flat", justify="center"
         )
-        self.nie_label.pack(side="left", padx=1)
+        self.nie_label.grid(row=0, column=3, padx=1, sticky="ew")
+    
+    def _create_medium_indicators(self):
+        """Indicadores para panel mediano - texto compacto (grid 4 columnas).
+
+        Mismo criterio que large: columnas proporcionales para que TI, TR
+        (dual), NID y NIE quepan siempre en una fila sin recortes.
+        """
+        for _col, _weight in ((0, 2), (1, 5), (2, 2), (3, 2)):
+            self.metrics_frame.columnconfigure(_col, weight=_weight, uniform="metrics")
+
+        self.ti_label = tk.Label(
+            self.metrics_frame, text="TI:0.0%",
+            bg="#3498db", fg="white", font=("Arial", 8, "bold"),
+            padx=2, pady=1, relief="flat", justify="center"
+        )
+        self.ti_label.grid(row=0, column=0, padx=1, sticky="ew")
+
+        self.tr_label = tk.Label(
+            self.metrics_frame, text="TR:0.00min (00:00)",
+            bg="#e67e22", fg="white", font=("Arial", 7, "bold"),
+            padx=2, pady=1, relief="flat", justify="center"
+        )
+        self.tr_label.grid(row=0, column=1, padx=1, sticky="ew")
+
+        self.nid_label = tk.Label(
+            self.metrics_frame, text="NID:0",
+            bg="#27ae60", fg="white", font=("Arial", 8, "bold"),
+            padx=2, pady=1, relief="flat", justify="center"
+        )
+        self.nid_label.grid(row=0, column=2, padx=1, sticky="ew")
+
+        self.nie_label = tk.Label(
+            self.metrics_frame, text="NIE:0",
+            bg="#f39c12", fg="white", font=("Arial", 8, "bold"),
+            padx=2, pady=1, relief="flat", justify="center"
+        )
+        self.nie_label.grid(row=0, column=3, padx=1, sticky="ew")
     
     def _create_small_indicators(self):
         """Indicadores para panel pequeño - dos filas, muy compacto"""
@@ -3540,9 +3555,9 @@ class VideoPlayerOpenCV:
         self.ti_label.pack(side="left", padx=1, expand=True, fill="x")
         
         self.tr_label = tk.Label(
-            self.metrics_row1, text="TR:0.00min",
-            bg="#e67e22", fg="white", font=("Arial", 8, "bold"),
-            padx=2, pady=1, relief="flat", width=8
+            self.metrics_row1, text="TR:0.00min (00:00)",
+            bg="#e67e22", fg="white", font=("Arial", 7, "bold"),
+            padx=2, pady=1, relief="flat", wraplength=180, justify="center"
         )
         self.tr_label.pack(side="right", padx=1, expand=True, fill="x")
         
@@ -3653,14 +3668,19 @@ class VideoPlayerOpenCV:
                         else:  # NIE
                             nie_count += 1
             
-            # 🧮 CALCULAR TR: duración total del procesamiento / infracciones validadas (NID)
+            # 🧮 CALCULAR TR: tiempo de procesamiento / TIR (NID+NIE)
+            # TIR = total infracciones procesadas; TR en min por infracción procesada.
             video_processing_seconds = max(0.0, time.time() - self.detection_start_time)
-            if nid_count > 0:
-                tr_seconds_per_infraction = video_processing_seconds / nid_count
+            tir_count = nid_count + nie_count
+            if tir_count > 0:
+                tr_seconds_per_infraction = video_processing_seconds / tir_count
             else:
                 tr_seconds_per_infraction = 0.0
             tr_mm, tr_ss = divmod(int(round(tr_seconds_per_infraction)), 60)
-            tr_text = f"{tr_mm:02d}:{tr_ss:02d}"
+            tr_sexa = f"{tr_mm:02d}:{tr_ss:02d}"
+            tr_min_decimal = tr_seconds_per_infraction / 60.0
+            # UX dual: decimal + sexagesimal (misma matemática, mejor lectura)
+            tr_text = f"{tr_min_decimal:.2f}min ({tr_sexa})"
             
             # 📊 TI (Tasa de Infracciones) - mantener cálculo actual
             ti = self._calculate_infraction_rate()
@@ -3668,23 +3688,23 @@ class VideoPlayerOpenCV:
             # 📈 ACTUALIZAR ETIQUETAS SEGÚN EL LAYOUT RESPONSIVE
             current_layout = getattr(self, '_current_metrics_layout', 'medium')
             
-            # Formato de texto adaptativo
+            # Formato de texto adaptativo (dual decimal + sexagesimal, wraplength anti-corte)
             if current_layout == 'large':
                 # Texto completo para paneles grandes
                 self.ti_label.config(text=f"TI:{ti:.1f}%")
-                self.tr_label.config(text=f"TR:{tr_text}")
+                self.tr_label.config(text=f"TR:{tr_text}", wraplength=220, justify="center")
                 self.nid_label.config(text=f"NID: {nid_count}")
                 self.nie_label.config(text=f"NIE:{nie_count}")
             elif current_layout == 'medium':
                 # Texto compacto para paneles medianos
                 self.ti_label.config(text=f"TI:{ti:.1f}%")
-                self.tr_label.config(text=f"TR:{tr_text}")
+                self.tr_label.config(text=f"TR:{tr_text}", wraplength=200, justify="center")
                 self.nid_label.config(text=f"NID:{nid_count}")
                 self.nie_label.config(text=f"NIE:{nie_count}")
             else:  # small
                 # Texto muy compacto para paneles pequeños
                 self.ti_label.config(text=f"TI:{ti:.1f}%")
-                self.tr_label.config(text=f"TR:{tr_text}")
+                self.tr_label.config(text=f"TR:{tr_text}", wraplength=180, justify="center")
                 self.nid_label.config(text=f"NID:{nid_count}")
                 self.nie_label.config(text=f"NIE:{nie_count}")
             
@@ -3694,9 +3714,9 @@ class VideoPlayerOpenCV:
             print(f"   Total cards: {total_cards}")
             
             # 🐛 DEBUG: Mostrar cálculos para verificación
-            print(f"🧮 TR (duración procesamiento / infracciones validadas):")
+            print(f"🧮 TR (tiempo de procesamiento / TIR):")
             print(f"   Duración procesamiento: {video_processing_seconds:.2f}s")
-            print(f"   Infracciones validadas (NID): {nid_count}")
+            print(f"   TIR (NID+NIE): {tir_count} (NID={nid_count}, NIE={nie_count})")
             print(f"   TR: {tr_seconds_per_infraction:.2f}s/infracción = {tr_text}")
             
             print(f"📊 NID CORREGIDO:")

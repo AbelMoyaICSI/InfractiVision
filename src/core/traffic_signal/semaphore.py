@@ -30,6 +30,15 @@ class Semaforo:
         self.meta_label = tk.Label(self.frame, text="", font=("Arial", 11), bg='white', justify="center")
         self.meta_label.pack(pady=(0, 5))
 
+        # ⏳ Cuenta regresiva del estado actual ("Semáforo Inteligente").
+        # Solo UI: lee target_time en cada tick, no altera detección ni ciclo.
+        self.countdown_label = tk.Label(
+            self.frame, text="⚪ Semáforo inactivo",
+            font=("Arial", 12, "bold"), bg='white', fg="#7f8c8d",
+            justify="center",
+        )
+        self.countdown_label.pack(pady=(0, 5))
+
         # Botón para abrir configuración de tiempos
         self.btn_tiempos = tk.Button(
             self.frame, text="Configurar Tiempos",
@@ -66,6 +75,7 @@ class Semaforo:
         self.execution_start = None
         self.set_state_display()
         self._update_meta_label()
+        self._update_countdown_label()
 
     def set_state_display(self):
         """Actualiza el label de estado según el estado actual del semáforo."""
@@ -97,6 +107,34 @@ class Semaforo:
         if h:
             return f"{h:02d}:{m:02d}:{s:02d}"
         return f"{m:02d}:{s:02d}"
+
+    def _update_countdown_label(self):
+        """Refresca el timer visual del estado actual (solo UI).
+
+        Lee `target_time - now` (el mismo origen que el loop asíncrono),
+        así si el procesamiento se acelera el label refleja el tiempo real
+        restante. No modifica detección, ciclo ni optimización.
+        """
+        try:
+            label = getattr(self, "countdown_label", None)
+            if label is None:
+                return
+            if not self.active:
+                label.config(text="⚪ Semáforo inactivo", fg="#7f8c8d")
+                return
+            remaining = max(0.0, self.target_time - time.time())
+            mm, ss = divmod(int(round(remaining)), 60)
+            mmss = f"{mm:02d}:{ss:02d}"
+            if self.current_state == "green":
+                label.config(text=f"🟢 Tiempo restante: {mmss}", fg="#27ae60")
+            elif self.current_state == "yellow":
+                label.config(text=f"🟡 Tiempo restante: {mmss}", fg="#b7950b")
+            elif self.current_state == "red":
+                label.config(text=f"🔴 Tiempo en rojo: {mmss}", fg="#e74c3c")
+            else:
+                label.config(text="⚪ Semáforo inactivo", fg="#7f8c8d")
+        except Exception:
+            pass
 
     def _update_meta_label(self):
         """Actualiza el temporizador de ejecución y los parámetros del ciclo."""
@@ -135,6 +173,7 @@ class Semaforo:
         
         self.show_inactive_state()
         self.info_label.config(text="🚦 Semáforo PAUSADO - Procesamiento completado")
+        self._update_countdown_label()
         print("🚦 SEMÁFORO COMPLETAMENTE PAUSADO")
 
     def show_inactive_state(self):
@@ -172,6 +211,7 @@ class Semaforo:
             text=f"{ts}\nEstado: {self.current_state.upper()} – Quedan {secs}s {ms}ms"
         )
         self._update_meta_label()
+        self._update_countdown_label()
         # SOLO programar siguiente actualización si el semáforo está activo
         if self.active:
             self.frame.after(50, self.update_countdown)
