@@ -1237,9 +1237,27 @@ class VideoPlayerOpenCV:
                 except Exception:
                     pass
             
-            # Cerrar diálogo y cargar video
-            setup.destroy()
-            self._load_video_async(video_path)
+            # Cerrar diálogo y cargar video.
+            # Red de seguridad anti-pantalla-blanca: si la recarga falla, se
+            # avisa y se repinta la vista en vez de dejar el contenedor vacío.
+            try:
+                setup.destroy()
+            except Exception:
+                pass
+            try:
+                self._load_video_async(video_path)
+            except Exception as e:
+                try:
+                    messagebox.showerror(
+                        "Error",
+                        f"Configuración guardada, pero falló la recarga del video:\n{e}",
+                    )
+                except Exception:
+                    pass
+                try:
+                    self._repaint_after_failed_load()
+                except Exception:
+                    pass
         
         # Botones finales
         guardar_btn = tk.Button(button_frame, text="Guardar y Cargar Video", 
@@ -1468,10 +1486,74 @@ class VideoPlayerOpenCV:
         ret, frame = self.cap.read()
         if not ret:
             self.parent.after(0, lambda: messagebox.showerror("Error", "No se pudo leer el vídeo."))
+            self.parent.after(0, self._repaint_after_failed_load)
             return
         _epoch = self._video_epoch
         self.parent.after(
-            0, lambda: self._finish_loading_video(path, frame, _epoch))
+            0, lambda: self._safe_finish_loading_video(path, frame, _epoch))
+
+    def _safe_finish_loading_video(self, path, first_frame, _epoch=None):
+        """Envuelve `_finish_loading_video` con red anti-pantalla-blanca.
+
+        Si el repintado falla (widget destruido, frame corrupto, semáforo
+        ausente...), avisa y restaura la vista con `_repaint_after_failed_load`
+        en vez de dejar el contenedor vacío. Nunca lanza.
+        """
+        try:
+            self._finish_loading_video(path, first_frame, _epoch)
+        except Exception as e:
+            try:
+                import traceback
+                traceback.print_exc()
+            except Exception:
+                pass
+            try:
+                messagebox.showerror(
+                    "Error",
+                    f"No se pudo mostrar el video recargado:\n{e}",
+                )
+            except Exception:
+                pass
+            try:
+                self._repaint_after_failed_load(first_frame)
+            except Exception:
+                pass
+
+    def _repaint_after_failed_load(self, first_frame=None):
+        """Restaura la vista principal si una recarga falló (nunca lanza).
+
+        Repinta el primer frame si está disponible, restaura etiquetas clave
+        y fuerza el repintado. Es la red de seguridad contra la ventana
+        completamente en blanco tras Guardar y Cargar Video.
+        """
+        try:
+            if first_frame is not None:
+                try:
+                    bgr_img = self.resize_and_letterbox(first_frame)
+                    rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+                    imgtk = ImageTk.PhotoImage(Image.fromarray(rgb_img))
+                    self.video_label.config(image=imgtk)
+                    self.video_label.image = imgtk
+                except Exception:
+                    pass
+            try:
+                self.info_label.config(text="Listo")
+            except Exception:
+                pass
+            for _w in ("video_label", "info_label", "current_video_label",
+                       "avenue_label", "timestamp_label", "play_pause_button"):
+                try:
+                    _lbl = getattr(self, _w, None)
+                    if _lbl is not None and hasattr(_lbl, "lift"):
+                        _lbl.lift()
+                except Exception:
+                    pass
+            try:
+                self.frame.update_idletasks()
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _finish_loading_video(self, path, first_frame, _epoch=None):
         # Ignorar callbacks tardíos si el usuario ya cargó otro video encima
