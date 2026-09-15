@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -205,11 +206,22 @@ class PlateReviewWindow:
 
         def work():
             idx = self.current_index
+            # Wall-clock de inferencia de ESTA placa: t0 justo antes de
+            # procesar su crop, t1 al terminar (para el TR individual).
+            _t0 = time.time()
             try:
                 text, confidence = self.reader.read(evidence.crop_path)
                 error = ""
             except Exception as exc:
                 text, confidence, error = "", 0.0, str(exc)
+            finally:
+                try:
+                    _meta = evidence.metadata
+                    if _meta is None:
+                        evidence.metadata = _meta = {}
+                    _meta["ocr_seconds"] = round(time.time() - _t0, 4)
+                except Exception:
+                    pass
             # NUNCA llamar Tk desde este hilo: encolar y dejar que el poller
             # (hilo principal) aplique _show_result.
             self._results_queue.put((idx, text, confidence, error))

@@ -2682,6 +2682,21 @@ class VideoPlayerOpenCV:
             self.img_frame.grid(row=1, column=0, sticky="ew", padx=2, pady=0)
             self.img_frame.grid_propagate(False)
         
+        def _tr_text_for(self, seconds):
+            """Texto TR dual (decimal + sexagesimal) para unos segundos dados."""
+            if seconds is None:
+                return "0.00 (00:00)" if self.panel_size in ['xs'] else "TR: 0.00min (00:00)"
+            mins_decimal = float(seconds) / 60.0
+            sexa = format_time_sexagesimal(mins_decimal)
+            if self.panel_size in ['xs']:
+                return f"{mins_decimal:.2f} ({sexa})"  # Compacto dual
+            return f"TR: {mins_decimal:.2f}min ({sexa})"  # Dual UX
+
+        def _has_valid_plate_text(self):
+            """True si hay texto de placa real (no vacío ni sentinel NIE)."""
+            t = (self.plate_text or "").strip().upper()
+            return bool(t) and t != "NIE"
+
         def create_text_content(self):
             """Crea el contenido de texto con valores dinámicos calculados"""            
             # 1. Título de placa (texto adaptativo según espacio)
@@ -2727,22 +2742,12 @@ class VideoPlayerOpenCV:
             self.status_label.pack(fill="x", pady=0, anchor="nw")
             
             # 3. TR dual en TODOS los tamaños (decimal + sexagesimal).
-            # Fuente: wall-clock real de procesamiento si se proveyó
+            # Fuente: inferencia real medida para ESTA placa si se proveyó
             # (processing_seconds); si no, fallback al timestamp del video.
             _tr_source = self.processing_seconds
             if _tr_source is None:
                 _tr_source = self.timestamp
-            if _tr_source is not None:
-                mins_decimal = float(_tr_source) / 60.0
-                sexa = format_time_sexagesimal(mins_decimal)
-
-                # Dual compacto según espacio disponible
-                if self.panel_size in ['xs']:
-                    tr_text = f"{mins_decimal:.2f} ({sexa})"  # Compacto dual
-                else:
-                    tr_text = f"TR: {mins_decimal:.2f}min ({sexa})"  # Dual UX
-            else:
-                tr_text = "0.00 (00:00)" if self.panel_size in ['xs'] else "TR: 0.00min (00:00)"
+            tr_text = self._tr_text_for(_tr_source)
                 
             self.tr_label = tk.Label(
                 self.text_frame,
@@ -2757,23 +2762,28 @@ class VideoPlayerOpenCV:
             self.tr_label.pack(fill="x", pady=0, anchor="nw")
             
             # 4. Precisión OCR % (TESIS MASTER)
-            validated_conf = max(0.0, min(1.0, self.confidence))
-            accuracy_pct = validated_conf * 100
-            
-            if validated_conf >= 0.85:
-                conf_color = "#27ae60"  # Verde
-            elif validated_conf >= 0.70:
-                conf_color = "#f39c12"  # Ámbar
+            # NIE o sin texto válido: no hay medición real → N/A (nunca % falso).
+            if self.classification == "NIE" or not self._has_valid_plate_text():
+                conf_text = "Precisión OCR: N/A"
+                conf_color = "#7f8c8d"
             else:
-                conf_color = "#e74c3c"  # Rojo
-            
-            # Formato responsivo
-            if self.panel_size in ['xs']:
-                conf_text = f"{accuracy_pct:.0f}%"  
-            elif self.panel_size in ['small']:
-                conf_text = f"Acc: {accuracy_pct:.1f}%"
-            else:
-                conf_text = f"Precisión OCR: {accuracy_pct:.1f}%"
+                validated_conf = max(0.0, min(1.0, self.confidence))
+                accuracy_pct = validated_conf * 100
+
+                if validated_conf >= 0.85:
+                    conf_color = "#27ae60"  # Verde
+                elif validated_conf >= 0.70:
+                    conf_color = "#f39c12"  # Ámbar
+                else:
+                    conf_color = "#e74c3c"  # Rojo
+
+                # Formato responsivo
+                if self.panel_size in ['xs']:
+                    conf_text = f"{accuracy_pct:.0f}%"
+                elif self.panel_size in ['small']:
+                    conf_text = f"Acc: {accuracy_pct:.1f}%"
+                else:
+                    conf_text = f"Precisión OCR: {accuracy_pct:.1f}%"
             
             self.conf_label = tk.Label(
                 self.text_frame,
@@ -2810,18 +2820,24 @@ class VideoPlayerOpenCV:
             if hasattr(self, 'reason_label') and self.reason_label is not None:
                 self.text_labels.append(self.reason_label)
         
-        def apply_validation(self, classification, plate_text=None, confidence=None):
+        def apply_validation(self, classification, plate_text=None, confidence=None,
+                             processing_seconds=None):
             """Reclasifica el card EN VIVO según la validación final.
 
             NID (✓) -> verde | NIE (sin check / sin placa) -> rojo.
             Actualiza transcripción, estado, fondo, bordes y, si se pasa,
             la precisión del modelo OCR (Plate Recognizer) sin recrear el widget.
+            Si se pasa `processing_seconds` (inferencia real de esta placa),
+            refresca también el TR individual; si no, conserva el de creación.
+            NIE o sin texto válido fuerza Precisión OCR: N/A.
             """
             self.classification = classification
             if plate_text:
                 self.plate_text = plate_text
             if confidence is not None:
                 self.confidence = confidence
+            if processing_seconds is not None:
+                self.processing_seconds = processing_seconds
 
             bg = "#f8f9fa" if classification == "NID" else "#fff5f5"
             self.card_frame.config(bg=bg)
@@ -2841,23 +2857,29 @@ class VideoPlayerOpenCV:
             self.status_label.config(text=f"{symbol} {status_nick}", fg=status_color, bg=bg)
 
             self.tr_label.config(bg=bg)
+            if processing_seconds is not None:
+                self.tr_label.config(text=self._tr_text_for(processing_seconds))
 
-            # Precisión del modelo OCR (Plate Recognizer) en la card
-            validated_conf = max(0.0, min(1.0, self.confidence))
-            accuracy_pct = validated_conf * 100
-            if validated_conf >= 0.85:
-                conf_color = "#27ae60"  # Verde
-            elif validated_conf >= 0.70:
-                conf_color = "#f39c12"  # Ámbar
+            # Precisión del modelo OCR (Plate Recognizer) en la card.
+            # NIE o sin texto válido: N/A (nunca un % falso).
+            if self.classification == "NIE" or not self._has_valid_plate_text():
+                self.conf_label.config(text="Precisión OCR: N/A", fg="#7f8c8d", bg=bg)
             else:
-                conf_color = "#e74c3c"  # Rojo
-            if self.panel_size in ['xs']:
-                conf_text = f"{accuracy_pct:.0f}%"
-            elif self.panel_size in ['small']:
-                conf_text = f"Acc: {accuracy_pct:.1f}%"
-            else:
-                conf_text = f"Precisión OCR: {accuracy_pct:.1f}%"
-            self.conf_label.config(text=conf_text, fg=conf_color, bg=bg)
+                validated_conf = max(0.0, min(1.0, self.confidence))
+                accuracy_pct = validated_conf * 100
+                if validated_conf >= 0.85:
+                    conf_color = "#27ae60"  # Verde
+                elif validated_conf >= 0.70:
+                    conf_color = "#f39c12"  # Ámbar
+                else:
+                    conf_color = "#e74c3c"  # Rojo
+                if self.panel_size in ['xs']:
+                    conf_text = f"{accuracy_pct:.0f}%"
+                elif self.panel_size in ['small']:
+                    conf_text = f"Acc: {accuracy_pct:.1f}%"
+                else:
+                    conf_text = f"Precisión OCR: {accuracy_pct:.1f}%"
+                self.conf_label.config(text=conf_text, fg=conf_color, bg=bg)
 
             if hasattr(self, 'reason_label') and self.reason_label is not None:
                 self.reason_label.config(
@@ -3760,6 +3782,16 @@ class VideoPlayerOpenCV:
             cls = "NID" if (ev.validated and ev.plate_text) else "NIE"
             trans = ev.plate_text or None
             ocr_conf = getattr(ev, "ocr_confidence", 0.0) or 0.0
+            # TR individual: inferencia real de ESTA placa (YOLO-localize +
+            # OCR). Si no se midió, None y la card usa el timestamp (fallback).
+            _meta = getattr(ev, "metadata", None) or {}
+            _ps = None
+            try:
+                _ps = float(_meta.get("plate_localize_seconds") or 0) + float(_meta.get("ocr_seconds") or 0)
+                if _ps <= 0:
+                    _ps = None
+            except Exception:
+                _ps = None
             if tid in card_by_track:
                 plate_data = card_by_track[tid]
                 plate_data["classification"] = cls
@@ -3768,10 +3800,11 @@ class VideoPlayerOpenCV:
                 plate_data["quality_score"] = ocr_conf
                 card = plate_data.get("card_instance")
                 if card is not None:
-                    card.apply_validation(cls, trans, ocr_conf)
+                    card.apply_validation(cls, trans, ocr_conf, processing_seconds=_ps)
             else:
                 self._create_card_for_validation(cls, trans, tid, ev.timestamp_seconds,
-                                                 ev.crop_path, ev.vehicle_class, ocr_conf)
+                                                 ev.crop_path, ev.vehicle_class, ocr_conf,
+                                                 processing_seconds=_ps)
 
         # 2) Pendientes sin placa detectada -> NIE (recuadro amarillo)
         for tid, pend in pending_by_track.items():
@@ -3800,10 +3833,9 @@ class VideoPlayerOpenCV:
                                     processing_seconds=None):
         """Crea una card nueva desde el resultado de validación (si no existía).
 
-        El TR individual usa wall-clock real de procesamiento: segundos desde
-        `detection_start_time` (mismo reloj que el numerador del TR global)
-        hasta el registro de la tarjeta. Si no se puede medir, la card usa el
-        timestamp del video como fallback.
+        El TR individual usa la inferencia real medida para ESTA placa
+        (`processing_seconds` = YOLO-localize + OCR). Si llega None, la card
+        usa el timestamp del video como fallback (comportamiento previo).
         """
         img = None
         if crop_path and os.path.exists(crop_path):
@@ -3815,12 +3847,6 @@ class VideoPlayerOpenCV:
                 img = None
         reason = ("✅ Placa leída correctamente" if classification == "NID"
                   else "🔍 Sin placa detectada (NIE)")
-        if processing_seconds is None:
-            try:
-                _t0 = getattr(self, "detection_start_time", None)
-                processing_seconds = max(0.0, time.time() - _t0) if _t0 else None
-            except Exception:
-                processing_seconds = None
         self._safe_add_plate_to_panel(
             plate_img=img if img is not None else self._empty_plate_fallback(),
             plate_text=plate_text or "NIE",

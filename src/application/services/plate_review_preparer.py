@@ -20,6 +20,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import time
 
 from src.core.logger import get_logger
 from src.domain.entities.plate_evidence import PlateEvidence
@@ -71,13 +72,20 @@ def _plate_crop_with_margin(vehicle: np.ndarray, local: tuple[int, int, int, int
 
 def _try_localize_in_image(vehicle: np.ndarray, direction: str,
                            detector, output_dir: Path | None,
-                           stem: str) -> tuple[str, list[int], float] | None:
-    """Cuadrante direccional + YOLO 1x. Retorna (plate_path, bbox, score) o None."""
+                           stem: str) -> tuple[str, list[int], float, float] | None:
+    """Cuadrante direccional + YOLO 1x. Retorna (plate_path, bbox, score, segundos) o None.
+
+    El cuarto valor es el wall-clock de la inferencia YOLO de ESTE crop
+    (t0 justo antes de `detect`, t1 al terminar), para el TR individual.
+    """
     quadrant, (ox, oy) = _quadrant(vehicle, direction)
+    _t0 = time.time()
     try:
         plates = detector.detect(quadrant, conf=PLATE_CONF, draw=False)
     except Exception:
         return None
+    finally:
+        _detect_seconds = time.time() - _t0
     scored: list[tuple[float, list[int]]] = []
     for plate in (plates or []):
         try:
@@ -109,7 +117,7 @@ def _try_localize_in_image(vehicle: np.ndarray, direction: str,
         except Exception as exc:
             log.warning("No se pudo guardar placa %s: %s", plate_path, exc)
             continue
-        return str(plate_path), [int(v) for v in local], score
+        return str(plate_path), [int(v) for v in local], score, _detect_seconds
     return None
 
 
@@ -149,7 +157,7 @@ def select_best_with_plate(evidence: PlateEvidence, plate_detector=None,
         hit = _try_localize_in_image(vehicle, direction, detector, out_dir or Path(path).parent, stem)
         if hit is None:
             continue
-        plate_path, bbox, score = hit
+        plate_path, bbox, score, loc_seconds = hit
         evidence.crop_path = plate_path
         evidence.frame_index = int(cand.get("frame", evidence.frame_index))
         evidence.timestamp_seconds = float(cand.get("timestamp_seconds", evidence.timestamp_seconds))
@@ -159,6 +167,7 @@ def select_best_with_plate(evidence: PlateEvidence, plate_detector=None,
         evidence.metadata["dedup_eligible"] = False
         evidence.metadata["plate_bbox"] = bbox
         evidence.metadata["plate_score"] = round(score, 4)
+        evidence.metadata["plate_localize_seconds"] = round(float(loc_seconds), 4)
         evidence.metadata["selected_candidate_frame"] = int(cand.get("frame", -1))
         evidence.metadata["selected_candidate_direction"] = direction
         evidence.metadata["n_candidates"] = len(cands)
@@ -237,8 +246,9 @@ def localize_plate_for_evidence(evidence: PlateEvidence, plate_detector=None,
         if not evidence.review_notes:
             evidence.review_notes = "Vehículo completo (placa no localizada en cuadrante)"
         return evidence
-    plate_path, bbox, score = hit
+    plate_path, bbox, score, loc_seconds = hit
     evidence.crop_path = plate_path
+    evidence.metadata["plate_localize_seconds"] = round(float(loc_seconds), 4)
     evidence.metadata["full_car"] = False
     evidence.metadata["fallback_by_quality"] = False
     evidence.metadata["dedup_eligible"] = False
