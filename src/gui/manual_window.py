@@ -110,8 +110,8 @@ Proyecto de tesis UPAO 2025 - Abel Jesus Moya Acosta.
 - Tracking: ID por vehiculo (centroide / DeepSORT) para no duplicar.
 - Placas: YOLO dedicado + mejor crop por infractor (scoring de calidad:
   contraste, bordes, nitidez, tamano).
-- OCR principal LPRNet Peru (LPRNet_Peru_MASTER_FINAL.pth) con contexto
-  Trujillo y validacion SIIV MTC. Alternativos PaddleOCR/EasyOCR por env.
+- OCR unico y oficial: API externa Plate Recognizer (regions=pe)
+  con correccion humana del operador y validacion SIIV MTC.
 - Validacion en la nube: cada crop se valida contra Plate Recognizer API
   (regions=pe) con revision humana (check Validar).
 - Indicadores NID / NIE / TI / TR. NID = validadas con placa;
@@ -216,8 +216,8 @@ Paso 6 - Revisa en Gestion de Infracciones: filtra por fecha o placa,
 
 Autor: Abel Jesus Moya Acosta - amoyaa2@upao.edu.pe
 Universidad Privada Antenor Orrego (UPAO) - Tesis 2025/2026.
-Stack: Python 3.10, OpenCV 4.9, YOLOv8, PyTorch, LPRNet Peru,
-Plate Recognizer, Firestore, Tkinter.
+Stack: Python 3.10, OpenCV 4.9, YOLOv8, PyTorch,
+Plate Recognizer API, Firestore, Tkinter.
 
 GRACIAS POR USAR INFRACTIVISION!
 """

@@ -1,5 +1,6 @@
 # InfractiVision — OCR alternativos (OPCIONALES)
-# El motor por defecto es LPRNet (incluido en requirements.txt).
+# El OCR unico y oficial es la API externa de Plate Recognizer
+# (ver README.md y src/infrastructure/ocr/cloud_plate_readers.py).
 # Instala estos extras SOLO si vas a usar EasyOCR o PaddleOCR vía DI
 # (config/settings.py → OCRSettings.backend).
 #

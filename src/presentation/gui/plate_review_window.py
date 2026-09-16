@@ -78,7 +78,7 @@ NIE_REASONS = (
 NIE_REASON_LABELS = {
     "ERROR_OCR": "El sistema leyó mal uno o más caracteres de la placa.",
     "PLACA_ILEGIBLE": "La imagen de la placa está borrosa o de baja calidad.",
-    "ILUMINACION_ADVERSA": "Problemas de visibilidad por noche u oscuridad.",
+    "ILUMINACION_ADVERSA": "Problemas de visibilidad por noche, oscuridad o fuerte luz solar/deslumbramiento.",
     "OCLUSION_PARCIAL": "La placa está tapada parcialmente por objetos o barro.",
     "FALSO_POSITIVO": "Detección errónea de estructura o vehículo no válido.",
 }

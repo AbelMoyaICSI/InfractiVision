@@ -28,7 +28,7 @@ flowchart TD
     end
     subgraph Infrastructure
         I1[YOLO vehiculos y placas<br/>src/infrastructure/ai]
-        I2[OCR LPRNet / PaddleOCR / EasyOCR<br/>+ Plate Recognizer cloud]
+        I2[YOLO vehiculos y placas<br/>+ Plate Recognizer API cloud]
         I3[Tracking DeepSORT<br/>fallback centroide]
         I4[DB SQLite AppRepository<br/>+ VideoConfigRepository]
         I5[Video OpenCV<br/>FrameExtractor]
@@ -60,7 +60,7 @@ flowchart TD
 **Reglas:**
 
 - `main.py:68` crea el `traffic_light_state = {"value": "green"}` y lo inyecta como `state_provider` a `VirtualTrafficLightDetector` (`src/infrastructure/ai/traffic_light_detector.py:22`). El reproductor lo actualiza; el caso de uso solo lo lee.
-- `Lazy` (`src/composition_root.py:52`) retrasa la carga de YOLO/LPRNet/DeepSORT hasta el primer uso. El arranque queda en < 0.1 s; la precarga de LPRNet se lanza en background con `root.after(300, _preload_lprnet_in_background)` (`main.py:81`).
+- `Lazy` (`src/composition_root.py:52`) retrasa la carga de YOLO/DeepSORT hasta el primer uso. El arranque queda en < 0.1 s; en vivo solo hay deteccion YOLO y la lectura la hace la API de Plate Recognizer en la revision final.
 - `Settings` (`config/settings.py:57`) viaja por DI; ningún caso de uso lee `os.getenv` directamente.
 
 ---
@@ -241,10 +241,10 @@ flowchart TD
     B --> C[tk.Tk + set_window_icon<br/>geometry 1280x720]
     C --> D[traffic_light_state dict<br/>value green]
     D --> E[build_container state_provider lambda]
-    E --> F[Settings.load + Lazy proxies<br/>YOLO + LPRNet + DeepSORT sin cargar]
+    E --> F[Settings.load + Lazy proxies<br/>YOLO + DeepSORT sin cargar]
     F --> G[MainWindow root, process_frame_uc, ids, traffic_light_state]
     G --> H[AppManager Welcome]
-    H --> I[root.after 300 _preload_lprnet_in_background<br/>get_lprnet_predictor en hilo daemon]
+    H --> I[Foto Rojo listo<br/>YOLO vehiculos en hilo worker]
 ```
 
 ---
