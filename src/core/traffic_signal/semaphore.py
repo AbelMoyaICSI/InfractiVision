@@ -77,6 +77,40 @@ class Semaforo:
         self._update_meta_label()
         self._update_countdown_label()
 
+    def reset_to_idle(self):
+        """Reposo cero visual (evento Cancelar): apaga las luces, congela el
+        reloj inferior ("Tiempo de ejecución") estrictamente en 00:00 y borra
+        parámetros/tiempos residuales, dejando "Semáforo inactivo".
+        No toca la configuración del ciclo (tiempos por video)."""
+        try:
+            self.active = False
+        except Exception:
+            pass
+        try:
+            self._meta_loop_active = False
+        except Exception:
+            pass
+        try:
+            self.execution_start = None
+        except Exception:
+            pass
+        try:
+            self.show_inactive_state()
+        except Exception:
+            pass
+        try:
+            self.info_label.config(text="Semáforo inactivo")
+        except Exception:
+            pass
+        try:
+            self.meta_label.config(text="⏱️ Tiempo de ejecución: 00:00")
+        except Exception:
+            pass
+        try:
+            self._update_countdown_label()
+        except Exception:
+            pass
+
     def set_state_display(self):
         """Actualiza el label de estado según el estado actual del semáforo."""
         text = f"Estado: {self.current_state.upper()}" if self.current_state else "Semáforo inactivo"

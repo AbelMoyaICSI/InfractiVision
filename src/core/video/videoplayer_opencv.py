@@ -175,7 +175,14 @@ class VideoPlayerOpenCV:
         self.seen_plates = set()
         
         # Variables para métricas
-        self.detection_start_time = time.time()
+        # ⏱️ Tesis: el reloj de transparencia SOLO mide inferencia viva.
+        # En reposo `detection_start_time` es None -> el panel muestra
+        # "0.00min (00:00)" y el ticker no avanza (regla 1). Se setea
+        # exactamente al presionar "Iniciar Procesamiento" vía
+        # `start_total_time_clock()` (regla 3).
+        self.detection_start_time = None
+        self.processing_elapsed_seconds = 0.0
+        self._total_time_frozen = True
         self.registration_times = []
         self.plate_detection_history = {}
 
@@ -1554,9 +1561,47 @@ class VideoPlayerOpenCV:
                 dlg._cleanup_threads()
             except Exception as e:
                 print(f"Error cancelando procesamiento inline anterior: {e}")
+        # ⏱️ Cancelar = reposo cero (NO freeze con valor final): el reloj
+        # vuelve a 0.00min (00:00) idéntico a recién cargar el video.
+        try:
+            self.reset_total_time_clock()
+        except Exception:
+            pass
         self.processing_active = False
         try:
             self._show_inline_progress(False)
+        except Exception:
+            pass
+
+    def reset_total_time_clock(self) -> None:
+        """Resetea el Tiempo Total a reposo cero (evento Cancelar).
+
+        Detiene el ticker (`after_cancel` + bandera en `False`), limpia el
+        origen (`detection_start_time=None`, elapsed `0.0`) y deja el label
+        en `"⏱️ Tiempo de Procesamiento Total: 0.00min (00:00)"`.
+        Idempotente y seguro si los widgets ya no existen.
+        """
+        try:
+            try:
+                _aid = getattr(self, "_total_time_after_id", None)
+                host = getattr(self, "parent", None) or getattr(self, "frame", None)
+                if _aid is not None and host is not None and hasattr(host, "after_cancel"):
+                    host.after_cancel(_aid)
+            except Exception:
+                pass
+            self._total_time_after_id = None
+            self._total_time_ticker_running = False
+            self.detection_start_time = None
+            self.processing_elapsed_seconds = 0.0
+            self._total_time_frozen = True
+            self.processing_active = False
+            self.processing_completed = False
+            try:
+                lbl = getattr(self, "total_time_label", None)
+                if lbl is not None and lbl.winfo_exists():
+                    lbl.config(text="⏱️ Tiempo de Procesamiento Total: 0.00min (00:00)")
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -1586,15 +1631,12 @@ class VideoPlayerOpenCV:
                 self.cancel_inline_processing()
             except Exception:
                 pass
-            # Drenar colas del worker: descartar anotaciones del run anterior.
-            for _q in ("_detect_in", "_detect_out"):
-                try:
-                    q = getattr(self, _q, None)
-                    if q is not None:
-                        while True:
-                            q.get_nowait()
-                except Exception:
-                    pass
+            # Liberar captura, worker de detección y buffers del run anterior
+            # (anti-zombies en GPU/RAM al cambiar de video o reprocesar).
+            try:
+                self.release_resources()
+            except Exception as e:
+                print(f"Error liberando recursos previos: {e}")
 
             # 2) Estado in-memory del run anterior.
             self._last_annotated_frame = None
@@ -1611,7 +1653,14 @@ class VideoPlayerOpenCV:
             self._letterbox_cache = None
             self.last_time = time.time()
             self.fps_calc = 0.0
-            self.detection_start_time = time.time()
+            # ⏱️ Reposo estricto (regla 1): sin `detection_start_time` el
+            # ticker muestra "0.00min (00:00)" y no avanza. El inicio exacto
+            # lo pone `start_total_time_clock()` al presionar
+            # "Iniciar Procesamiento" (regla 3), refinado por
+            # `PreprocessingDialog` con `processing_start_time`.
+            self.detection_start_time = None
+            self.processing_elapsed_seconds = 0.0
+            self._total_time_frozen = True
             self.start_time_hour = None
             self.start_time_minute = getattr(self, "start_time_minute", None)
             self.processing_completed = False
@@ -1645,6 +1694,13 @@ class VideoPlayerOpenCV:
                         lbl.config(text=_txt)
                 except Exception:
                     pass
+            # ⏱️ Reset del indicador de transparencia (nueva sesión).
+            try:
+                _ttl = getattr(self, "total_time_label", None)
+                if _ttl is not None:
+                    _ttl.config(text="⏱️ Tiempo de Procesamiento Total: 0.00min (00:00)")
+            except Exception:
+                pass
             try:
                 if getattr(self, "plates_canvas", None) is not None:
                     self.plates_canvas.yview_moveto(0.0)
@@ -1687,6 +1743,87 @@ class VideoPlayerOpenCV:
                 pass
         finally:
             self._resetting = False
+
+    def release_resources(self):
+        """Libera recursos del run anterior (anti lag/zombies). Idempotente.
+
+        - `cap.release()` estricto del `VideoCapture` anterior.
+        - Worker de detección: centinela `None` + `join(timeout=2.0)` para
+          que no siga infiriendo en GPU tras el cambio de video.
+        - Drena colas, suelta frames anotados/historial y fuerza
+          `gc.collect()`.
+        NO toca los detectores YOLO (compartidos y precalentados): soltarlos
+        aquí solo provocaría recargas con lag; los libera `shutdown()`.
+        Nunca lanza.
+        """
+        try:
+            worker = getattr(self, "_detect_worker_thread", None)
+            if worker is not None:
+                try:
+                    q = getattr(self, "_detect_in", None)
+                    if q is not None:
+                        # Drenar frames viejos PRIMERO para que el centinela
+                        # None sea lo siguiente que lea el worker (si no,
+                        # seguiría infiriendo la cola atrasada en GPU).
+                        try:
+                            while True:
+                                q.get_nowait()
+                        except Exception:
+                            pass
+                        try:
+                            q.put_nowait(None)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                try:
+                    if worker.is_alive():
+                        worker.join(timeout=2.0)
+                except Exception:
+                    pass
+                try:
+                    self._detect_worker_thread = None
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            if getattr(self, "cap", None) is not None:
+                try:
+                    self.cap.release()
+                except Exception:
+                    pass
+                self.cap = None
+        except Exception:
+            pass
+        for _q in ("_detect_in", "_detect_out", "plate_queue"):
+            try:
+                q = getattr(self, _q, None)
+                if q is not None:
+                    while True:
+                        q.get_nowait()
+            except Exception:
+                pass
+        for _attr in ("_last_annotated_frame", "_pending_timestamp", "_letterbox_cache"):
+            try:
+                setattr(self, _attr, None)
+            except Exception:
+                pass
+        try:
+            self._pending_beeps = []
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "frame_history"):
+                self.frame_history.clear()
+        except Exception:
+            pass
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
 
     def _load_video_async(self, path):
         # Limpieza total ANTES de abrir el nuevo video: cancela loops y el
@@ -2487,6 +2624,14 @@ class VideoPlayerOpenCV:
                 free_torch_memory()
             except Exception:
                 pass
+        # Tras soltar los modelos YOLO, forzar recolección para devolver
+        # la RAM/VRAM fragmentada antes de salir o cargar otro video.
+        try:
+            import gc
+
+            gc.collect()
+        except Exception:
+            pass
 
     def _on_frame_destroy(self, event=None):
         if event is not None and event.widget is not self.frame:
@@ -3474,13 +3619,18 @@ class VideoPlayerOpenCV:
 
     def _safe_add_plate_to_panel(self, plate_img, plate_text, timestamp=None, confidence=None, 
                                  vehicle_img=None, classification=None, reason=None, track_id=None,
-                                 processing_seconds=None):
+                                 processing_seconds=None, allow_duplicate_text=False):
         """
         Añade una placa detectada al panel lateral usando PlateCard compacto.
 
         El texto de placa se usa tal cual lo entrega el OCR / Plate
         Recognizer (normalizado a mayúsculas), sin reescrituras ni
         mapeos manuales: lo que devuelve el modelo es lo que se muestra.
+
+        `allow_duplicate_text=True` (solo flujo de validación post-revisión):
+        crea la card aunque el texto ya exista en el panel, para que cada
+        track_id tenga su propia card con su clasificación/motivo y nunca se
+        pisen entre sí por colisión de texto.
         """
         # Verificaciones básicas
         if plate_img is None or not isinstance(plate_text, str):
@@ -3563,15 +3713,17 @@ class VideoPlayerOpenCV:
         
         # Estimar tiempo de detección basado en timestamp del video
         detection_time = None
-        if timestamp is not None:
+        if timestamp is not None and getattr(self, "detection_start_time", None) is not None:
             # Si tenemos la marca de tiempo del video, calcular aproximadamente
             detection_time = self.detection_start_time + timestamp
         
         # Función para ejecutar en el hilo principal de Tkinter
         def _add():
             try:
-                # IMPORTANTE: Verificar duplicados en el panel (Excepto para NIE)
-                if plate_text != "NIE":
+                # IMPORTANTE: Verificar duplicados en el panel (Excepto para NIE).
+                # Con allow_duplicate_text (validación post-revisión) se omite el
+                # filtro por texto: cada track_id obtiene su card con su motivo.
+                if plate_text != "NIE" and not allow_duplicate_text:
                     for widget in self.detected_plates_widgets:
                         if isinstance(widget, dict) and widget.get("plate_text") == plate_text:
                             print(f"Placa {plate_text} ya existe en el panel - no duplicando")
@@ -3644,10 +3796,12 @@ class VideoPlayerOpenCV:
                 
                 print(f"✅ CARD CREADA: Placa {plate_text} con clasificación {classification}")
                 
-                # Registrar en lista de placas detectadas
+                # Registrar en lista de placas detectadas (con track_id propio
+                # para mapeo estricto post-revisión, sin depender del texto).
                 plate_data = {
                     "container": card.card_frame,
                     "card_instance": card,
+                    "track_id": track_id,
                     "plate_text": plate_text,
                     "timestamp": timestamp,
                     "plate_path": plate_path,
@@ -3757,16 +3911,245 @@ class VideoPlayerOpenCV:
         # Crear panel de indicadores justo después del título
         self.indicators_panel = tk.Frame(self.plates_frame, bg="#34495e")
         self.indicators_panel.pack(side="top", fill="x", padx=5, pady=5, after=self.plates_title)
-        
+
         # Frame principal para los indicadores con layout responsive
         self.metrics_frame = tk.Frame(self.indicators_panel, bg="#34495e")
         self.metrics_frame.pack(side="top", fill="x", padx=2, pady=3)
-        
+
         # Crear los indicadores con configuración responsive inicial
         self._create_responsive_indicators()
-        
+
+        # ⏱️ Indicador visual de transparencia para tesis: Tiempo Total de
+        # Procesamiento. Usa la MISMA variable que el TR global
+        # (`detection_start_time`), de modo que el jurado puede comprobar:
+        # TR_global = Tiempo_Total / TIR. Se ubica debajo de los 4 bloques
+        # (TI/TR/NID/NIE) y encima del subtítulo "INDICADORES (por franja
+        # horaria)". Vive en `indicators_panel` (NO en `metrics_frame`) para
+        # sobrevivir a `_recreate_metrics_layout` y no romper el canvas.
+        self.total_time_label = tk.Label(
+            self.indicators_panel,
+            text="⏱️ Tiempo de Procesamiento Total: 0.00min (00:00)",
+            bg="#2c3e50", fg="#f9e79f", font=("Arial", 8, "bold"),
+            justify="center", pady=0, wraplength=280
+        )
+        # Sin hueco vertical: pegado a la cabecera/cards (pady=0).
+        self.total_time_label.pack(side="top", fill="x", padx=2, pady=0)
+
         # Configurar comportamiento responsive para el panel de métricas
         self._setup_metrics_responsive_behavior()
+
+        # Ticker en tiempo real (1 s) para el indicador de transparencia.
+        self._total_time_ticker_running = False
+        self._total_time_after_id = None
+        self._start_total_time_ticker()
+
+    def _format_total_processing_time(self, total_seconds: float) -> str:
+        """Formatea el tiempo total como '2.26min (02:15)'.
+
+        Misma fuente que el TR global: segundos transcurridos desde
+        `detection_start_time`. Primer bloque: minutos decimales con 2
+        decimales para verificación matemática exacta; paréntesis: MM:SS
+        sexagesimal. Ej.: 135.4s -> '2.26min (02:15)'.
+        """
+        try:
+            total_seconds = max(0.0, float(total_seconds))
+        except Exception:
+            total_seconds = 0.0
+        mm, ss = divmod(int(total_seconds), 60)
+        return f"{total_seconds / 60.0:.2f}min ({mm:02d}:{ss:02d})"
+
+    def _is_total_time_running(self) -> bool:
+        """True SOLO si la inferencia está viva (regla 2).
+
+        El reloj avanza únicamente mientras `processing_active` es True,
+        existe un `detection_start_time` válido Y NO está congelado.
+        `is_playing` (preview) NO abre el reloj: solo el motor de visión
+        lo hace. El flag `_total_time_frozen` tiene prioridad absoluta:
+        tras el freeze (fin de video + Fase 2 API) el reloj es tiempo
+        muerto aunque `processing_active` siga en True durante la
+        validación humana.
+        """
+        try:
+            if getattr(self, "_total_time_frozen", False):
+                return False
+            return bool(getattr(self, "processing_active", False)) and \
+                getattr(self, "detection_start_time", None) is not None
+        except Exception:
+            return False
+
+    def start_total_time_clock(self):
+        """Arranca el cronómetro exactamente al iniciar el motor (regla 3).
+
+        Llamado desde `iniciar_procesamiento_inline` (tras el reset) y
+        refinado por `PreprocessingDialog.__init__` que sincroniza
+        `player.detection_start_time = processing_start_time`.
+        """
+        try:
+            self.detection_start_time = time.time()
+            self.processing_elapsed_seconds = 0.0
+            self._total_time_frozen = False
+            self.processing_completed = False
+            self._total_time_after_id = None
+            self._refresh_total_time_label()
+        except Exception:
+            pass
+        # El ticker pudo haberse detenido con `return` al congelar el run
+        # anterior: reactivarlo para la nueva sesión.
+        try:
+            if not getattr(self, "_total_time_ticker_running", False):
+                self._start_total_time_ticker()
+        except Exception:
+            pass
+
+    def freeze_total_time_clock(self) -> float:
+        """Congela el reloj al 100%/stop y devuelve el valor final (regla 4).
+
+        Captura `elapsed = now - detection_start_time` UNA vez y lo guarda
+        en `processing_elapsed_seconds`. Fuerza explícitamente
+        `_total_time_frozen=True` y `_total_time_ticker_running=False`, y
+        cancela el `.after()` pendiente para que NINGÚN tick posterior
+        (ni siquiera uno ya encolado) vuelva a sumar segundos. Llamadas
+        posteriores son no-op sobre el valor. Si nunca se inició, queda 0.0.
+        """
+        try:
+            if not getattr(self, "_total_time_frozen", True):
+                start = getattr(self, "detection_start_time", None)
+                if start is not None:
+                    self.processing_elapsed_seconds = max(0.0, time.time() - start)
+                else:
+                    self.processing_elapsed_seconds = float(
+                        getattr(self, "processing_elapsed_seconds", 0.0) or 0.0)
+            # Freno irrevocable: aunque el valor ya estuviera capturado, las
+            # banderas se fuerzan SIEMPRE (un freeze previo a medias o un
+            # ticker huérfano no pueden reabrir el reloj).
+            self._total_time_frozen = True
+            self._total_time_ticker_running = False
+            try:
+                _aid = getattr(self, "_total_time_after_id", None)
+                host = getattr(self, "parent", None) or getattr(self, "frame", None)
+                if _aid is not None and host is not None and hasattr(host, "after_cancel"):
+                    host.after_cancel(_aid)
+            except Exception:
+                pass
+            self._total_time_after_id = None
+            self._refresh_total_time_label()
+            return float(getattr(self, "processing_elapsed_seconds", 0.0) or 0.0)
+        except Exception:
+            return 0.0
+
+    def _get_total_processing_seconds(self) -> float:
+        """Segundos totales con gating estricto (misma var que TR).
+
+        - Activo (`processing_active` + `detection_start_time`): live.
+        - Congelado (fin al 100%/stop): valor final exacto.
+        - Reposo (sin inicio): 0.0 (regla 1).
+        """
+        try:
+            if self._is_total_time_running():
+                return max(0.0, time.time() - self.detection_start_time)
+            frozen = getattr(self, "processing_elapsed_seconds", 0.0)
+            if frozen:
+                return max(0.0, float(frozen))
+            return 0.0
+        except Exception:
+            return 0.0
+
+    def _refresh_total_time_label(self):
+        """Refresca solo la etiqueta de Tiempo Total (sin tocar TI/TR/NID/NIE)."""
+        try:
+            lbl = getattr(self, "total_time_label", None)
+            if lbl is not None and lbl.winfo_exists():
+                total_s = self._get_total_processing_seconds()
+                lbl.config(
+                    text=f"⏱️ Tiempo de Procesamiento Total: "
+                         f"{self._format_total_processing_time(total_s)}"
+                )
+        except Exception:
+            pass
+
+    def _start_total_time_ticker(self):
+        """Arma el loop `after` de 1 s (el gating vive en el tick)."""
+        if getattr(self, "_total_time_ticker_running", False):
+            return
+        self._total_time_ticker_running = True
+        self._tick_total_time_label()
+
+    def _tick_total_time_label(self):
+        """Tick gated: SOLO avanza el reloj con inferencia viva (regla 2).
+
+        - Reposo: no toca la etiqueta (queda en "0.00min (00:00)").
+        - Activo: refresca cada segundo con `now - detection_start_time`.
+        - Fin de procesamiento: freno lógico estricto — congela el texto
+          en el tiempo exacto de la sesión y hace `return` SIN reprogramar
+          `.after()`, para que el reloj no siga sumando segundos.
+        """
+        # ── GUILLOTINA: congelado => salir de tajo, sin reprogramar ──
+        # Corta cualquier invocación pendiente de `.after()`: ni siquiera una
+        # ya encolada puede sumar un segundo más.
+        if getattr(self, '_total_time_frozen', False):
+            self._total_time_ticker_running = False
+            return
+        # ── Freno lógico: procesamiento finalizado → congelar y salir ──
+        # Cubre: video terminó / fin de frames / `processing_completed` /
+        # `is_playing` False definitivo con valor final ya capturado.
+        try:
+            _finished = bool(getattr(self, "processing_completed", False))
+        except Exception:
+            _finished = False
+        try:
+            _elapsed = float(getattr(self, "processing_elapsed_seconds", 0.0) or 0.0)
+        except Exception:
+            _elapsed = 0.0
+        try:
+            _frozen = bool(getattr(self, "_total_time_frozen", True))
+        except Exception:
+            _frozen = True
+        try:
+            _active = bool(getattr(self, "processing_active", False))
+        except Exception:
+            _active = False
+        if _finished or (_elapsed > 0 and _frozen and not _active):
+            try:
+                self.freeze_total_time_clock()
+            except Exception:
+                pass
+            self._total_time_ticker_running = False
+            return
+        try:
+            if self._is_total_time_running():
+                self._refresh_total_time_label()
+            elif not getattr(self, "_total_time_frozen", True):
+                # El motor se detuvo sin llamar a freeze (ej. ruta nocturna
+                # sin detecciones): congelar aquí una sola vez.
+                try:
+                    self.freeze_total_time_clock()
+                except Exception:
+                    pass
+            # Si está congelado (reposo o fin), no se toca la etiqueta:
+            # el valor final/0.0 permanece fijo.
+        finally:
+            # Si el freeze ocurrió durante este tick, no reprogramar:
+            # el reloj queda congelado en el valor final.
+            try:
+                if getattr(self, "_total_time_frozen", True) and not self._is_total_time_running():
+                    _done = bool(getattr(self, "processing_completed", False))
+                    _el = float(getattr(self, "processing_elapsed_seconds", 0.0) or 0.0)
+                    if _done or _el > 0:
+                        self._total_time_ticker_running = False
+                        return
+            except Exception:
+                pass
+            try:
+                host = getattr(self, "parent", None) or getattr(self, "frame", None)
+                if host is not None and hasattr(host, "after"):
+                    try:
+                        self._total_time_after_id = host.after(1000, self._tick_total_time_label)
+                    except Exception:
+                        self._total_time_ticker_running = False
+                else:
+                    self._total_time_ticker_running = False
+            except Exception:
+                self._total_time_ticker_running = False
     
     def _create_responsive_indicators(self):
         """Crea los indicadores con configuración responsive"""
@@ -3959,6 +4342,12 @@ class VideoPlayerOpenCV:
     def _refresh_current_metrics(self):
         """Refresca los valores actuales en las métricas después de recrear el layout"""
         try:
+            # El Tiempo Total siempre se refresca (aunque no haya cards) para
+            # no perder el indicador de transparencia tras el recreate.
+            try:
+                self._refresh_total_time_label()
+            except Exception:
+                pass
             # Trigger update si ya hay datos
             if hasattr(self, 'detected_plates_widgets') and self.detected_plates_widgets:
                 self._update_metrics_panel()
@@ -3993,7 +4382,9 @@ class VideoPlayerOpenCV:
             
             # 🧮 CALCULAR TR: tiempo de procesamiento / TIR (NID+NIE)
             # TIR = total infracciones procesadas; TR en min por infracción procesada.
-            video_processing_seconds = max(0.0, time.time() - self.detection_start_time)
+            # ⏱️ Usa el tiempo gated (0.0 en reposo, live en inferencia,
+            # congelado al 100%) para que TR = Tiempo_Total / TIR sea exacto.
+            video_processing_seconds = self._get_total_processing_seconds()
             tir_count = nid_count + nie_count
             if tir_count > 0:
                 tr_seconds_per_infraction = video_processing_seconds / tir_count
@@ -4030,7 +4421,20 @@ class VideoPlayerOpenCV:
                 self.tr_label.config(text=f"TR:{tr_text}", wraplength=180, justify="center")
                 self.nid_label.config(text=f"NID:{nid_count}")
                 self.nie_label.config(text=f"NIE:{nie_count}")
-            
+
+            # ⏱️ Transparencia tesis: Tiempo Total con LA MISMA
+            # `video_processing_seconds` usada arriba para el TR global
+            # (TR = Tiempo_Total / TIR). Actualización al finalizar y en
+            # tiempo real (el ticker de 1 s también la refresca).
+            try:
+                if getattr(self, "total_time_label", None) is not None:
+                    self.total_time_label.config(
+                        text=f"⏱️ Tiempo de Procesamiento Total: "
+                             f"{self._format_total_processing_time(video_processing_seconds)}"
+                    )
+            except Exception:
+                pass
+
             # DEBUG: Mostrar valores actualizados
             print(f"📊 INDICADORES ACTUALIZADOS:")
             print(f"   TI: {ti:.1f}% | TR: {tr_text} ({tr_seconds_per_infraction:.2f}s/inf) | NID: {nid_count} | NIE: {nie_count}")
@@ -4070,13 +4474,17 @@ class VideoPlayerOpenCV:
         for pend in (pending_infractions or []):
             pending_by_track[pend.get("vehicle_id")] = pend
 
-        # Índice de cards existentes por track_id
+        # Índice de cards existentes por track_id (estricto: nunca por texto
+        # de placa, que se repite o falta en los NIE). Se prefiere el track_id
+        # guardado en plate_data y se usa la card como respaldo.
         card_by_track = {}
         for plate_data in list(getattr(self, "detected_plates_widgets", [])):
             if not isinstance(plate_data, dict):
                 continue
             card = plate_data.get("card_instance")
-            tid = getattr(card, "track_id", None)
+            tid = plate_data.get("track_id", None)
+            if tid is None:
+                tid = getattr(card, "track_id", None)
             if tid is not None:
                 card_by_track[tid] = plate_data
 
@@ -4095,19 +4503,37 @@ class VideoPlayerOpenCV:
                     _ps = None
             except Exception:
                 _ps = None
+            # Motivo NIE elegido en revisión (si la fila quedó sin validar).
+            nie_reason = ""
+            try:
+                nie_reason = str(_meta.get("nie_reason") or "").strip()
+            except Exception:
+                nie_reason = ""
             if tid in card_by_track:
                 plate_data = card_by_track[tid]
                 plate_data["classification"] = cls
                 if trans:
                     plate_data["plate_text"] = trans
                 plate_data["quality_score"] = ocr_conf
+                if nie_reason:
+                    plate_data["nie_reason"] = nie_reason
                 card = plate_data.get("card_instance")
                 if card is not None:
                     card.apply_validation(cls, trans, ocr_conf, processing_seconds=_ps)
+                    # Reflejar el motivo en el panel derecho: "NIE: [motivo]".
+                    if cls == "NIE" and nie_reason:
+                        try:
+                            card.razon_text = f"NIE: {nie_reason}"
+                            rl = getattr(card, "reason_label", None)
+                            if rl is not None and rl.winfo_exists():
+                                rl.config(text=f"🚫 NIE: {nie_reason}")
+                        except Exception:
+                            pass
             else:
                 self._create_card_for_validation(cls, trans, tid, ev.timestamp_seconds,
                                                  ev.crop_path, ev.vehicle_class, ocr_conf,
-                                                 processing_seconds=_ps)
+                                                 processing_seconds=_ps,
+                                                 nie_reason=nie_reason)
 
         # 2) Pendientes sin placa detectada -> NIE (recuadro amarillo)
         for tid, pend in pending_by_track.items():
@@ -4133,12 +4559,13 @@ class VideoPlayerOpenCV:
 
     def _create_card_for_validation(self, classification, plate_text, track_id,
                                     timestamp, crop_path, vehicle_class="VEH", ocr_confidence=0.0,
-                                    processing_seconds=None):
+                                    processing_seconds=None, nie_reason=""):
         """Crea una card nueva desde el resultado de validación (si no existía).
 
         El TR individual usa la inferencia real medida para ESTA placa
         (`processing_seconds` = YOLO-localize + OCR). Si llega None, la card
         usa el timestamp del video como fallback (comportamiento previo).
+        Si es NIE con motivo de revisión, la razón muestra "NIE: [motivo]".
         """
         img = None
         if crop_path and os.path.exists(crop_path):
@@ -4148,8 +4575,11 @@ class VideoPlayerOpenCV:
                     img = None
             except Exception:
                 img = None
-        reason = ("✅ Placa leída correctamente" if classification == "NID"
-                  else "🔍 Sin placa detectada (NIE)")
+        if classification == "NIE" and (nie_reason or "").strip():
+            reason = f"🚫 NIE: {nie_reason.strip()}"
+        else:
+            reason = ("✅ Placa leída correctamente" if classification == "NID"
+                      else "🔍 Sin placa detectada (NIE)")
         self._safe_add_plate_to_panel(
             plate_img=img if img is not None else self._empty_plate_fallback(),
             plate_text=plate_text or "NIE",
@@ -4160,6 +4590,8 @@ class VideoPlayerOpenCV:
             reason=reason,
             track_id=track_id,
             processing_seconds=processing_seconds,
+            # Bypass del dedup por texto: la card pertenece a este track_id.
+            allow_duplicate_text=True,
         )
         # _safe_add_plate_to_panel re-clasifica internamente; forzamos la
         # clasificación de validación una vez creada la card.
@@ -4168,12 +4600,20 @@ class VideoPlayerOpenCV:
             parent.after(200, lambda: self._apply_card_classification(track_id, classification, plate_text, ocr_confidence))
 
     def _apply_card_classification(self, track_id, classification, plate_text=None, confidence=None):
-        """Aplica la clasificación de validación a una card creada recientemente."""
+        """Aplica la clasificación de validación a una card creada recientemente.
+
+        Mapeo estricto por `track_id` (primero el guardado en `plate_data`,
+        luego el de la card): nunca por texto de placa, para que los NIE con
+        texto repetido/vacío no se pisen entre sí.
+        """
         for plate_data in getattr(self, "detected_plates_widgets", []):
             if not isinstance(plate_data, dict):
                 continue
             card = plate_data.get("card_instance")
-            if getattr(card, "track_id", None) == track_id:
+            stored_tid = plate_data.get("track_id", None)
+            if stored_tid is None:
+                stored_tid = getattr(card, "track_id", None)
+            if stored_tid == track_id:
                 plate_data["classification"] = classification
                 if plate_text:
                     plate_data["plate_text"] = plate_text
@@ -4334,10 +4774,27 @@ class VideoPlayerOpenCV:
             print(f"Error en limpieza previa a procesamiento: {e}")
 
         self.processing_active = True
+        # ⏱️ Inicio exacto del tiempo vivo de inferencia (regla 3).
+        # `PreprocessingDialog.__init__` lo refina a `processing_start_time`.
+        try:
+            self.start_total_time_clock()
+        except Exception:
+            pass
         self._show_inline_progress(True)
 
         def on_complete(success, infractions=None):
+            # ⏱️ Fin al 100%: congelar ANTES de bajar el flag para capturar
+            # el valor final exacto (regla 4). Deja de avanzar desde aquí.
+            try:
+                self.freeze_total_time_clock()
+            except Exception:
+                pass
             self.processing_active = False
+            self.processing_completed = True
+            try:
+                self._refresh_total_time_label()
+            except Exception:
+                pass
             self._show_inline_progress(False)
             if success and infractions and len(infractions) > 0:
                 try:
@@ -4360,6 +4817,10 @@ class VideoPlayerOpenCV:
         except Exception as e:
             import traceback
             traceback.print_exc()
+            try:
+                self.freeze_total_time_clock()
+            except Exception:
+                pass
             self.processing_active = False
             self._show_inline_progress(False)
             raise

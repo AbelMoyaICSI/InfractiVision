@@ -30,9 +30,12 @@ from src.domain.services.plate_classification import PlateClassificationSystem
 
 # --- Popups extraídos a su Mixin (Fase 3) ---
 from src.presentation.gui.popups.preprocessing_popups import PreprocessingPopupsMixin
-from src.application.use_cases.process_violation_video import OfficialVideoProcessor
+from src.application.use_cases.process_violation_video import OfficialVideoProcessor, ProcessingCancelled
 from src.domain.entities.plate_evidence import PlateEvidence
-from src.presentation.gui.plate_review_window import PlateReviewWindow
+from src.presentation.gui.plate_review_window import (
+    PlateReviewWindow,
+    normalize_nie_reason,
+)
 
 
 # Ancho mínimo del crop de vehículo para mandarlo entero a la API cuando YOLO
@@ -955,7 +958,12 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                         self.details_label.config(text=f"{self._official_infraction_count} infractores detectados | {len(self.detected_infractions)} mejores frames listos para OCR")
                         if getattr(self, "inline", False):
                             self._inline_progress_show(False)
-                        # Congelar temporizador y semáforo al terminar el procesamiento
+                        # Pausar semáforo al terminar el procesamiento de video.
+                        # ⏱️ El Tiempo Total NO se congela aquí: la Fase 2
+                        # (consultas secuenciales a la API de Plate Recognizer
+                        # dentro de PlateReviewWindow) ES tiempo de máquina y
+                        # debe seguir sumando. El freeze ocurre al 100% de la
+                        # cola de la API (ver `on_api_complete`).
                         if getattr(self.player, "semaforo", None) is not None:
                             self.player.semaforo.deactivate_semaphore()
                         self._open_official_review(payload)
@@ -1444,12 +1452,25 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 self.result_queue.put(("official_complete", event["payload"]))
 
         try:
-            processor.process(self.video_path, config, output_dir, callback=callback)
+            processor.process(
+                self.video_path, config, output_dir, callback=callback,
+                # Corte cooperativo: al cancelar/cambiar de video el hilo
+                # deja de lanzar YOLO en GPU en el próximo batch/frame en
+                # vez de procesar como zombie hasta el EOF.
+                should_stop=lambda: bool(getattr(self, "canceled", False)),
+            )
+        except ProcessingCancelled:
+            # Cancelación del usuario: salir en silencio (sin popup de
+            # error); la limpieza la hace `_cleanup_threads` + player.
+            return
         except Exception as error:
             self.result_queue.put(("official_error", str(error)))
 
     def _open_official_review(self, payload):
         """Nuevo flujo: candidatos -> cuadrante direccional -> placa -> API texto."""
+        # ⏱️ El reloj sigue corriendo durante la Fase 2 (API): se congela
+        # vía `on_api_complete` al 100% de la cola, justo antes de que el
+        # humano empiece a validar.
         # `to_dict()` expande el metadata a claves top-level: se recuperan
         # (candidate_crops, direction, ...) para el post-proceso.
         _known = {"video", "vehicle_id", "frame", "timestamp_seconds",
@@ -1488,11 +1509,18 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             )
         except Exception as e:
             print(f"⚠️ Post-proceso de placas omitido (van carros completos): {e}")
+        try:
+            _freeze_cb = getattr(getattr(self, "player", None), "freeze_total_time_clock", None)
+            if not callable(_freeze_cb):
+                _freeze_cb = None
+        except Exception:
+            _freeze_cb = None
         PlateReviewWindow(
             self.dialog,
             evidences,
             Path(writable_data_path("data/output/official")),
             on_complete=self._on_official_validation_done,
+            on_api_complete=_freeze_cb,
         )
 
     def _on_official_validation_done(self, evidences):
@@ -4067,6 +4095,15 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                         self.player.is_playing = False
                         self.player.is_paused = True
                         print("⏸️ VIDEO PAUSADO en modo nocturno sin detecciones")
+
+                    # ⏱️ Congelar el Tiempo Total AQUÍ (fin de inferencia),
+                    # ANTES de la ventana bloqueante nocturna. Idempotente.
+                    try:
+                        _freeze = getattr(getattr(self, "player", None), "freeze_total_time_clock", None)
+                        if callable(_freeze):
+                            _freeze()
+                    except Exception:
+                        pass
                     
                     # Actualizar botón de play/pause
                     if hasattr(self.player, 'play_pause_button'):
@@ -5116,7 +5153,7 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             except Exception:
                 total_duration = "N/A"
 
-        def _build_entry(placa, confianza, clasificacion, plate_path, vehicle_path, timestamp_seconds, metadata):
+        def _build_entry(placa, confianza, clasificacion, plate_path, vehicle_path, timestamp_seconds, metadata, nie_reason=""):
             now = datetime.now()
             total_seconds = int(timestamp_seconds or 0)
             mins, secs = divmod(total_seconds, 60)
@@ -5138,6 +5175,9 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 "clasificacion": clasificacion,
                 "confianza": round(max(0.0, min(1.0, confianza)), 3),
                 "tiempo_procesamiento": round(timestamp_seconds or 0, 2),
+                # `nie_reason` a nivel superior por compatibilidad; el motivo
+                # canónico viaja dentro de `metadata` (serializado a JSON en BD).
+                "nie_reason": nie_reason,
                 "metadata_clasificacion": metadata,
                 "metadata_clasificacion_json": __import__("json").dumps(metadata, ensure_ascii=False),
                 "sistema_version": "InfractiVision_v2.0",
@@ -5156,14 +5196,26 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                 metadata = {"placa_final": ev.plate_text, "confianza": round(confianza, 3), "calidad_deteccion": "alta" if confianza >= 0.7 else "media" if confianza >= 0.5 else "baja", "justificacion": "Validada en revisión oficial (OCR)"}
                 nid_entries.append(_build_entry(ev.plate_text, confianza, "NID", plate_path, "", ev.timestamp_seconds, metadata))
             else:
-                metadata = {"placa_final": ev.plate_text or "", "confianza": round(confianza, 3), "calidad_deteccion": "baja", "justificacion": "No validada en revisión oficial - NIE"}
+                ev_meta = getattr(ev, "metadata", None) or {}
+                nie_reason = str(ev_meta.get("nie_reason") or "").strip()
+                if nie_reason:
+                    # Motivo manual de revisión (display o legacy) → código limpio.
+                    nie_reason = normalize_nie_reason(nie_reason)
+                elif getattr(self, "is_night", False):
+                    nie_reason = "ILUMINACION_ADVERSA"
+                elif ev.plate_text:
+                    nie_reason = "ERROR_OCR"
+                else:
+                    nie_reason = "PLACA_ILEGIBLE"
+                metadata = {"placa_final": ev.plate_text or "", "confianza": round(confianza, 3), "calidad_deteccion": "baja", "nie_reason": nie_reason, "justificacion": f"No validada en revisión oficial - NIE: {nie_reason}"}
                 placa_label = ev.plate_text or f"TRACK-{ev.track_id}"
-                nie_entries.append(_build_entry(placa_label, confianza, "NIE", plate_path, "", ev.timestamp_seconds, metadata))
+                nie_entries.append(_build_entry(placa_label, confianza, "NIE", plate_path, "", ev.timestamp_seconds, metadata, nie_reason))
         for pend in (pending_infractions or []):
             crop = str(pend.get("crop_path", "") or "")
             plate_path = crop if crop and os.path.exists(crop) else ""
-            metadata = {"placa_final": "", "confianza": 0.0, "calidad_deteccion": "baja", "justificacion": "Infracción pendiente sin placa detectada - NIE"}
-            nie_entries.append(_build_entry(f"TRACK-{pend.get('vehicle_id', '?')}", 0.0, "NIE", plate_path, "", pend.get("timestamp_seconds", 0), metadata))
+            pend_reason = "ILUMINACION_ADVERSA" if getattr(self, "is_night", False) else "OCLUSION_PARCIAL"
+            metadata = {"placa_final": "", "confianza": 0.0, "calidad_deteccion": "baja", "nie_reason": pend_reason, "justificacion": f"Infracción pendiente sin placa detectada - NIE: {pend_reason}"}
+            nie_entries.append(_build_entry(f"TRACK-{pend.get('vehicle_id', '?')}", 0.0, "NIE", plate_path, "", pend.get("timestamp_seconds", 0), metadata, pend_reason))
 
         all_entries = nid_entries + nie_entries
         if all_entries:
@@ -5360,10 +5412,28 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             self._ocr_plate_detector = None
         except Exception:
             pass
+        # Drenar frames numpy encolados que nadie consumirá (cancel/switch):
+        # sin esto la result_queue retiene cientos de MB en RAM.
+        try:
+            _rq = getattr(self, "result_queue", None)
+            if _rq is not None:
+                for _ in range(4096):
+                    try:
+                        _rq.get_nowait()
+                    except Exception:
+                        break
+        except Exception:
+            pass
         try:
             from src.core.detection.model_guard import free_torch_memory
 
             free_torch_memory()
+        except Exception:
+            pass
+        try:
+            import gc
+
+            gc.collect()
         except Exception:
             pass
 

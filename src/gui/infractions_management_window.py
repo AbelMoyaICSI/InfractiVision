@@ -503,6 +503,31 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             _hora_cache[hora_str] = h
         return h
 
+    def _nie_reason_of(inf):
+        """Extrae el motivo NIE guardado en revisión.
+
+        Busca `nie_reason` a nivel superior y, si no existe (ej. filas leídas
+        desde SQLite), dentro de `metadata_clasificacion_json`. Retorna "" si
+        no hay motivo registrado.
+        """
+        try:
+            direct = (inf.get('nie_reason') or '').strip()
+        except Exception:
+            direct = ''
+        if direct:
+            return direct
+        raw = inf.get('metadata_clasificacion_json', inf.get('metadata_clasificacion', ''))
+        try:
+            if isinstance(raw, dict):
+                return str(raw.get('nie_reason') or '').strip()
+            if isinstance(raw, str) and raw.strip():
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    return str(parsed.get('nie_reason') or '').strip()
+        except Exception:
+            pass
+        return ''
+
     def load_data_async():
         try:
             data = load_infractions_data()
@@ -1566,6 +1591,11 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                 ("🎥 Timestamp:", infraction_data.get('video_timestamp', 'No disponible')),
                 ("📊 ID Único:", infraction_data.get('id', 'No disponible')),
             ]
+            # Feedback del motivo NIE elegido en revisión (solo tarjetas NIE).
+            if infraction_data.get('clasificacion', 'NID') != 'NID':
+                details_info.append(
+                    ("🚫 Motivo NIE:", _nie_reason_of(infraction_data) or "No especificado")
+                )
 
             for label, value in details_info:
                 row_frame = tk.Frame(details_frame, bg="#ffffff", relief="ridge", bd=1)
@@ -1603,7 +1633,10 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
             badge_text = "✅ NID VALIDADA"
             badge_color = "#27ae60"
         else:
-            badge_text = "❌ NIE NO VALIDADA"
+            # [RESPALDO badge] Texto anterior (no borrar): solo decía "NIE".
+            # badge_text = "❌ NIE NO VALIDADA"
+            _nie_motivo = _nie_reason_of(inf)
+            badge_text = f"❌ NIE: {_nie_motivo}" if _nie_motivo else "❌ NIE NO VALIDADA"
             badge_color = "#e74c3c"
 
         card_bg = "#E8F5E9" if badge_color == "#27ae60" else "#FDEBD0" if badge_color == "#f39c12" else "#FDECEA"
@@ -1613,10 +1646,10 @@ def create_infractions_window(window: tk.Toplevel, back_callback):
                         highlightbackground=badge_color, highlightcolor=badge_color)
         card.columnconfigure(0, weight=1)
 
-        # Badge de estado
+        # Badge de estado (con wrap para motivos NIE largos)
         tk.Label(
             card, text=badge_text, font=("Arial", 9, "bold"),
-            bg=badge_color, fg="white"
+            bg=badge_color, fg="white", wraplength=260, justify="center"
         ).pack(fill="x")
 
         # Imagen de la placa (fallback: imagen del vehículo)

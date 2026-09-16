@@ -63,6 +63,90 @@ def compute_zoomed_size(orig_w: int, orig_h: int, zoom: float) -> tuple[int, int
     return max(1, int(round(orig_w * zoom))), max(1, int(round(orig_h * zoom)))
 
 
+# Motivos de descarte NIE: lista definitiva, 100% uniforme "CÓDIGO — Descripción".
+# Fuente única: el Combobox muestra el DISPLAY, pero lo que se persiste en
+# metadata/BD/reportes es siempre el CÓDIGO normalizado (vía
+# `normalize_nie_reason`). Si la fila queda sin validar, el código viaja en
+# `evidence.metadata["nie_reason"]` hasta la tarjeta final ("NIE: [CÓDIGO]").
+NIE_REASONS = (
+    "ERROR_OCR",
+    "PLACA_ILEGIBLE",
+    "ILUMINACION_ADVERSA",
+    "OCLUSION_PARCIAL",
+    "FALSO_POSITIVO",
+)
+NIE_REASON_LABELS = {
+    "ERROR_OCR": "El sistema leyó mal uno o más caracteres de la placa.",
+    "PLACA_ILEGIBLE": "La imagen de la placa está borrosa o de baja calidad.",
+    "ILUMINACION_ADVERSA": "Problemas de visibilidad por noche u oscuridad.",
+    "OCLUSION_PARCIAL": "La placa está tapada parcialmente por objetos o barro.",
+    "FALSO_POSITIVO": "Detección errónea de estructura o vehículo no válido.",
+}
+NIE_REASON_DEFAULT = NIE_REASONS[0]
+# Compat hacia atrás: cualquier registro antiguo (textos originales del
+# sistema, IDs de la versión intermedia de 4 categorías o sus displays) se
+# migra automáticamente al código limpio al leer, sin romper la BD.
+NIE_REASON_LEGACY_MAP = {
+    # Textos originales del sistema.
+    "Placa ilegible / Borrosa": "PLACA_ILEGIBLE",
+    "Vehículo no válido (Ej. Mototaxi)": "FALSO_POSITIVO",
+    "Falso positivo (Sin placa visible / Parte de carro)": "FALSO_POSITIVO",
+    "Falsa detección": "FALSO_POSITIVO",
+    # IDs y displays de la versión intermedia (4 categorías).
+    "FALSO_POSITIVO_ESTRUCTURAL": "FALSO_POSITIVO",
+    "El OCR/API se equivocó en uno o más caracteres": "ERROR_OCR",
+    "Baja iluminación, noche o deslumbramiento excesivo": "ILUMINACION_ADVERSA",
+    "Placa parcialmente ocluida (por objetos, suciedad u otros vehículos)": "OCLUSION_PARCIAL",
+    "Falso positivo / Confusión de estructura (ej. mototaxi, parrilla, partes del vehículo)": "FALSO_POSITIVO",
+}
+
+
+def nie_reason_options() -> list[str]:
+    """Opciones del Combobox: exactamente los 5 'CÓDIGO — Descripción'."""
+    return [f"{rid} — {NIE_REASON_LABELS[rid]}" for rid in NIE_REASONS]
+
+
+def normalize_nie_reason(value) -> str:
+    """Código limpio para persistir (BD/reportes). Legacy→código; resto→default."""
+    try:
+        v = (value or "").strip()
+    except Exception:
+        return NIE_REASON_DEFAULT
+    if v in NIE_REASONS:
+        return v
+    if v in NIE_REASON_LEGACY_MAP:
+        return NIE_REASON_LEGACY_MAP[v]
+    # Display "ID — descripción" (nuevo o intermedio): resolver por la cabeza,
+    # que puede ser un código vigente o un ID legacy del mapa.
+    head = v.split(" — ", 1)[0].strip()
+    if head in NIE_REASONS:
+        return head
+    if head in NIE_REASON_LEGACY_MAP:
+        return NIE_REASON_LEGACY_MAP[head]
+    return NIE_REASON_DEFAULT
+
+
+def nie_reason_display(value) -> str:
+    """Texto del Combobox para un ID (o legacy): 'ID — descripción'."""
+    rid = normalize_nie_reason(value)
+    return f"{rid} — {NIE_REASON_LABELS[rid]}"
+
+
+def default_nie_reason(evidence=None) -> str:
+    """Motivo NIE inicial del Combobox (siempre un valor de sus opciones).
+
+    Lo guardado (código nuevo, display o texto/ID legacy) se normaliza y se
+    muestra como 'CÓDIGO — Descripción'; sin guardado va el primero.
+    """
+    try:
+        saved = ((getattr(evidence, "metadata", None) or {}).get("nie_reason") or "").strip()
+    except Exception:
+        saved = ""
+    if saved:
+        return nie_reason_display(saved)
+    return nie_reason_display(NIE_REASON_DEFAULT)
+
+
 class EvidenceZoomDialog:
     """Ventana emergente independiente (Toplevel) para examinar una evidencia en alta resolución.
 
@@ -256,11 +340,18 @@ class EvidenceZoomDialog:
 class PlateReviewWindow:
     """Show the best crop per infractor and run Plate Recognizer one by one."""
 
-    def __init__(self, parent, evidences: list[PlateEvidence], output_dir: str | Path, on_complete=None):
+    def __init__(self, parent, evidences: list[PlateEvidence], output_dir: str | Path, on_complete=None,
+                 on_api_complete=None):
         self.parent = parent
         self.evidences = evidences
         self.output_dir = Path(output_dir)
         self.on_complete = on_complete
+        # ⏱️ Callback invocado UNA vez al 100% de la cola de la API (Fase 2),
+        # justo antes de la validación humana. El llamador pasa
+        # `player.freeze_total_time_clock` para que el TR Global mida
+        # video + API sin latencia humana.
+        self.on_api_complete = on_api_complete
+        self._api_freeze_done = False
         self.current_index = 0
         self.processing = False
         self.images: list[ImageTk.PhotoImage] = []
@@ -436,15 +527,59 @@ class PlateReviewWindow:
             confidence = ttk.Label(info, text="Pendiente")
             confidence.pack(anchor="w")
             validated = tk.BooleanVar(value=evidence.validated)
-            check = ttk.Checkbutton(row, text="Validar", variable=validated, state="disabled")
-            check.pack(side="right", padx=8)
+            # Columna derecha: checkbox "Validar" + selector de motivo NIE.
+            # El motivo solo aplica si la fila queda SIN validar (será NIE).
+            side_box = ttk.Frame(row)
+            side_box.pack(side="right", padx=8)
+            check = ttk.Checkbutton(side_box, text="Validar", variable=validated, state="disabled")
+            check.pack(anchor="e")
+            ttk.Label(side_box, text="Motivo NIE:", font=("Arial", 8)).pack(anchor="e", pady=(6, 0))
+            reason_var = tk.StringVar(value=default_nie_reason(evidence))
+            reason_combo = ttk.Combobox(
+                side_box, textvariable=reason_var, values=nie_reason_options(),
+                state="readonly", width=40, font=("Arial", 8),
+            )
+            reason_combo.pack(anchor="e", pady=(0, 2))
+            # Descripción completa de la opción elegida (wrap): las opciones
+            # largas no caben en el ancho del panel, así que el texto íntegro
+            # ("ID — descripción") siempre se lee aquí, sin cortes.
+            desc_var = tk.StringVar()
+            desc_label = ttk.Label(
+                side_box, textvariable=desc_var, font=("Arial", 7, "italic"),
+                foreground="#5d6d7e", wraplength=230, justify="left",
+            )
+            desc_label.pack(anchor="e")
+
+            def _sync_reason_desc(*_args, _rv=reason_var, _dv=desc_var):
+                try:
+                    _dv.set(nie_reason_display(_rv.get()))
+                except Exception:
+                    pass
+
+            reason_combo.bind("<<ComboboxSelected>>", _sync_reason_desc)
+            _sync_reason_desc()
+            # Anti-shuffle: un Combobox readonly cambia su valor con la rueda del
+            # mouse. Como la lista se recorre con scroll, la rueda DEBE mover solo
+            # el canvas y nunca alterar el motivo elegido en otra fila.
+            def _lock_combo_wheel(_event=None):
+                return "break"
+            reason_combo.bind("<MouseWheel>", _lock_combo_wheel)
+            reason_combo.bind("<Shift-MouseWheel>", _lock_combo_wheel)
+            reason_combo.bind("<Button-4>", _lock_combo_wheel)
+            reason_combo.bind("<Button-5>", _lock_combo_wheel)
             self.rows.append({
                 "evidence": evidence,
+                # Emparejamiento estricto fila<->evidencia por track_id: se verifica
+                # en _apply_review_values antes de persistir el motivo.
+                "track_id": int(getattr(evidence, "track_id", 0) or 0),
                 "text": text_var,
                 "confidence": confidence,
                 "validated": validated,
                 "check": check,
                 "entry": entry,
+                "reason": reason_var,
+                "reason_combo": reason_combo,
+                "reason_desc": desc_var,
             })
 
     def _open_zoom(self, crop_path: str | Path, title: str = "Evidencia"):
@@ -473,6 +608,22 @@ class PlateReviewWindow:
         if self.processing or self.current_index >= len(self.rows):
             if self.current_index >= len(self.rows) and self.rows:
                 self.status.config(text="Reconocimiento terminado. Revise y valide los resultados.")
+                # ⏱️ Fin de la Fase 2 (API al 100% de la cola): congelar el
+                # Tiempo Total AQUÍ, antes de la validación humana. Corre en
+                # el hilo de Tk (vía `after`), por lo que el refresh del
+                # label es thread-safe. Exactamente una vez (idempotente).
+                if not getattr(self, "_api_freeze_done", False):
+                    self._api_freeze_done = True
+                    print("API Terminada - Congelando reloj")
+                    try:
+                        _cb = getattr(self, "on_api_complete", None)
+                        if callable(_cb):
+                            _cb()
+                            print("API Terminada - Congelando reloj: OK")
+                        else:
+                            print("API Terminada - Congelando reloj: SIN callback (on_api_complete no callable)")
+                    except Exception as exc:
+                        print(f"⚠️ Error congelando Tiempo Total al fin de la API: {exc}")
             return
         self.processing = True
         row = self.rows[self.current_index]
@@ -538,19 +689,19 @@ class PlateReviewWindow:
                 except Exception:
                     pass
                 row["confidence"].config(
-                    text=f"Confianza: {confidence:.2f} — YOLO no localizó, queda NIE (solo clave dedup)"
+                    text=f"Confianza: {confidence:.2f} — vehículo completo, verificar con lupa"
                 )
-                # Queda NIE por defecto: check habilitado para promocion manual.
-                evidence.validated = False
-                row["validated"].set(False)
-                row["check"].state(["!disabled"])
+                # [RESPALDO auto-NIE] Comportamiento anterior (no borrar): forzaba NIE
+                # aunque la API devolviera texto válido ("YOLO no localizó, queda NIE...",
+                # validated=False). Se elimina por penalizar injustamente los indicadores.
             else:
                 row["confidence"].config(text=f"Confianza: {confidence:.2f}")
-                # Auto-validar por defecto: Plate Recognizer sí detectó placa.
-                # El usuario aún puede desmarcar manualmente antes de Completar/Exportar.
-                evidence.validated = True
-                row["validated"].set(True)
-                row["check"].state(["!disabled"])
+            # Con texto válido de la API, el checkbox queda habilitado Y marcado por
+            # defecto —incluso en vehículo completo—: si el operador lo valida con la
+            # lupa, cuenta como NID.
+            evidence.validated = True
+            row["validated"].set(True)
+            row["check"].state(["!disabled"])
         elif previous:
             # Fallback: la API falló/offline o no vio placa; se conserva el
             # texto previo (si lo hay) en vez de vaciarlo.
@@ -580,10 +731,39 @@ class PlateReviewWindow:
         self._process_next()
 
     def _apply_review_values(self):
-        for row in self.rows:
+        for position, row in enumerate(self.rows):
             evidence: PlateEvidence = row["evidence"]
+            # Chequeo estricto anti-shuffle: la fila solo puede escribir en la
+            # evidencia de SU track_id. Si algo reordenó filas/evidencias, se
+            # registra el error en vez de cruzar motivos entre vehículos.
+            # (Filas sin clave "track_id" conservan el comportamiento previo.)
+            if "track_id" in row:
+                try:
+                    row_tid = int(row.get("track_id", 0) or 0)
+                    ev_tid = int(getattr(evidence, "track_id", 0) or 0)
+                except Exception:
+                    row_tid, ev_tid = 0, 0
+                if row_tid != ev_tid:
+                    # ASCII a propósito: la consola Windows (cp1252) no acepta emojis.
+                    print(f"[ANTI-SHUFFLE] fila {position} (track {row_tid}) no coincide "
+                          f"con evidencia (track {ev_tid}); se omite su motivo.")
+                    continue
             evidence.plate_text = row["text"].get().strip().upper()
             evidence.validated = bool(row["validated"].get()) and bool(evidence.plate_text)
+            # Persiste el motivo NIE en metadata (viaja hasta la tarjeta final).
+            try:
+                if evidence.metadata is None:
+                    evidence.metadata = {}
+                if evidence.validated:
+                    evidence.metadata.pop("nie_reason", None)
+                else:
+                    reason_var = row.get("reason")
+                    reason = (reason_var.get().strip() if reason_var is not None else "")
+                    # Se persiste el ID normalizado (ERROR_OCR, ...), no el
+                    # display del Combobox. Legacy/unknown → default.
+                    evidence.metadata["nie_reason"] = normalize_nie_reason(reason)
+            except Exception:
+                pass
 
     def _export(self):
         self._apply_review_values()

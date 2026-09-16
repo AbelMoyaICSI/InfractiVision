@@ -3,6 +3,8 @@
 Mantiene la lógica algorítmica original sin modificaciones.
 """
 
+from src.path_helper import resource_path
+
 class SmartPlateCorrector:
     """
     🚀 Sistema de corrección inteligente OPTIMIZADO con cache y procesamiento rápido

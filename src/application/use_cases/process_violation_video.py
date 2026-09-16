@@ -26,6 +26,15 @@ from src.infrastructure.configuration import VideoConfig
 from src.infrastructure.reports import ReportRepository
 
 
+class ProcessingCancelled(Exception):
+    """El usuario canceló (o cambió de video) durante `process()`.
+
+    Se lanza cuando `should_stop()` devuelve True: el procesador ya liberó
+    `VideoCapture`/writers y el llamador debe salir en silencio (sin popup
+    de error) para que no queden hilos zombies quemando GPU.
+    """
+
+
 def _format_hms(seconds):
     """Formatea segundos como HH:mm:ss, omitiendo la hora si es 0."""
     seconds = max(0, int(seconds))
@@ -255,7 +264,8 @@ class OfficialVideoProcessor:
 
     def process(self, video_path: str | Path, config: VideoConfig, output_dir: str | Path,
                 conf: float = 0.40, save_video: bool = True, save_crops: bool = True,
-                callback: Callable[[dict], None] | None = None) -> dict:
+                callback: Callable[[dict], None] | None = None,
+                should_stop: Callable[[], bool] | None = None) -> dict:
         """Fase 1+2+3: batch GPU + I/O async + stats.
 
         Nuevo flujo (sin YOLO-placas en live, sin pending):
@@ -353,10 +363,56 @@ class OfficialVideoProcessor:
         B = max(1, min(B, 8))
         use_batch = B > 1 and hasattr(self.vehicle_detector, "detect_batch")
 
+        # ── Cancelación cooperativa anti-zombies ──────────────────────
+        # `should_stop()` lo provee la GUI (dialog.canceled). Sin esto, al
+        # cancelar/cambiar de video el hilo seguía infiriendo YOLO en GPU
+        # hasta el EOF (warnings NMS + contención + RAM encolada).
+        cancelled = False
+
+        def _stop_requested() -> bool:
+            try:
+                return bool(should_stop is not None and should_stop())
+            except Exception:
+                return False
+
+        def _release_all() -> None:
+            """Libera VideoCapture + writers aunque el run no terminó."""
+            try:
+                cap.release()
+            except Exception:
+                pass
+            try:
+                if threaded_writer is not None:
+                    try:
+                        threaded_writer.release()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                if writer is not None and writer is not threaded_writer:
+                    try:
+                        writer.release()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                if crop_writer is not None:
+                    try:
+                        crop_writer.shutdown()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
         frame_index = 0
         first_detect_logged = False
         eof = False
         while not eof:
+            if _stop_requested():
+                cancelled = True
+                break
             # Junta hasta B frames (lookahead) para amortizar lanzamientos CUDA.
             buf: list[tuple] = []
             while len(buf) < B:
@@ -403,6 +459,9 @@ class OfficialVideoProcessor:
 
             # --- Procesa el buffer en orden (tracking intacto) ---
             for pos, (fi, frame, state, should_detect, should_display) in enumerate(buf):
+                if _stop_requested():
+                    cancelled = True
+                    break
                 stats["frames"] += 1
                 tracks: dict[int, dict] = {}
                 plate_boxes: dict[int, list[tuple[int, int, int, int]]] = {}
@@ -502,7 +561,13 @@ class OfficialVideoProcessor:
                 if callback is not None and should_display:
                     callback({"type": "frame", "frame": display, "frame_index": fi, "total_frames": total, "state": state, "processed": should_detect})
 
-        cap.release()
+        if cancelled:
+            _release_all()
+            raise ProcessingCancelled(f"Procesamiento cancelado por el usuario: {video_path.name}")
+        try:
+            cap.release()
+        except Exception:
+            pass
         # Arma la evidencia con TODOS los candidatos guardados: el
         # post-proceso revisa placa en CADA uno (cuadrante direccional)
         # y elige la mejor CON placa; fallback = mayor calidad.

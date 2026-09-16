@@ -578,6 +578,16 @@ class PreprocessingPopupsMixin:
             self.player.is_playing = False
             self.player.is_paused = True
             print("⏸️ VIDEO PAUSADO inmediatamente en ventana de éxito")
+
+        # ⏱️ Congelar el Tiempo Total AQUÍ (fin de inferencia máquina),
+        # ANTES del popup bloqueante de éxito: la latencia humana no debe
+        # sumarse a la métrica. Idempotente (no-op si ya estaba congelado).
+        try:
+            _freeze = getattr(getattr(self, "player", None), "freeze_total_time_clock", None)
+            if callable(_freeze):
+                _freeze()
+        except Exception:
+            pass
         
         # Actualizar botón de play/pause
         if hasattr(self.player, 'play_pause_button'):
@@ -1176,10 +1186,58 @@ Ajuste la configuración en 'Configurar Tiempos' antes de continuar."""
     def _close_dialog_only(self):
         """Cierra solo el diálogo sin callback - para cancelaciones"""
         try:
-            # CAMBIO: NO restaurar automáticamente la reproducción 
+            # CAMBIO: NO restaurar automáticamente la reproducción
             # El usuario debe iniciar manualmente la reproducción después del análisis
             if hasattr(self.player, 'running'):
                 self.player.running = False  # Mantener paused para que el usuario decida
+
+            # ⏱️ Cancelar = reposo cero en TODA la interfaz (inline y modal):
+            # reloj derecho a 0.00min, reloj inferior a 00:00 y semáforo a
+            # "Semáforo inactivo", idéntico a recién cargar el video.
+            if getattr(self, 'canceled', False):
+                # Unir hilos del run cancelado AQUÍ (ya no son zombies: el
+                # procesador ve `canceled` vía should_stop y sale del loop
+                # GPU en el próximo batch/frame). Sin esto, el join solo
+                # ocurriría en el próximo run y los hilos quemarían GPU.
+                try:
+                    _ct = getattr(self, '_cleanup_threads', None)
+                    if callable(_ct):
+                        _ct()
+                except Exception as _e:
+                    print(f"⚠️ Error limpiando hilos tras cancelar: {_e}")
+                try:
+                    _p = getattr(self, 'player', None)
+                    if _p is not None:
+                        try:
+                            _rst = getattr(_p, 'reset_total_time_clock', None)
+                            if callable(_rst):
+                                _rst()
+                        except Exception:
+                            pass
+                        try:
+                            _p.is_playing = False
+                            _p.is_paused = True
+                        except Exception:
+                            pass
+                        try:
+                            _sem = getattr(_p, 'semaforo', None)
+                            if _sem is not None:
+                                _idle = getattr(_sem, 'reset_to_idle', None)
+                                if callable(_idle):
+                                    _idle()
+                                else:
+                                    try:
+                                        _sem.deactivate_semaphore()
+                                    except Exception:
+                                        pass
+                                    try:
+                                        _sem.reset_execution_timer()
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
 
             if getattr(self, 'inline', False):
                 # Modo inline: ocultar progreso, NO destruir la ventana principal.
