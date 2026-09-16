@@ -209,8 +209,10 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
-    strip=True,
-    upx=True,
+    # Windows: strip/upx corrompen cv2.pyd y DLLs nvidia/torch
+    # (ERROR 193 "%1 no es Win32 valida"). Alineado al ONEFILE (strip/upx=False).
+    strip=False,
+    upx=False,
     upx_exclude=[],
     name='InfractiVision',
 )

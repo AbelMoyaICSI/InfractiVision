@@ -14,10 +14,10 @@ on:
 jobs:
   build-onedir-win:
     name: Build ONEDIR portable (Win CUDA)
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
           architecture: "x64"
@@ -25,6 +25,7 @@ jobs:
         run: |
           python -c "import struct, platform, sys; assert struct.calcsize('P')*8==64, 'Need 64-bit Python'; print(f'Python {platform.architecture()[0]} {sys.version}')"
           pip install -r requirements.txt
+          python -c "import cv2, numpy; print(f'cv2 pre-build OK: {cv2.__version__} numpy={numpy.__version__}')"
           python -c "
           import importlib.metadata as m
           try:
@@ -51,7 +52,9 @@ jobs:
             ls -l .env
           fi
       - name: Build PyInstaller ONEDIR CUDA (unico)
-        run: python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CUDA.spec
+        run: |
+          python -c "import re,sys; s=open('InfractiVision-ONEDIR-CUDA.spec',encoding='utf-8').read(); assert 'strip=False' in s and 'upx=False' in s, 'spec debe usar strip=False,upx=False (upx/strip corrompe cv2.pyd con ERROR 193)'; print('spec strip/upx OK')"
+          python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CUDA.spec
       - name: Smoke test ONEDIR CUDA
         shell: bash
         run: |
@@ -59,19 +62,37 @@ jobs:
           test -f dist/InfractiVision/InfractiVision.exe || (echo "ERROR: ONEDIR exe no generado" && ls -R dist | head -n 80 && exit 1)
           echo "Smoke ONEDIR cuda OK (mismo binario corre en CPU si no hay NVIDIA)"
           ls -lh dist/InfractiVision/ | head -n 20
+          # cv2 empaquetado integro: detecta DLL corrupta/truncada (ERROR 193 "%1 no es Win32 valida")
+          # antes de subir el artifact (upx/strip, antivirus o zip truncado la dejan en 0 bytes).
+          python -c "
+          from pathlib import Path
+          base = Path('dist/InfractiVision/_internal/cv2')
+          assert base.is_dir(), f'Falta _internal/cv2 (build incompleto): {sorted(p.name for p in Path(\"dist/InfractiVision\").iterdir())}'
+          pyds = list(base.glob('*.pyd')) + list(base.glob('cv2*.dll'))
+          assert pyds, 'No hay cv2.pyd/.dll en _internal/cv2'
+          for p in pyds:
+              sz = p.stat().st_size
+              print(f'{p.name}: {sz} bytes')
+              assert sz > 1_000_000, f'{p} sospechosamente pequeno ({sz} bytes): build corrupto (upx/strip o extraccion truncada)'
+          ffmpegs = list(Path('dist/InfractiVision/_internal').rglob('opencv_videoio_ffmpeg*.dll')) + list(base.rglob('opencv_videoio_ffmpeg*.dll'))
+          for p in ffmpegs:
+              print(f'{p}: {p.stat().st_size} bytes')
+              assert p.stat().st_size > 1_000_000, f'{p} truncado'
+          print('Smoke cv2 bins OK')
+          "
       - name: Zip ONEDIR CUDA portable (Win-x64)
-        shell: pwsh
+        shell: bash
         run: |
-          $zip = "dist/InfractiVision-cuda-Win-x64.zip"
-          if (Test-Path $zip) { Remove-Item $zip -Force }
-          Compress-Archive -Path dist/InfractiVision/* -DestinationPath $zip -CompressionLevel Optimal
-          Get-Item $zip | Format-List Name, Length
-          $sz = (Get-Item $zip).Length
-          Write-Host "ZIP bytes: $sz"
+          # shutil.make_archive en vez de Compress-Archive: evita el limite/truncado
+          # a ~2GB de PowerShell 5.1 con el ONEDIR CUDA pesado (~3GB con torch cu128).
+          rm -f dist/InfractiVision-cuda-Win-x64.zip
+          python -c "import shutil; print(shutil.make_archive('dist/InfractiVision-cuda-Win-x64', 'zip', root_dir='dist/InfractiVision'))"
+          ls -lh dist/InfractiVision-cuda-Win-x64.zip
+          python -c "import os; sz=os.path.getsize('dist/InfractiVision-cuda-Win-x64.zip'); print(f'ZIP bytes: {sz}'); assert sz > 100_000_000, 'ZIP sospechosamente pequeno: build incompleto'"
           # Artifact-only: sin tope de 2GB (ese limite es solo para archivos de un Release).
           # Se avisa sin fallar para recordar que asi no podra publicarse en Releases.
-          if ($sz -gt 2147483647) { Write-Host "::warning::ZIP >2GB ($sz bytes): solo como artifact del build, no publicable en un Release" }
-      - uses: actions/upload-artifact@v4
+          python -c "import os; sz=os.path.getsize('dist/InfractiVision-cuda-Win-x64.zip'); print(f'::warning::ZIP >2GB ({sz} bytes): solo como artifact del build, no publicable en un Release') if sz > 2147483647 else print('ZIP size OK para Release')"
+      - uses: actions/upload-artifact@v6
         with:
           name: InfractiVision-ONEDIR-Win
           path: dist/InfractiVision-cuda-Win-x64.zip
@@ -85,8 +106,8 @@ jobs:
     name: Build ONEDIR portable (Linux CPU)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
           architecture: "x64"
@@ -97,6 +118,7 @@ jobs:
         run: |
           python -c "import struct, platform, sys; assert struct.calcsize('P')*8==64, 'Need 64-bit Python'; print(f'Python {platform.architecture()[0]} {sys.version}')"
           pip install -r requirements-cpu.txt
+          python -c "import cv2, numpy; print(f'cv2 pre-build OK: {cv2.__version__} numpy={numpy.__version__}')"
           python -c "
           import importlib.metadata as m
           try:
@@ -123,7 +145,9 @@ jobs:
             ls -l .env
           fi
       - name: Build PyInstaller ONEDIR CPU
-        run: python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CPU.spec
+        run: |
+          python -c "import re; s=open('InfractiVision-ONEDIR-CPU.spec',encoding='utf-8').read(); assert 'strip=False' in s and 'upx=False' in s, 'spec debe usar strip=False,upx=False'; print('spec strip/upx OK')"
+          python -m PyInstaller --noconfirm --clean InfractiVision-ONEDIR-CPU.spec
       - name: Smoke test ONEDIR CPU
         shell: bash
         run: |
@@ -131,13 +155,25 @@ jobs:
           test -f dist/InfractiVision/InfractiVision || (echo "ERROR: ONEDIR binario no generado" && ls -R dist | head -n 80 && exit 1)
           echo "Smoke ONEDIR cpu OK"
           ls -lh dist/InfractiVision/ | head -n 20
+          python -c "
+          from pathlib import Path
+          base = Path('dist/InfractiVision/_internal/cv2')
+          assert base.is_dir(), 'Falta _internal/cv2 (build incompleto)'
+          sos = list(base.glob('*.so')) + list(base.glob('cv2*.so'))
+          assert sos, 'No hay cv2 .so en _internal/cv2'
+          for p in sos:
+              sz = p.stat().st_size
+              print(f'{p.name}: {sz} bytes')
+              assert sz > 1_000_000, f'{p} sospechosamente pequeno ({sz} bytes)'
+          print('Smoke cv2 bins OK')
+          "
       - name: Zip ONEDIR CPU portable (Linux-x64)
         shell: bash
         run: |
           rm -f dist/InfractiVision-cpu-Linux-x64.zip
           python -c "import shutil; print(shutil.make_archive('dist/InfractiVision-cpu-Linux-x64', 'zip', root_dir='dist/InfractiVision'))"
           ls -lh dist/InfractiVision-cpu-Linux-x64.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: InfractiVision-ONEDIR-Linux
           path: dist/InfractiVision-cpu-Linux-x64.zip

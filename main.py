@@ -150,23 +150,48 @@ def main() -> None:
     try:
         from src.composition_root import build_container
     except ImportError as exc:
-        # Caso crítico: DLL load failed while importing cv2 (arquitectura 32 vs 64
-        # o falta de VC++ Redist). Antes mostraba "Failed to execute script 'main'".
+        # Caso crítico: DLL load failed while importing cv2. Antes mostraba
+        # "Failed to execute script 'main'". ERROR 193 != Python 32-bit: este
+        # build ya es 64-bit, es el cv2.pyd empaquetado corrupto/truncado
+        # (upx/strip, antivirus o ZIP mal extraido) o falta de VC++ Redist.
         msg = str(exc)
         is_cv2_dll = "cv2" in msg or "DLL load failed" in msg or "Win32" in msg or "no es una aplicaci" in msg
         bits = struct.calcsize("P") * 8
         log.error("Fallo importando composition_root (cv2/DLL): %s", exc, exc_info=True)
         if is_cv2_dll:
+            low = msg.lower()
+            is_bad_exe = ("no es una aplicaci" in msg or "win32" in low or "error 193" in low or "%1" in msg)
+            is_missing = ("126" in msg or "specified module" in low or "vcruntime" in low or "msvcp" in low or "no se encontr" in low)
+            if is_bad_exe and not is_missing:
+                causa = (
+                    "El cv2.pyd del portable esta corrupto/truncado (ERROR 193). "
+                    "NO es Python 32-bit: este build ya es 64-bit.\n"
+                    "Pasos:\n"
+                    "  1) Re-extrae el ZIP con 7-Zip en ruta corta (ej. C:\\IV\\), no en Downloads anidado.\n"
+                    "  2) Pausa el antivirus o anade excepcion para InfractiVision (cuarentena deja el .pyd en 0 KB).\n"
+                    "  3) Verifica _internal/cv2/cv2.pyd (>10MB). Si esta en 0 KB, la extraccion fallo: repite 1+2.\n"
+                    "  4) Instala VC++ Redist x64 (el ZIP portable no lo auto-instala como el Setup):\n"
+                    "     https://aka.ms/vs/17/release/vc_redist.x64.exe y reinicia.\n"
+                    "  5) Si el ZIP es anterior al fix sin upx/strip, descarga el build nuevo."
+                )
+            elif is_missing:
+                causa = (
+                    "Falta Microsoft Visual C++ Redistributable 2015-2022 x64 (ERROR 126).\n"
+                    "Instalalo: https://aka.ms/vs/17/release/vc_redist.x64.exe y reinicia.\n"
+                    "El ZIP portable no lo auto-instala (solo lo hace el Setup Inno)."
+                )
+            else:
+                causa = (
+                    "Causas probables:\n"
+                    "  - ZIP mal extraido o antivirus (cv2.pyd en 0 KB). Re-extrae con 7-Zip en C:\\IV\\.\n"
+                    "  - Falta VC++ Redist x64: https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
+                    "  - Solo en dev: conflicto opencv-python vs opencv-python-headless:\n"
+                    "    pip uninstall opencv-python-headless opencv-python -y && pip install --no-cache --force-reinstall opencv-python==4.9.0.80"
+                )
             detail = (
                 f"Error cargando OpenCV (cv2): {exc}\n\n"
                 f"Detectado: Python {bits}-bit ({platform.architecture()[0]}) en {platform.machine()} - {sys.version.split()[0]}\n"
-                "Causas mas probables en PC 64-bit:\n"
-                "  1) Compilaste con Python 32-bit en una PC 64-bit. Reinstala Python 3.10 64-bit (x64) y recompila.\n"
-                "  2) Falta Microsoft Visual C++ Redistributable 2015-2022 x64.\n"
-                "     Instalalo: https://aka.ms/vs/17/release/vc_redist.x64.exe y reinicia.\n"
-                "  3) Conflicto opencv-python vs opencv-python-headless. Ejecuta:\n"
-                "     pip uninstall opencv-python-headless opencv-python -y && pip install --no-cache --force-reinstall opencv-python==4.9.0.80\n"
-                "  4) Antivirus bloqueo la extraccion. Desactiva temporalmente o anade excepcion para InfractiVision.\n"
+                f"{causa}\n"
                 f"\nDetalle tecnico: {traceback.format_exc()[-1200:]}"
             )
             _show_startup_error("InfractiVision - Error de OpenCV (cv2)", detail)
@@ -192,7 +217,9 @@ def main() -> None:
             detail = (
                 f"Error inicializando OpenCV/cv2: {exc}\n\n"
                 f"Python {bits}-bit - {sys.version.split()[0]}\n"
-                "Instala VC++ Redist x64: https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
+                "Si dice '%1 no es Win32 valida' (ERROR 193): ZIP mal extraido o antivirus "
+                "(re-extrae con 7-Zip en C:\\IV\\, verifica _internal/cv2/cv2.pyd >10MB).\n"
+                "Si falta DLL (ERROR 126): instala VC++ Redist x64: https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
                 f"{traceback.format_exc()[-1000:]}"
             )
             _show_startup_error("InfractiVision - Error de OpenCV (cv2)", detail)
@@ -238,9 +265,9 @@ if __name__ == "__main__":
             detail = (
                 f"Error cargando OpenCV (cv2): {exc}\n\n"
                 f"Python {bits}-bit - {sys.version.split()[0] if 'sys' in dir() else ''}\n"
-                "Causa probable en PC 64-bit: Python 32-bit o falta VC++ Redist x64.\n"
-                "Instala: https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
-                "Y recompila con Python 3.10 x64 + requirements-cpu.txt (opencv==4.9.0.80).\n"
+                "Si es ERROR 193 '%1 no es Win32 valida': cv2.pyd corrupto (ZIP mal extraido/antivirus). "
+                "Re-extrae con 7-Zip en C:\\IV\\ y verifica _internal/cv2/cv2.pyd >10MB.\n"
+                "Si es ERROR 126 o falta DLL: instala https://aka.ms/vs/17/release/vc_redist.x64.exe\n"
             )
             _show_startup_error("InfractiVision - Error de OpenCV (cv2)", detail)
             sys.exit(1)
