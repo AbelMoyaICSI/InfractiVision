@@ -1523,6 +1523,64 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
             on_api_complete=_freeze_cb,
         )
 
+    @staticmethod
+    def _deduplicate_validated_plates(evidences):
+        """Dedup final de NID por placa exacta (post-validación humana).
+
+        El tracker puede fragmentar un mismo vehículo en varios tracks y
+        cada fragmento llega validado (✓) con el mismo texto de placa. Sin
+        este filtro se guardarían N multas duplicadas (ej. 4x "T1D547").
+        Se conserva el de mayor (ocr_confidence, quality_score); el resto
+        se EVAPORA por completo de la lista resultante (no se degrada a
+        NIE: un duplicado de un infractor real no es un falso positivo y
+        no debe inflar el contador de NIEs). Las evidencias que ya eran
+        NIE pasan intactas. Retorna `(kept, dropped)`.
+        """
+        import re as _re
+
+        def _key(text):
+            try:
+                from src.infrastructure.ocr.cloud_plate_readers import normalize_plate
+                return normalize_plate(text or "")
+            except Exception:
+                return _re.sub(r"[^A-Z0-9]", "", (text or "").upper())
+
+        items = list(evidences or [])
+        n_nid_before = sum(
+            1 for e in items
+            if bool(getattr(e, "validated", False)) and (getattr(e, "plate_text", "") or "").strip()
+        )
+        groups: dict[str, list] = {}
+        kept: list = []
+        dropped: list = []
+        for ev in items:
+            if bool(getattr(ev, "validated", False)) and (getattr(ev, "plate_text", "") or "").strip():
+                k = _key(getattr(ev, "plate_text", ""))
+                if len(k) >= 5:
+                    groups.setdefault(k, []).append(ev)
+                    continue
+            kept.append(ev)
+        for k in sorted(groups):
+            group = groups[k]
+            if len(group) <= 1:
+                kept.extend(group)
+                continue
+            ranked = sorted(
+                group,
+                key=lambda e: (
+                    -float(getattr(e, "ocr_confidence", 0.0) or 0.0),
+                    -float(getattr(e, "quality_score", 0.0) or 0.0),
+                    int(getattr(e, "track_id", 0) or 0),
+                ),
+            )
+            kept.append(ranked[0])
+            dropped.extend(ranked[1:])
+        kept.sort(key=lambda e: int(getattr(e, "track_id", 0) or 0))
+        if dropped:
+            print(f"🧬 Dedup NID por placa: {n_nid_before} validadas -> "
+                  f"{n_nid_before - len(dropped)} únicas ({len(dropped)} evaporadas)")
+        return kept, dropped
+
     def _on_official_validation_done(self, evidences):
         """Actualiza la barra lateral y las métricas según la validación final.
 
@@ -1536,11 +1594,6 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         clave de dedup de NIE: los duplicados se excluyen del guardado pero
         quedan como NIE (nunca se promueven a NID aqui).
         """
-        try:
-            self.player.apply_official_validation(evidences, getattr(self, "_pending_infractions", []))
-        except Exception as e:
-            print(f"⚠️ Error sincronizando validación en panel lateral: {e}")
-
         evidences_for_save = list(evidences or [])
         try:
             from src.application.services.plate_review_preparer import (
@@ -1554,6 +1607,23 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
         except Exception as e:
             print(f"⚠️ Dedup NIE omitido: {e}")
             evidences_for_save = list(evidences or [])
+
+        # Dedup NID por placa exacta: varias cards validadas con el mismo
+        # texto (tracker fragmentado) colapsan a una sola NID; el resto se
+        # EVAPORA (no queda NIE: no debe inflar indicadores).
+        _nid_dropped: list = []
+        try:
+            evidences_for_save, _nid_dropped = self._deduplicate_validated_plates(evidences_for_save)
+        except Exception as e:
+            print(f"⚠️ Dedup NID omitido: {e}")
+            _nid_dropped = []
+
+        # Panel lateral sincronizado con la lista ya deduplicada (NIE+NID),
+        # para que muestre exactamente lo que se guardará en SQLite.
+        try:
+            self.player.apply_official_validation(evidences_for_save, getattr(self, "_pending_infractions", []))
+        except Exception as e:
+            print(f"⚠️ Error sincronizando validación en panel lateral: {e}")
 
         nid_entries, nie_entries = [], []
         try:
@@ -1582,6 +1652,36 @@ class PreprocessingDialog(PreprocessingPopupsMixin):
                   f"eliminados, {summary['kept']} conservados")
         except Exception as e:
             print(f"⚠️ Error en limpieza post-validacion: {e}")
+
+        # Evaporar fotos de NID duplicadas: al no estar en la lista final,
+        # sus recortes finales son huérfanos. Se borran solo si viven bajo
+        # data/output/official (nunca fuera), son .jpg y nadie más las
+        # referencia. Nunca lanza.
+        try:
+            if _nid_dropped:
+                kept_paths = {str(getattr(e, "crop_path", "") or "")
+                              for e in (evidences_for_save or [])}
+                base = Path(writable_data_path("data/output/official")).resolve()
+                for dup in _nid_dropped:
+                    p = str(getattr(dup, "crop_path", "") or "")
+                    if not p or p in kept_paths:
+                        continue
+                    try:
+                        target = Path(p)
+                        if target.suffix.lower() not in (".jpg", ".jpeg"):
+                            continue
+                        try:
+                            target.resolve().relative_to(base)
+                        except ValueError:
+                            continue
+                        if target.is_file():
+                            target.unlink()
+                            print(f"🧹 NID duplicado evaporado "
+                                  f"(track {getattr(dup, 'track_id', '?')}): {target.name}")
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"⚠️ Error evaporando fotos NID duplicadas: {e}")
 
         try:
             self._regenerate_indicators_after_validation(nid_entries, nie_entries)

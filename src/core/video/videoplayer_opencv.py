@@ -419,6 +419,15 @@ class VideoPlayerOpenCV:
         self.have_polygon       = False
         self.current_video_path = None
 
+        # ─── Estado DEMO en vivo (solo previsualización, nunca procesamiento)
+        # Instancias aisladas: el flujo oficial (OfficialVideoProcessor /
+        # preprocessing_dialog) construye las suyas propias y jamás lee esto.
+        self._demo_mode = False
+        self._demo_planner = None
+        self._demo_tracker = None
+        self._last_demo_frame = None
+        self._demo_stride_n = 0
+
         # ─── Estado de run (limpieza entre videos / reprocesos) ────
         # Se inicializa aquí para que `reset_for_new_run` sea idempotente
         # y no dependa de `hasattr`. NO tocar BD desde el reset.
@@ -1376,6 +1385,35 @@ class VideoPlayerOpenCV:
         clear_button = tk.Button(preview_frame_container, text="Borrar Puntos", 
                             command=clear_polygon)
         clear_button.pack(pady=5)
+
+        # Precargar el polígono ya guardado en SQLite y dibujarlo
+        # (reconfiguración: pinta los puntos previos en el canvas).
+        try:
+            _row = self._db().get_video_config(
+                self.get_video_key(video_path))
+            _saved = (_row or {}).get("polygon") or []
+            if len(_saved) >= 3:
+                for _pt in _saved:
+                    _rx, _ry = int(_pt[0]), int(_pt[1])
+                    polygon_points.append((_rx, _ry))
+                    _cx, _cy = int(_rx * scale), int(_ry * scale)
+                    polygon_canvas_items.append(
+                        canvas.create_oval(_cx - 4, _cy - 4, _cx + 4, _cy + 4,
+                                           fill="red", outline="white", tags="polygon"))
+                _coords = []
+                for (_px, _py) in polygon_points:
+                    _coords += [int(_px * scale), int(_py * scale)]
+                polygon_canvas_items.append(
+                    canvas.create_line(_coords, fill="yellow", width=2, tags="polygon"))
+                _fx, _fy = int(polygon_points[0][0] * scale), int(polygon_points[0][1] * scale)
+                _lx, _ly = int(polygon_points[-1][0] * scale), int(polygon_points[-1][1] * scale)
+                polygon_canvas_items.append(
+                    canvas.create_line(_lx, _ly, _fx, _fy, fill="yellow", width=2,
+                                       dash=(5, 2), tags=("polygon", "closing_line")))
+                status_var.set(f"Estado: Área definida con {len(polygon_points)} puntos")
+                status_label.config(fg="green")
+        except Exception:
+            pass
         
         # Panel inferior con botones de acción
         button_frame = tk.Frame(setup)
@@ -1951,6 +1989,13 @@ class VideoPlayerOpenCV:
 
         self.load_polygon_for_video()
 
+        # Demo en vivo: estado fresco por video (nunca contamina procesamiento).
+        self._demo_mode = False
+        self._demo_planner = None
+        self._demo_tracker = None
+        self._last_demo_frame = None
+        self._demo_stride_n = 0
+
         # Configurar semáforo pero NO activar (el reset ya lo dejó en green)
         try:
             self.semaforo.reset_execution_timer()
@@ -1974,6 +2019,12 @@ class VideoPlayerOpenCV:
                 "red": times["red"]
             }
             # NO activar semáforo automáticamente
+            # Sincronizar los labels inferiores (G/Y/R) con la BD al cargar
+            # el video, sin esperar a "Iniciar Procesamiento".
+            try:
+                self.semaforo._update_meta_label()
+            except Exception:
+                pass
             
         # Configurar botón inicial como PREVISUALIZAR
         if hasattr(self, 'play_pause_button'):
@@ -2135,6 +2186,7 @@ class VideoPlayerOpenCV:
         if getattr(self, 'processing_active', False):
             # MODO PROCESAMIENTO: Solo cuando se está ejecutando preprocesamiento
             print("▶️ MODO PROCESAMIENTO: Análisis completo con infracciones")
+            self._demo_mode = False
             # Reanudar semáforo para procesamiento
             if hasattr(self.semaforo, 'resume_semaphore'):
                 self.semaforo.resume_semaphore()
@@ -2142,9 +2194,14 @@ class VideoPlayerOpenCV:
                 self.semaforo.activate_semaphore()
             self.update_frames()
         else:
-            # MODO PREVISUALIZACIÓN: Reproducción limpia del video, sin
-            # detecciones, sin polígono y sin banner de semáforo.
-            print("▶️ MODO PREVISUALIZACIÓN: Reproducción limpia (sin detecciones)")
+            # MODO DEMO EN VIVO: YOLO + polígono + tracker + regla roja del
+            # widget. 100% visual (sin OCR/placas/BD). Ver _analyze_preview_demo.
+            print("▶️ MODO DEMO EN VIVO: YOLO + polígono + tracker (solo visual)")
+            self._demo_mode = True
+            self._demo_planner = self._build_demo_planner()
+            self._demo_tracker = self._new_demo_tracker()
+            self._last_demo_frame = None
+            self._demo_stride_n = 0
 
             # 🚨 CRÍTICO: El semáforo del widget DEBE funcionar para mostrar
             # el color en el panel lateral durante la previsualización.
@@ -2165,6 +2222,7 @@ class VideoPlayerOpenCV:
         self.is_playing = False
         self.is_paused = True
         self.running = False
+        self._demo_mode = False
         
         # Cambiar botón a CONTINUAR PREVISUALIZACIÓN
         self.play_pause_button.config(
@@ -2196,10 +2254,31 @@ class VideoPlayerOpenCV:
         
         print("⏸️ REPRODUCCIÓN PAUSADA")
 
+    def _preview_display_downscale(self, frame):
+        """Ajuste de display solo-demo: acota a 960px de ancho con NEAREST.
+
+        Evita que Tk procese el tamaño nativo (4K) en tiempo real: el paso
+        grande y barato es NEAREST y el letterbox final conserva LINEAR.
+        No afecta detección (YOLO trabaja sobre el frame original arriba).
+        """
+        try:
+            h, w = frame.shape[:2]
+            if w > 960:
+                s = 960.0 / float(w)
+                return cv2.resize(frame, (960, max(1, int(h * s))),
+                                  interpolation=cv2.INTER_NEAREST)
+        except Exception:
+            pass
+        return frame
+
     def update_frames_preview(self):
-        """🎬 PREVISUALIZAR: reproduce el video de forma limpia, SIN detecciones,
-        SIN polígono y SIN banner de semáforo. Solo muestra el frame y las
-        etiquetas de información. El estado del semáforo se ve en el widget."""
+        """🎬 DEMO EN VIVO: YOLO + polígono + tracker + regla roja del widget.
+
+        Gating con veto infalible del widget: en verde la inferencia va
+        APAGADA (salvo 1 s pre-amarillo) y el video vuela en fast-forward
+        (N frames/tick, delay mínimo); en amarillo/rojo se infiere aunque
+        el planner discrepe. 100% visual: sin OCR, sin placas,
+        sin BD. El estado del semáforo se ve en el widget."""
         if not self.running or not self.cap or self.is_paused:
             return
 
@@ -2209,8 +2288,122 @@ class VideoPlayerOpenCV:
             self._after_id = self.parent.after(int(1000 / 15), self.update_frames_preview)
             return
 
-        # Mostrar el frame original sin anotaciones
-        bgr_img = self.resize_and_letterbox(frame)
+        try:
+            frame_index = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+        except Exception:
+            frame_index = 0
+
+        # Gating demo con CANDADO A DOS LLAVES (el widget manda):
+        # 1) Planner (índice de frame): True solo cerca/en rojo.
+        # 2) VETO INFALIBLE del widget (reloj visible): en VERDE la
+        #    inferencia va APAGADA salvo ventana pre-amarillo (1 s) para
+        #    precalentar el tracker; en AMARILLO/ROJO va ENCENDIDA aunque
+        #    el planner diga verde (relojes desincronizados, planner None
+        #    o cualquier otro desacuerdo). Sin widget legible, manda el
+        #    planner. Falla cerrado: ante la duda, en verde no se infiere.
+        do_infer = True
+        _planner = getattr(self, "_demo_planner", None)
+        if _planner is not None:
+            try:
+                do_infer = bool(_planner.should_detect(frame_index))
+            except Exception:
+                do_infer = True
+        try:
+            _wstate = self.semaforo.get_current_state()
+        except Exception:
+            _wstate = None
+        if _wstate == "green":
+            do_infer = False
+            try:
+                _remaining = float(self.semaforo.target_time) - time.time()
+                if _remaining <= 1.0:
+                    do_infer = True
+            except Exception:
+                pass
+        elif _wstate in ("yellow", "red"):
+            do_infer = True
+
+        render_frame = None
+        if do_infer:
+            # Stride inteligente: inferir 1 de cada 2 frames (carga GPU / 2).
+            # En el frame intermedio se reutiliza el último anotado para que
+            # las cajas no parpadeen; el drenaje recoge resultados tardíos.
+            _n = int(getattr(self, "_demo_stride_n", 0) or 0) + 1
+            self._demo_stride_n = _n
+            if _n % 2 == 1:
+                # Enviar al worker demo (nunca bloquea: patrón E3 con descarte).
+                self._start_detect_worker()
+                try:
+                    self._detect_in.put_nowait((frame, frame_index))
+                except queue.Full:
+                    pass
+            try:
+                new_result = self._detect_out.get_nowait()
+                while True:
+                    try:
+                        new_result = self._detect_out.get_nowait()
+                    except queue.Empty:
+                        break
+            except queue.Empty:
+                new_result = None
+            if new_result is not None:
+                self._last_demo_frame = new_result[0]
+            render_frame = getattr(self, "_last_demo_frame", None)
+        else:
+            # FAST-FORWARD en fase pasiva (verde/amarillo temprano): salto
+            # por seek (IV_DEMO_FF_SKIP, default 15) SIN decodificar
+            # intermedios: el backend salta al GOP cercano y decodifica solo
+            # lo necesario. El planner es por índice absoluto, así que la
+            # sincronía se conserva aunque el salto sea impreciso.
+            try:
+                import os as _os_ff
+                _ff_skip = max(1, int(_os_ff.getenv("IV_DEMO_FF_SKIP", "15")))
+            except Exception:
+                _ff_skip = 15
+            try:
+                _cur = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+            except Exception:
+                _cur = frame_index
+            try:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, _cur + _ff_skip)
+            except Exception:
+                pass
+            try:
+                _ok, _f = self.cap.read()
+            except Exception:
+                _ok, _f = False, None
+            if not _ok or _f is None:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                self._after_id = self.parent.after(int(1000 / 15), self.update_frames_preview)
+                return
+            frame = _f
+            try:
+                frame_index = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+            except Exception:
+                pass
+            # Drenar resultados viejos para no mostrar cajas congeladas.
+            try:
+                while True:
+                    self._detect_out.get_nowait()
+            except queue.Empty:
+                pass
+            except Exception:
+                pass
+            self._last_demo_frame = None
+
+        if render_frame is None:
+            # Sin inferencia (o aún sin resultado): frame fresco + polígono.
+            try:
+                render_frame = frame.copy()
+                _poly = list(getattr(self, "polygon_points", None) or [])
+                if len(_poly) >= 3:
+                    _pts = np.array(_poly, np.int32).reshape(-1, 1, 2)
+                    cv2.polylines(render_frame, [_pts], True, (0, 0, 255), 2)
+            except Exception:
+                render_frame = frame
+
+        # Mostrar el frame demo (pre-acotado: la UI nunca mastica 4K).
+        bgr_img = self.resize_and_letterbox(self._preview_display_downscale(render_frame))
         rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
         imgtk = ImageTk.PhotoImage(Image.fromarray(rgb_img))
         self.video_label.config(image=imgtk)
@@ -2226,16 +2419,35 @@ class VideoPlayerOpenCV:
             self._preview_info_time = time.time()
             mem_mb = self._get_mem_mb()
             dev = "GPU" if self.using_gpu else "CPU"
-            info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | PREVISUALIZAR"
+            try:
+                _wst = self.semaforo.get_current_state()
+            except Exception:
+                _wst = "?"
+            info_text = f"{dev} | FPS: {self.fps_calc:.1f} | RAM: {mem_mb:.1f}MB | DEMO EN VIVO"
+            try:
+                info_text += f" | {str(_wst).upper()}"
+            except Exception:
+                pass
             self.info_label.config(text=info_text)
 
         import os as _os3
 
-        try:
-            _pdfps = max(10, min(60, int(_os3.getenv("IV_DISPLAY_FPS", "15"))))
-        except Exception:
-            _pdfps = 15
-        self._after_id = self.parent.after(int(1000 / _pdfps), self.update_frames_preview)
+        # Techo demo 30 FPS en fase activa (solo previsualización; el loop
+        # de procesamiento conserva su propio default). Override por env.
+        # En fase pasiva (fast-forward) el delay es mínimo: el límite lo
+        # pone el decode, override con IV_DEMO_FF_MS si se desea.
+        if do_infer:
+            try:
+                _pdfps = max(10, min(60, int(_os3.getenv("IV_DISPLAY_FPS", "30"))))
+            except Exception:
+                _pdfps = 30
+            self._after_id = self.parent.after(int(1000 / _pdfps), self.update_frames_preview)
+        else:
+            try:
+                _ffms = max(1, int(_os3.getenv("IV_DEMO_FF_MS", "1")))
+            except Exception:
+                _ffms = 1
+            self._after_id = self.parent.after(_ffms, self.update_frames_preview)
 
     def _calculate_timestamp_with_time_range(self, video_timestamp):
         """Calcular timestamp alineado con la franja horaria configurada"""
@@ -2650,6 +2862,139 @@ class VideoPlayerOpenCV:
         )
         self._detect_worker_thread.start()
 
+    # ─── DEMO en vivo (previsualización con YOLO, 100% visual) ──────────
+    def _build_demo_planner(self):
+        """Planner solo para gating de la demo (ahorro de GPU en verde).
+
+        No pinta nada ni decide infracciones: la regla de color la da el
+        widget del semáforo (sincronía visual con la interfaz).
+        """
+        try:
+            from src.application.services.traffic_processing_planner import TrafficProcessingPlanner
+            cfg = getattr(self, "cycle_durations", None) or {}
+            g, y, r = float(cfg["green"]), float(cfg["yellow"]), float(cfg["red"])
+            fps = float(getattr(self, "video_fps", 30) or 30)
+            return TrafficProcessingPlanner(g, y, r, fps)
+        except Exception:
+            return None
+
+    def _demo_warn(self, msg):
+        """Aviso throttled de la demo (máx 1 cada 5 s, nunca lanza).
+
+        Los fallos de la demo no deben romper el preview, pero tampoco
+        ser invisibles: sin esto, un `except: pass` ocultaría la causa
+        real de cajas faltantes.
+        """
+        try:
+            import time as _t
+            now = _t.time()
+            if now - float(getattr(self, "_demo_last_warn", 0.0) or 0.0) >= 5.0:
+                self._demo_last_warn = now
+                print(f"⚠️ DEMO: {msg}")
+        except Exception:
+            pass
+
+    def _new_demo_tracker(self):
+        """Tracker centroide fresco para la demo (instancia aislada)."""
+        try:
+            from src.core.traffic.vehicle_tracker import CentroidVehicleTracker
+            return CentroidVehicleTracker()
+        except Exception:
+            return None
+
+    def _analyze_preview_demo(self, frame, frame_index):
+        """Demo visual en vivo: YOLO + polígono + tracker + regla roja del widget.
+
+        100% demostrativo: NO hace OCR, NO extrae placas, NO guarda nada
+        (ni NID/NIE/BD). Nunca toca `OfficialVideoProcessor` ni el flujo
+        de `preprocessing_dialog.py`. Corre en el worker (no toca Tk).
+        """
+        # Silenciar el spam `'half' is deprecated` de ultralytics: cada
+        # inferencia lo imprime (cientos de prints/s que contencian el GIL y
+        # frenan al hilo Tk). Solo durante la inferencia demo y restaurando
+        # al salir: el flujo oficial no se toca ni se entera.
+        import warnings as _warnings
+        import logging as _logging
+        _ultralytics_log = _logging.getLogger("ultralytics")
+        _ultralytics_level = _ultralytics_log.level
+        try:
+            with _warnings.catch_warnings():
+                _warnings.filterwarnings(
+                    "ignore", message=".*'half' is deprecated.*")
+                _ultralytics_log.setLevel(_logging.ERROR)
+                try:
+                    frame_v, dets, is_night = self.detect_and_draw_cars(frame)
+                finally:
+                    _ultralytics_log.setLevel(_ultralytics_level)
+        except Exception:
+            return frame, False
+        try:
+            tracker = getattr(self, "_demo_tracker", None)
+            box2tid: dict = {}
+            if tracker is not None and dets:
+                items = [(int(d[0]), int(d[1]), int(d[2]), int(d[3]),
+                          int(d[4]), 0.9) for d in dets]
+                try:
+                    tracks = tracker.update(items) or {}
+                except Exception as _e:
+                    tracks = {}
+                    self._demo_warn(f"tracker.update falló ({_e}); cajas sin ID")
+                try:
+                    for tid, tr in tracks.items():
+                        box2tid[tuple(tr.get("bbox", ()))] = tid
+                except Exception:
+                    pass
+            # Grosor/fuente adaptativos a la resolución nativa: el display
+            # reduce hasta ~0.25x (4K→960), así las cajas siguen viéndose.
+            try:
+                _dh, _dw = frame_v.shape[:2]
+                _dth = max(2, int(round(max(_dh, _dw) / 960)))
+                _dfs = max(0.6, max(_dh, _dw) / 3200.0)
+            except Exception:
+                _dth, _dfs = 2, 0.6
+            poly = list(getattr(self, "polygon_points", None) or [])
+            if len(poly) >= 3:
+                try:
+                    pts = np.array(poly, np.int32).reshape(-1, 1, 2)
+                    poly_color = (0, 220, 255) if is_night else (0, 0, 255)
+                    cv2.polylines(frame_v, [pts], True, poly_color, _dth)
+                except Exception:
+                    pass
+            # Fuente de verdad del color: el widget (sync visual con la UI).
+            try:
+                wstate = self.semaforo.get_current_state()
+            except Exception:
+                wstate = "green"
+            names = {2: "CAR", 5: "BUS", 7: "TRUCK"}
+            for d in dets:
+                x1, y1, x2, y2 = int(d[0]), int(d[1]), int(d[2]), int(d[3])
+                cls_id = int(d[4])
+                tid = box2tid.get((x1, y1, x2, y2))
+                in_poly = False
+                if len(poly) >= 3:
+                    try:
+                        in_poly = bool(self.is_vehicle_in_polygon((x1, y1, x2, y2), poly))
+                    except Exception:
+                        in_poly = False
+                infractor = (wstate == "red" and in_poly)
+                color = (0, 0, 255) if infractor else (0, 255, 0)
+                cv2.rectangle(frame_v, (x1, y1), (x2, y2), color, _dth)
+                label = f"{names.get(cls_id, 'VEH')}"
+                label += f" #{tid}" if tid is not None else ""
+                if infractor:
+                    label += " INFRACTOR"
+                try:
+                    tsize = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, _dfs, 2)[0]
+                    cv2.rectangle(frame_v, (x1, y1 - tsize[1] - 10),
+                                  (x1 + tsize[0], y1), color, -1)
+                    cv2.putText(frame_v, label, (x1, y1 - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX, _dfs, (0, 0, 0), 2)
+                except Exception:
+                    pass
+        except Exception as _e:
+            self._demo_warn(f"fallo general del analizador ({_e}); frame sin anotar")
+        return frame_v, False
+
     def _detect_worker(self):
         """Bucle del worker: consume frames de `_detect_in` y publica el frame
         anotado en `_detect_out`. NUNCA toca widgets de Tk."""
@@ -2662,7 +3007,10 @@ class VideoPlayerOpenCV:
                 break
             frame, frame_index = item
             try:
-                annotated, is_night = self._analyze_frame_off_thread(frame, frame_index)
+                if bool(getattr(self, "_demo_mode", False)):
+                    annotated, is_night = self._analyze_preview_demo(frame, frame_index)
+                else:
+                    annotated, is_night = self._analyze_frame_off_thread(frame, frame_index)
             except Exception as e:
                 print(f"❌ Error en worker de detección: {e}")
                 annotated, is_night = frame, False

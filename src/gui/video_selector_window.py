@@ -474,6 +474,7 @@ class VideoSelectorWindow:
     
     def generate_thumbnail(self, video_path):
         """Generar miniatura del video"""
+        cap = None
         try:
             cap = cv2.VideoCapture(video_path)
             
@@ -483,7 +484,6 @@ class VideoSelectorWindow:
             
             cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
             ret, frame = cap.read()
-            cap.release()
             
             if ret:
                 # Redimensionar frame
@@ -505,6 +505,14 @@ class VideoSelectorWindow:
             
         except Exception as e:
             print(f"Error generando thumbnail para {video_path}: {e}")
+        finally:
+            # Soltar SIEMPRE el handle (sin esto, "Eliminar" falla en
+            # Windows con WinError 32 por archivo en uso).
+            try:
+                if cap is not None:
+                    cap.release()
+            except Exception:
+                pass
         
         # Thumbnail por defecto si hay error
         return self.create_default_thumbnail()
@@ -550,6 +558,7 @@ class VideoSelectorWindow:
     
     def get_video_metadata(self, video_path):
         """Obtener metadatos del video"""
+        cap = None
         try:
             cap = cv2.VideoCapture(video_path)
             
@@ -572,8 +581,6 @@ class VideoSelectorWindow:
                 seconds = int(duration_seconds % 60)
                 duration_formatted = f"{minutes:02d}:{seconds:02d}"
             
-            cap.release()
-            
             return {
                 'duration': duration_formatted,
                 'resolution': f"{width}x{height}",
@@ -588,6 +595,13 @@ class VideoSelectorWindow:
                 'fps': "N/A",
                 'frames': 0
             }
+        finally:
+            # Soltar SIEMPRE el handle (ver generate_thumbnail).
+            try:
+                if cap is not None:
+                    cap.release()
+            except Exception:
+                pass
     
     def display_video_info(self, info_frame, metadata, video):
         """Mostrar información del video"""
@@ -784,9 +798,33 @@ class VideoSelectorWindow:
             )
             
             if response:
-                # Eliminar archivo de video
+                # Soltar referencias antes de tocar el archivo: purgar cachés
+                # (PIL) y forzar GC; un worker de thumbnail/metadata aún en
+                # curso puede retener el handle unos ms en Windows (WinError 32).
+                for _cache in ("thumbnail_cache", "metadata_cache"):
+                    try:
+                        getattr(self, _cache, {}).pop(video['filename'], None)
+                    except Exception:
+                        pass
+                try:
+                    import gc as _gc
+                    _gc.collect()
+                except Exception:
+                    pass
+                # Eliminar archivo de video con reintentos (el OS puede
+                # tardar en soltar el handle).
                 if os.path.exists(video['path']):
-                    os.remove(video['path'])
+                    import time as _time
+                    for _attempt in range(5):
+                        try:
+                            os.remove(video['path'])
+                            break
+                        except FileNotFoundError:
+                            break
+                        except PermissionError:
+                            if _attempt >= 4:
+                                raise
+                            _time.sleep(0.2 * (_attempt + 1))
                 
                 # Limpiar configuraciones
                 self._clean_single_video_config(video['filename'])
