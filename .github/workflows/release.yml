@@ -15,6 +15,7 @@ jobs:
   build-onedir-win:
     name: Build ONEDIR portable (Win CUDA)
     runs-on: windows-2022
+    if: github.event_name == 'push' && github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -105,6 +106,7 @@ jobs:
   build-onedir-linux:
     name: Build ONEDIR portable (Linux CPU)
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
