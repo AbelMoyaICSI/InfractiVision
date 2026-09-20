@@ -3,7 +3,7 @@ name: build-onedir
 on:
   push:
     tags: ["v*"]
-    branches: [feature/cli_and_test, develop, main]
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
